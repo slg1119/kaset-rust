@@ -7,6 +7,7 @@ guard args.count == 3, let layer = NSImage(contentsOfFile: args[1]) else {
     FileHandle.standardError.write(Data("usage: render-icon.swift <layer.png> <out.png>\n".utf8))
     exit(1)
 }
+
 let size = 1024
 guard let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
