@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use ytm_core::YtmError;
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
@@ -57,14 +56,7 @@ async fn main() -> Result<()> {
             parse,
             out,
         } => {
-            let raw = client
-                .browse(&browse_id)
-                .await
-                .map_err(|error| match error {
-                    // The request URL contains the API key in its query string.
-                    YtmError::Network(error) => YtmError::Network(error.without_url()),
-                    error => error,
-                })?;
+            let raw = client.browse(&browse_id).await?;
             let text = match parse {
                 Some(ParseAs::Home) => serde_json::to_string_pretty(&parse_home(&raw)?)?,
                 None => serde_json::to_string_pretty(&raw)?,

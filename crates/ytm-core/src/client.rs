@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
@@ -8,6 +8,8 @@ use crate::auth::{CookieJar, sapisid_hash};
 pub const MUSIC_ORIGIN: &str = "https://music.youtube.com";
 pub const CLIENT_VERSION: &str = "1.20231204.01.00";
 pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
@@ -37,7 +39,11 @@ pub struct InnerTubeClient {
 
 impl InnerTubeClient {
     pub fn new(config: ClientConfig, cookies: Option<CookieJar>) -> Result<Self, YtmError> {
-        let http = reqwest::Client::builder().user_agent(USER_AGENT).build()?;
+        let http = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
+            .build()?;
         Ok(Self {
             http,
             config,
@@ -91,9 +97,21 @@ impl InnerTubeClient {
                 .header("X-Goog-AuthUser", "0");
         }
 
-        let response = request.send().await?;
+        let response = request
+            .send()
+            .await
+            .map_err(|error| YtmError::Network(error.without_url()))?;
         match response.status().as_u16() {
-            200..=299 => Ok(response.json().await?),
+            200..=299 => {
+                let body = response
+                    .text()
+                    .await
+                    .map_err(|error| YtmError::Network(error.without_url()))?;
+                serde_json::from_str(&body).map_err(|_| YtmError::Parse {
+                    endpoint: endpoint.to_owned(),
+                    path: "<body>".into(),
+                })
+            }
             401 | 403 => Err(YtmError::AuthExpired),
             429 => Err(YtmError::RateLimited),
             status => Err(YtmError::Http { status }),

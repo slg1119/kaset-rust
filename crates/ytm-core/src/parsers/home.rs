@@ -68,7 +68,17 @@ fn parse_section(section: &Value) -> Option<HomeSection> {
         .get("contents")?
         .as_array()?
         .iter()
-        .filter_map(parse_item)
+        .filter_map(|item| {
+            let parsed = parse_item(item);
+            if parsed.is_none() {
+                let kind = item
+                    .as_object()
+                    .and_then(|o| o.keys().next())
+                    .map_or("?", String::as_str);
+                tracing::debug!(kind, "skipping unparsed home carousel item");
+            }
+            parsed
+        })
         .collect();
     (!items.is_empty()).then_some(HomeSection { title, items })
 }

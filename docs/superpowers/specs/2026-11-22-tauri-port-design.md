@@ -198,7 +198,7 @@ If any of these fails, stop and revisit the design before building further.
 
 ## Milestones
 
-0. Spike: the three risks above.
+0. Spike: the four risks above.
 1. Workspace scaffold, `ytm-core` client + SAPISIDHASH, `ytm-explorer`.
 2. Sign-in and cookie persistence.
 3. Playback bridge, queue, OS media controls.

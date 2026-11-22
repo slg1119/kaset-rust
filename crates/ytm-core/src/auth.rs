@@ -26,12 +26,17 @@ impl CookieJar {
         &self.header
     }
 
+    /// Returns `__Secure-3PAPISID` when present, falling back to `SAPISID`.
     pub fn sapisid(&self) -> Option<Secret> {
-        self.header
+        let mut pairs = self
+            .header
             .expose()
             .split(';')
-            .filter_map(|pair| pair.trim().split_once('='))
-            .find(|(name, _)| *name == "SAPISID")
+            .filter_map(|pair| pair.trim().split_once('='));
+        pairs
+            .clone()
+            .find(|(name, _)| *name == "__Secure-3PAPISID")
+            .or_else(|| pairs.find(|(name, _)| *name == "SAPISID"))
             .map(|(_, value)| Secret::new(value))
     }
 }
@@ -50,14 +55,45 @@ mod tests {
     }
 
     #[test]
-    fn cookie_jar_finds_exact_sapisid() {
-        let jar = CookieJar::from_header("__Secure-3PAPISID=other; SAPISID=test-sapisid; HSID=x");
+    fn cookie_jar_prefers_secure_sapisid() {
+        let jar =
+            CookieJar::from_header("SAPISID=test-sapisid; __Secure-3PAPISID=test-secure-sapisid");
+        assert_eq!(jar.sapisid(), Some(Secret::new("test-secure-sapisid")));
+    }
+
+    #[test]
+    fn cookie_jar_accepts_plain_sapisid() {
+        let jar = CookieJar::from_header("SAPISID=test-sapisid");
         assert_eq!(jar.sapisid(), Some(Secret::new("test-sapisid")));
     }
 
     #[test]
-    fn cookie_jar_without_sapisid() {
-        assert_eq!(CookieJar::from_header("HSID=x").sapisid(), None);
+    fn cookie_jar_accepts_secure_sapisid() {
+        let jar = CookieJar::from_header("__Secure-3PAPISID=test-secure-sapisid");
+        assert_eq!(jar.sapisid(), Some(Secret::new("test-secure-sapisid")));
+    }
+
+    #[test]
+    fn cookie_jar_requires_exact_names() {
+        let jar =
+            CookieJar::from_header("__Secure-1PAPISID=test-secure-sapisid; XSAPISID=test-sapisid");
+        assert_eq!(jar.sapisid(), None);
+    }
+
+    #[test]
+    fn cookie_jar_preserves_equals_in_value() {
+        assert_eq!(
+            CookieJar::from_header("SAPISID=ab=c").sapisid(),
+            Some(Secret::new("ab=c"))
+        );
+    }
+
+    #[test]
+    fn cookie_jar_skips_empty_and_malformed_pairs() {
+        assert_eq!(CookieJar::from_header("").sapisid(), None);
+        assert_eq!(CookieJar::from_header("SAPISID").sapisid(), None);
+        let jar = CookieJar::from_header("__Secure-3PAPISID; SAPISID=test-sapisid");
+        assert_eq!(jar.sapisid(), Some(Secret::new("test-sapisid")));
     }
 
     #[test]

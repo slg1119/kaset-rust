@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Proposed — accepted once the M0 spike findings (linked below) show all four risks pass.
 
 ## Context
 
