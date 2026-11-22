@@ -8,7 +8,7 @@ use crate::YtmError;
 use crate::json::{at, runs_text, str_at, thumbnail_url};
 use crate::models::{BrowseCard, Chip, FeedPage, HomePage, HomeSection, ShelfItem, Song};
 
-const SECTION_LIST: &[&str] = &[
+pub(super) const SECTION_LIST: &[&str] = &[
     "contents",
     "singleColumnBrowseResultsRenderer",
     "tabs",
@@ -112,12 +112,15 @@ fn parse_chips(list: &Value) -> Vec<Chip> {
 }
 
 /// Parses shelves shared by the music feeds.
-fn parse_section(section: &Value) -> Option<HomeSection> {
+pub(super) fn parse_section(section: &Value) -> Option<HomeSection> {
     if let Some(shelf) = section.get("musicCarouselShelfRenderer") {
         let title = carousel_title(shelf).unwrap_or_else(|| "Unknown Section".into());
         return shelf_section(title, shelf.get("contents"));
     }
-    if let Some(shelf) = section.get("musicShelfRenderer") {
+    if let Some(shelf) = section
+        .get("musicShelfRenderer")
+        .or_else(|| section.get("musicPlaylistShelfRenderer"))
+    {
         return parse_music_shelf(shelf);
     }
     if let Some(shelf) = section.get("musicCardShelfRenderer") {
@@ -182,7 +185,11 @@ fn shelf_section(title: String, contents: Option<&Value>) -> Option<HomeSection>
             parsed
         })
         .collect();
-    (!items.is_empty()).then_some(HomeSection { title, items })
+    (!items.is_empty()).then_some(HomeSection {
+        title,
+        items,
+        more: None,
+    })
 }
 
 fn first_key(value: &Value) -> &str {
@@ -199,6 +206,9 @@ pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
     if let Some(renderer) = item.get("musicResponsiveListItemRenderer") {
         return parse_responsive(renderer);
     }
+    if let Some(episode) = item.get("musicMultiRowListItemRenderer") {
+        return Some(ShelfItem::Song(parse_watch_item(episode, "onTap")?));
+    }
     let button = item.get("musicNavigationButtonRenderer")?;
     let browse = at(button, &["clickCommand", "browseEndpoint"])?;
     Some(ShelfItem::Category {
@@ -211,18 +221,24 @@ pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
     })
 }
 
+fn parse_watch_item(renderer: &Value, endpoint_key: &str) -> Option<Song> {
+    let video_id = str_at(renderer, &[endpoint_key, "watchEndpoint", "videoId"])
+        .filter(|id| !id.is_empty())?;
+    Some(Song {
+        video_id: video_id.into(),
+        title: renderer.get("title").and_then(runs_text)?,
+        artists: artists_from_runs(renderer.get("subtitle")),
+        thumbnail_url: thumbnail_url(renderer),
+    })
+}
+
 fn parse_two_row(renderer: &Value) -> Option<ShelfItem> {
+    if let Some(song) = parse_watch_item(renderer, "navigationEndpoint") {
+        return Some(ShelfItem::Song(song));
+    }
     let title = renderer.get("title").and_then(runs_text)?;
     let thumbnail = thumbnail_url(renderer);
     let nav = renderer.get("navigationEndpoint")?;
-    if let Some(video_id) = str_at(nav, &["watchEndpoint", "videoId"]) {
-        return Some(ShelfItem::Song(Song {
-            video_id: video_id.into(),
-            title,
-            artists: artists_from_runs(renderer.get("subtitle")),
-            thumbnail_url: thumbnail,
-        }));
-    }
     let browse = nav.get("browseEndpoint")?;
     let card = BrowseCard {
         browse_id: browse.get("browseId")?.as_str()?.into(),

@@ -7,6 +7,7 @@ use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_browse_id};
 use ytm_core::models::FeedPage;
 use ytm_core::parsers::account::parse_account;
+use ytm_core::parsers::artist::{parse_artist, parse_artist_items};
 use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation, parse_home};
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
@@ -42,6 +43,23 @@ enum Command {
     },
     /// Probe the next feed page. Reports shape without printing tokens.
     FeedContinue { token: String },
+    /// Probe an artist page or a See all destination without printing params.
+    Artist {
+        browse_id: String,
+        #[arg(long)]
+        params: Option<String>,
+        #[arg(long)]
+        more: bool,
+    },
+    /// Probe an artist playback endpoint without printing params or continuation.
+    ArtistMix {
+        #[arg(long, required_unless_present = "video_id")]
+        playlist_id: Option<String>,
+        #[arg(long)]
+        video_id: Option<String>,
+        #[arg(long)]
+        params: Option<String>,
+    },
     /// POST /browse for an album or playlist. Use --parse to print the page model.
     Page {
         browse_id: String,
@@ -133,6 +151,66 @@ async fn main() -> Result<()> {
             let raw = client.browse_continuation(&token).await?;
             (feed_summary(parse_feed_continuation(&raw)?), None)
         }
+        Command::Artist {
+            browse_id,
+            params,
+            more,
+        } => {
+            let raw = client
+                .browse_with_params(&browse_id, params.as_deref())
+                .await?;
+            let summary = if more {
+                format!("{} artist items", parse_artist_items(&raw)?.len())
+            } else {
+                let page = parse_artist(&raw)?;
+                let sections = page
+                    .sections
+                    .iter()
+                    .map(|section| {
+                        format!(
+                            "{} ({} items, See all: {})",
+                            section.title,
+                            section.items.len(),
+                            section.more.is_some()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "{}: {sections}; artwork: {}, subscribers: {}, radio: {}, shuffle: {}",
+                    page.name,
+                    page.thumbnail_url.is_some(),
+                    page.subscribers.is_some(),
+                    page.radio_playlist_id.is_some() || page.radio_video_id.is_some(),
+                    page.shuffle_playlist_id.is_some() || page.shuffle_video_id.is_some(),
+                )
+            };
+            (summary, None)
+        }
+        Command::ArtistMix {
+            playlist_id,
+            video_id,
+            params,
+        } => {
+            let raw = client
+                .playback_queue(
+                    playlist_id.as_deref(),
+                    video_id.as_deref(),
+                    params.as_deref(),
+                )
+                .await?;
+            let queue = parse_radio(&raw).with_context(|| {
+                format!("artist mix response shape: {}", artist_mix_shape(&raw))
+            })?;
+            (
+                format!(
+                    "{} songs, continuation present: {}",
+                    queue.songs.len(),
+                    queue.continuation.is_some()
+                ),
+                None,
+            )
+        }
         Command::Page { browse_id, parse } => {
             let raw = client.browse(&playlist_browse_id(&browse_id)).await?;
             let text = if parse {
@@ -195,6 +273,44 @@ async fn main() -> Result<()> {
         None => println!("{text}"),
     }
     Ok(())
+}
+
+// Report renderer names at the queue boundary, without printing response values.
+fn artist_mix_shape(raw: &serde_json::Value) -> String {
+    let watch_next = "/contents/singleColumnMusicWatchNextResultsRenderer";
+    let Some(tabs) = raw
+        .pointer(&format!(
+            "{watch_next}/tabbedRenderer/watchNextTabbedResultsRenderer/tabs"
+        ))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return format!(
+            "watch-next contents: {}, no tabs",
+            raw.pointer(watch_next).is_some()
+        );
+    };
+    tabs.iter()
+        .map(|tab| {
+            let content = tab.pointer("/tabRenderer/content");
+            let queue = content.and_then(|content| content.pointer("/musicQueueRenderer/content"));
+            let renderer_names = |value: Option<&serde_json::Value>| {
+                value
+                    .and_then(serde_json::Value::as_object)
+                    .into_iter()
+                    .flat_map(|object| object.keys())
+                    .filter(|key| key.ends_with("Renderer"))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            format!(
+                "tab [{}], queue [{}]",
+                renderer_names(content),
+                renderer_names(queue)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn feed_summary(page: FeedPage) -> String {

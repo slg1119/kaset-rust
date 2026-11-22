@@ -64,6 +64,35 @@ pub enum ShelfItem {
 pub struct HomeSection {
     pub title: String,
     pub items: Vec<ShelfItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub more: Option<BrowseEndpoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct BrowseEndpoint {
+    pub browse_id: String,
+    pub params: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct ArtistPage {
+    pub name: String,
+    pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub subscribers: Option<String>,
+    pub channel_id: Option<String>,
+    pub subscribed: Option<bool>,
+    pub radio_playlist_id: Option<String>,
+    pub radio_video_id: Option<String>,
+    pub radio_params: Option<String>,
+    pub shuffle_playlist_id: Option<String>,
+    pub shuffle_video_id: Option<String>,
+    pub shuffle_params: Option<String>,
+    /// Index of the first playable music shelf, distinct from video carousels.
+    pub top_songs_section: Option<u32>,
+    pub sections: Vec<HomeSection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -140,6 +169,8 @@ mod specta_tests {
         assert_type::<BrowsePage>();
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
+        assert_type::<BrowseEndpoint>();
+        assert_type::<ArtistPage>();
         assert_type::<HomePage>();
         assert_type::<Chip>();
         assert_type::<FeedPage>();

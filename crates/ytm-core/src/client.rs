@@ -197,13 +197,32 @@ impl InnerTubeClient {
 
     /// Starts a radio mix from the given track.
     pub async fn radio(&self, video_id: &str) -> Result<Value, YtmError> {
-        let body = Map::from_iter([
-            ("videoId".into(), video_id.into()),
-            ("playlistId".into(), format!("RDAMVM{video_id}").into()),
+        let playlist_id = format!("RDAMVM{video_id}");
+        self.playback_queue(Some(&playlist_id), Some(video_id), None)
+            .await
+    }
+
+    /// Resolves a watch or watch-playlist endpoint into a playback queue.
+    pub async fn playback_queue(
+        &self,
+        playlist_id: Option<&str>,
+        video_id: Option<&str>,
+        params: Option<&str>,
+    ) -> Result<Value, YtmError> {
+        let mut body = Map::from_iter([
             ("enablePersistentPlaylistPanel".into(), true.into()),
             ("isAudioOnly".into(), true.into()),
             ("tunerSettingValue".into(), "AUTOMIX_SETTING_NORMAL".into()),
         ]);
+        for (key, value) in [
+            ("playlistId", playlist_id),
+            ("videoId", video_id),
+            ("params", params),
+        ] {
+            if let Some(value) = value {
+                body.insert(key.into(), value.into());
+            }
+        }
         self.post("next", body).await
     }
 

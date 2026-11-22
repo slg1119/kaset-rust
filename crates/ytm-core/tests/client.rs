@@ -346,3 +346,30 @@ async fn feed_browse_posts_optional_params_and_body_only_continuation() {
         );
     }
 }
+
+#[tokio::test]
+async fn artist_mix_posts_playlist_and_optional_params_without_a_video() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({
+            "playlistId": "RD-test",
+            "params": "test%3D",
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    client
+        .playback_queue(Some("RD-test"), None, Some("test%3D"))
+        .await
+        .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    let body = requests[0].body_json::<serde_json::Value>().unwrap();
+    assert!(body.get("videoId").is_none());
+}

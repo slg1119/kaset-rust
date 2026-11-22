@@ -1,0 +1,37 @@
+{
+  "header": {"musicImmersiveHeaderRenderer": {
+    "title": {"runs": [{"text":"Test Artist"}]},
+    "description": {"runs": [{"text":"Artist biography"}]},
+    "thumbnail": {"musicThumbnailRenderer": {"thumbnail": {"thumbnails": [{"url":"https://lh3.googleusercontent.com/test-artist"}]}}},
+    "subscriptionButton": {"subscribeButtonRenderer": {"channelId":"UC-test","subscribed":false,"shortSubscriberCountText":{"runs":[{"text":"123 subscribers"}]}}},
+    "startRadioButton": {"buttonRenderer": {"navigationEndpoint": {"watchPlaylistEndpoint":{"playlistId":"RD-test"}}}},
+    "playButton": {"buttonRenderer": {"navigationEndpoint": {"watchPlaylistEndpoint":{"playlistId":"RDAO-test","params":"test%3D"}}}}
+  }},
+  "contents": {"singleColumnBrowseResultsRenderer": {"tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [
+    {"musicCarouselShelfRenderer": {
+      "header": {"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Videos"}]}}},
+      "contents":[{"musicTwoRowItemRenderer":{
+        "title":{"runs":[{"text":"Test video"}]},
+        "navigationEndpoint":{"watchEndpoint":{"videoId":"test-video"}}
+      }}]
+    }},
+    {"musicShelfRenderer": {
+      "title":{"runs":[{"text":"Top songs"}]},
+      "bottomEndpoint":{"browseEndpoint":{"browseId":"test-songs"}},
+      "contents":[{"musicResponsiveListItemRenderer":{
+        "playlistItemData":{"videoId":"test-song"},
+        "flexColumns":[
+          {"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Test song"}]}}},
+          {"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Test Artist","navigationEndpoint":{"browseEndpoint":{"browseId":"UC-test"}}}]}}}
+        ]
+      }}]
+    }},
+    {"musicCarouselShelfRenderer":{
+      "header":{"musicCarouselShelfBasicHeaderRenderer":{
+        "title":{"runs":[{"text":"Albums"}]},
+        "moreContentButton":{"buttonRenderer":{"command":{"browseEndpoint":{"browseId":"test-albums","params":"test%3D"}}}}
+      }},
+      "contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Test album"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"MPRE-test"}}}}]
+    }}
+  ]}}}}]}}
+}
