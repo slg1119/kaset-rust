@@ -3,12 +3,28 @@ name: Rust
 on:
   push:
     branches: [main, feat/tauri-port]
-    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths:
+      - "crates/**"
+      - "app/src-tauri/**"
+      - "app/src/bindings.ts"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
   pull_request:
-    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+    paths:
+      - "crates/**"
+      - "app/src-tauri/**"
+      - "app/src/bindings.ts"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/rust.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust:
@@ -26,4 +42,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The workspace build enables ytm-core/specta through the app; check the core alone too.
+      - run: cargo clippy -p ytm-core --all-targets -- -D warnings
       - run: cargo test --workspace
+      # `cargo test` regenerated app/src/bindings.ts; the committed copy must match.
+      - name: Generated bindings are committed
+        if: runner.os == 'macOS'
+        run: git diff --exit-code -- app/src/bindings.ts
