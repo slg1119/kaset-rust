@@ -1,0 +1,22 @@
+---
+source: crates/ytm-core/tests/home_parser.rs
+expression: page
+---
+sections:
+  - title: Quick picks
+    items:
+      - kind: song
+        video_id: dQw4w9WgXcQ
+        title: Never Gonna Give You Up
+        artists:
+          - name: Rick Astley
+            browse_id: UCuAXFkgsw1L7xaCfnd5JJOw
+        thumbnail_url: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+  - title: Recommended albums
+    items:
+      - kind: album
+        browse_id: MPREb_test123
+        title: Test Album
+        subtitle: Test Artist • 2024
+        thumbnail_url: "https://example.com/album.jpg"
+continuation: ~
