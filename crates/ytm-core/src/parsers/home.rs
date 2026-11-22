@@ -1,8 +1,12 @@
 use serde_json::Value;
 
+use super::helpers::{
+    artists_from_flex_column, artists_from_runs, is_artist_page_type, is_navigable_artist_id,
+    page_type,
+};
 use crate::YtmError;
 use crate::json::{at, runs_text, str_at, thumbnail_url};
-use crate::models::{ArtistRef, BrowseCard, HomePage, HomeSection, ShelfItem, Song};
+use crate::models::{BrowseCard, HomePage, HomeSection, ShelfItem, Song};
 
 const SECTION_LIST: &[&str] = &[
     "contents",
@@ -105,12 +109,18 @@ fn parse_responsive(renderer: &Value) -> Option<ShelfItem> {
     let title = flex_column(renderer, 0).and_then(runs_text)?;
     let thumbnail = thumbnail_url(renderer);
     let video_id = str_at(renderer, &["playlistItemData", "videoId"])
+        .or_else(|| {
+            str_at(
+                renderer,
+                &["navigationEndpoint", "watchEndpoint", "videoId"],
+            )
+        })
         .or_else(|| str_at(renderer, PLAY_BUTTON_VIDEO_ID));
     if let Some(video_id) = video_id {
         return Some(ShelfItem::Song(Song {
             video_id: video_id.into(),
             title,
-            artists: artists_from_runs(flex_column(renderer, 1)),
+            artists: artists_from_flex_column(flex_column(renderer, 1)),
             thumbnail_url: thumbnail,
         }));
     }
@@ -132,23 +142,12 @@ fn flex_column(renderer: &Value, index: usize) -> Option<&Value> {
         .get("text")
 }
 
-fn page_type(browse: &Value) -> Option<&str> {
-    str_at(
-        browse,
-        &[
-            "browseEndpointContextSupportedConfigs",
-            "browseEndpointContextMusicConfig",
-            "pageType",
-        ],
-    )
-}
-
 /// pageType first, then browseId prefix — same order as the Swift HomeResponseParser.
 fn classify(page_type: Option<&str>, card: BrowseCard) -> Option<ShelfItem> {
     match page_type {
         Some("MUSIC_PAGE_TYPE_ALBUM") => return Some(ShelfItem::Album(card)),
         Some("MUSIC_PAGE_TYPE_PLAYLIST") => return Some(ShelfItem::Playlist(card)),
-        Some("MUSIC_PAGE_TYPE_ARTIST" | "MUSIC_PAGE_TYPE_USER_CHANNEL") => {
+        page_type if is_artist_page_type(page_type) => {
             return Some(ShelfItem::Artist(card));
         }
         _ => {}
@@ -158,42 +157,9 @@ fn classify(page_type: Option<&str>, card: BrowseCard) -> Option<ShelfItem> {
         Some(ShelfItem::Album(card))
     } else if ["VL", "PL", "RD"].iter().any(|p| id.starts_with(p)) {
         Some(ShelfItem::Playlist(card))
-    } else if id.starts_with("UC") {
+    } else if is_navigable_artist_id(id) {
         Some(ShelfItem::Artist(card))
     } else {
         None
     }
-}
-
-/// Runs linking to a `UC…` channel are artists. Falls back to the first run's text.
-fn artists_from_runs(text: Option<&Value>) -> Vec<ArtistRef> {
-    let Some(runs) = text.and_then(|t| t.get("runs")).and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let linked: Vec<ArtistRef> = runs
-        .iter()
-        .filter_map(|run| {
-            let id = str_at(run, &["navigationEndpoint", "browseEndpoint", "browseId"])?;
-            if !id.starts_with("UC") {
-                return None;
-            }
-            let name = run.get("text")?.as_str()?;
-            Some(ArtistRef {
-                name: name.into(),
-                browse_id: Some(id.into()),
-            })
-        })
-        .collect();
-    if !linked.is_empty() {
-        return linked;
-    }
-    runs.first()
-        .and_then(|run| run.get("text")?.as_str())
-        .map(|name| {
-            vec![ArtistRef {
-                name: name.into(),
-                browse_id: None,
-            }]
-        })
-        .unwrap_or_default()
 }
