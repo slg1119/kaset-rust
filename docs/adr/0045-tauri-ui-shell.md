@@ -33,15 +33,16 @@ afterwards.
   mood/genre buttons are skipped.
 - **Commands:** `search` and `search_suggestions` share `signed_in_request`
   with `get_home` (launch gate, signed-in check, epoch-guarded expiry). Queries
-  are trimmed; empty search and over-200-character input are
-  `invalid_argument`; empty suggestion input returns nothing without a request.
+  are trimmed. Empty search and empty suggestion input return no results
+  without a request. Input over 200 characters returns `invalid_argument`.
 - **Navigation:** state-based routes in `Shell` (`home`, `search`), no router
   library: a desktop WebView has no URLs to share, and two screens do not need
   one. M5 extends the route type with a stack for detail pages and Back.
-- **Server data:** TanStack Query 5 (`@tanstack/react-query` 5.107.1). One
-  client per app; `staleTime` home 5 min, search 10 min, suggestions 60 s; no
-  refetch on window focus; one retry for `network`/`http` errors only; the cache
-  is cleared whenever the auth status leaves `signed_in`.
+- **Server data:** TanStack Query 5 (`@tanstack/react-query` 5.107.1).
+  The app uses one client. Stale times are home 5 min, search 10 min,
+  suggestions 60 s, and account 30 min. The client disables refetch on window
+  focus and retries `network`/`http` errors once. The cache is cleared whenever
+  the auth status leaves `signed_in`.
 - **Errors:** one app-wide notice area for action errors (play, controls,
   shortcuts, sign out, player snapshot); screens keep their own load errors with
   Retry. Auth routing stays backend-driven through `auth://changed`.

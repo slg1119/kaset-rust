@@ -53,11 +53,14 @@ replaces ⌘. The app never takes ⌘Q, ⌘W, ⌘H, ⌘M, or ⌘,.
 
 | Shortcut | Action |
 | -------- | ------ |
-| `Space`  | Play / Pause (not while a button, slider, or text field has focus) |
+| `Space`  | Play / Pause (not while a text field, slider, or keyboard-focused button has focus) |
 | `⌘→`     | Next track (not in text fields) |
 | `⌘←`     | Previous track (not in text fields) |
 | `⌘1`     | Go to Home |
 | `⌘F`     | Go to Search and focus the search field |
 
 In the search field, `↓`/`↑` move through suggestions, `Return` searches the
-highlighted suggestion (or the typed text), and `Esc` closes the suggestions.
+highlighted suggestion, and `Esc` closes the suggestions. `Return` with no
+highlight searches the typed text. When using a Korean input method, pressing
+`Return` to commit Hangul only finishes composition. Press `Return` again to
+search.
