@@ -27,6 +27,8 @@ export function useShortcuts(actions: Partial<Record<Shortcut, () => void>>) {
     }
 
     function onKeyDown(event: KeyboardEvent) {
+      // A component (e.g. the open queue panel) already handled this key.
+      if (event.defaultPrevented) return;
       const shortcut = shortcutFor(event, undefined, event.target === focused ? focusVisible : undefined);
       if (shortcut === null) return;
       run(shortcut, event);

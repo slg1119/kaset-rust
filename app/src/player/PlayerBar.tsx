@@ -66,7 +66,9 @@ export function PlayerBar() {
   useEffect(() => {
     if (!queueOpen || !visible) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
+      // Capture phase + preventDefault: closing the queue must not also trigger the Back shortcut.
+      event.preventDefault();
       setQueueOpen(false);
       queueButton.current?.focus();
     }
@@ -75,10 +77,10 @@ export function PlayerBar() {
         setQueueOpen(false);
       }
     }
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("pointerdown", onPointerDown);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pointerdown", onPointerDown);
     };
   }, [queueOpen, visible]);
