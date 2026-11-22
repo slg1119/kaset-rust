@@ -71,7 +71,10 @@ fn identity(item: &SearchItem) -> String {
         SearchItem::Artist(card) | SearchItem::Profile(card) => {
             format!("artist:{}", card.browse_id)
         }
-        SearchItem::Playlist(card) => format!("playlist:{}", card.browse_id),
+        SearchItem::Playlist(card) => {
+            let id = card.browse_id.as_str();
+            format!("playlist:{}", id.strip_prefix("VL").unwrap_or(id))
+        }
         SearchItem::Podcast(card) => format!("podcast:{}", card.browse_id),
     }
 }
@@ -699,4 +702,76 @@ fn content_kind_label(label: &str) -> Option<ContentKind> {
         _ => return None,
     };
     Some(kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn parse_rows(rows: [Value; 2]) -> SearchResults {
+        parse_search(&json!({
+            "contents": {"sectionListRenderer": {"contents": rows}}
+        }))
+    }
+
+    #[test]
+    fn dedupes_prefixed_and_raw_playlist_ids() {
+        let playlist_row = |id, title| {
+            json!({
+                "musicTwoRowItemRenderer": {
+                    "title": {"runs": [{"text": title}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": id,
+                        "browseEndpointContextSupportedConfigs": {
+                            "browseEndpointContextMusicConfig": {"pageType": "MUSIC_PAGE_TYPE_PLAYLIST"}
+                        }
+                    }}
+                }
+            })
+        };
+
+        for (first_id, second_id) in [
+            ("VLtest-playlist", "test-playlist"),
+            ("test-playlist", "VLtest-playlist"),
+        ] {
+            let results = parse_rows([
+                playlist_row(first_id, "First playlist"),
+                playlist_row(second_id, "Second playlist"),
+            ]);
+
+            assert!(
+                matches!(results.items.as_slice(), [SearchItem::Playlist(card)]
+                if card.browse_id == first_id && card.title == "First playlist")
+            );
+        }
+    }
+
+    #[test]
+    fn dedupes_songs_and_videos_with_the_same_video_id() {
+        let playable_row = |kind, title| {
+            json!({
+                "musicTwoRowItemRenderer": {
+                    "title": {"runs": [{"text": title}]},
+                    "subtitle": {"runs": [{"text": kind}]},
+                    "navigationEndpoint": {"watchEndpoint": {"videoId": "test-video0"}}
+                }
+            })
+        };
+        let song = playable_row("Song", "Song result");
+        let video = playable_row("Video", "Video result");
+
+        let song_first = parse_rows([song.clone(), video.clone()]);
+        assert!(
+            matches!(song_first.items.as_slice(), [SearchItem::Song(item)]
+            if item.video_id == "test-video0" && item.title == "Song result")
+        );
+
+        let video_first = parse_rows([video, song]);
+        assert!(
+            matches!(video_first.items.as_slice(), [SearchItem::Video(item)]
+            if item.video_id == "test-video0" && item.title == "Video result")
+        );
+    }
 }
