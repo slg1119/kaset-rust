@@ -21,11 +21,57 @@ pub const DEV_FILE_NAME: &str = "dev-session.txt";
 /// 2560 bytes and a signed-in youtube.com cookie header is usually larger.
 pub const CHUNK_SIZE: usize = 2000;
 
-const COUNT_ENTRY: &str = "session.count";
+/// Entry that commits a save: `<slot>:<count>`, for example `b:3`.
+const CURRENT_ENTRY: &str = "session.current";
+/// Chunk count of the M2 layout (`session.0..N`), read until the next save.
+const LEGACY_COUNT_ENTRY: &str = "session.count";
+/// Upper bound on chunks per slot, for loads, sweeps, and recorded counts.
 const MAX_SWEEP_CHUNKS: usize = 64;
 
-fn chunk_entry(index: usize) -> String {
-    format!("session.{index}")
+/// Where a header's chunks live. Saves alternate between `A` and `B`, so the
+/// committed copy is never overwritten in place. `Legacy` is the M2 layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    A,
+    B,
+    Legacy,
+}
+
+impl Slot {
+    const ALL: [Slot; 3] = [Slot::A, Slot::B, Slot::Legacy];
+
+    fn chunk(self, index: usize) -> String {
+        match self {
+            Slot::A => format!("session.a.{index}"),
+            Slot::B => format!("session.b.{index}"),
+            Slot::Legacy => format!("session.{index}"),
+        }
+    }
+
+    fn tag(self) -> &'static str {
+        match self {
+            Slot::A => "a",
+            Slot::B => "b",
+            Slot::Legacy => "legacy",
+        }
+    }
+}
+
+/// Parses a decimal chunk count without applying the upper bound.
+fn parse_count(raw: &[u8]) -> Option<usize> {
+    std::str::from_utf8(raw).ok()?.parse().ok()
+}
+
+/// Parses `session.current` without applying the upper bound.
+fn parse_current(raw: &[u8]) -> Option<(Slot, usize)> {
+    let text = std::str::from_utf8(raw).ok()?;
+    let (tag, count) = text.split_once(':')?;
+    let slot = match tag {
+        "a" => Slot::A,
+        "b" => Slot::B,
+        _ => return None,
+    };
+    Some((slot, count.parse().ok()?))
 }
 
 /// Errors never carry secret material: keyring errors are reduced to a fixed
@@ -56,7 +102,9 @@ pub trait EntryBackend: Send + Sync {
     fn delete(&self, name: &str) -> Result<(), StoreError>;
 }
 
-/// Splits the header across `session.0..N` entries plus a `session.count` entry.
+/// Splits the header into 2000-byte chunks. A save writes the chunks into the
+/// slot that is not committed, then commits by rewriting `session.current`, so
+/// an interrupted save leaves the previous session readable.
 pub struct ChunkedStore<B: EntryBackend> {
     backend: B,
 }
@@ -66,32 +114,79 @@ impl<B: EntryBackend> ChunkedStore<B> {
         Self { backend }
     }
 
-    fn count(&self) -> Result<Option<usize>, StoreError> {
-        let Some(raw) = self.backend.get(COUNT_ENTRY)? else {
-            return Ok(None);
-        };
-        let text = std::str::from_utf8(&raw).map_err(|_| StoreError::Corrupt("count"))?;
-        text.parse()
-            .map(Some)
-            .map_err(|_| StoreError::Corrupt("count"))
+    /// The committed slot and chunk count, falling back to the M2 layout.
+    fn current(&self) -> Result<Option<(Slot, usize)>, StoreError> {
+        if let Some(raw) = self.backend.get(CURRENT_ENTRY)? {
+            return parse_current(&raw)
+                .filter(|(_, count)| *count <= MAX_SWEEP_CHUNKS)
+                .map(Some)
+                .ok_or(StoreError::Corrupt("current"));
+        }
+        match self.backend.get(LEGACY_COUNT_ENTRY)? {
+            Some(raw) => parse_count(&raw)
+                .filter(|count| *count <= MAX_SWEEP_CHUNKS)
+                .map(|count| Some((Slot::Legacy, count)))
+                .ok_or(StoreError::Corrupt("count")),
+            None => Ok(None),
+        }
     }
 
-    fn sweep_end(&self, start: usize) -> Result<usize, StoreError> {
-        let end = start.saturating_add(MAX_SWEEP_CHUNKS);
-        for index in start..end {
-            if self.backend.get(&chunk_entry(index))?.is_none() {
+    /// The chunk counts recorded for each slot, capped at `MAX_SWEEP_CHUNKS`.
+    /// Unreadable records count as zero.
+    fn recorded_counts(&self) -> Result<[(Slot, usize); 3], StoreError> {
+        let current = self
+            .backend
+            .get(CURRENT_ENTRY)?
+            .and_then(|raw| parse_current(&raw));
+        let legacy = self
+            .backend
+            .get(LEGACY_COUNT_ENTRY)?
+            .and_then(|raw| parse_count(&raw))
+            .unwrap_or(0);
+        Ok(Slot::ALL.map(|slot| {
+            let count = match (slot, current) {
+                (Slot::Legacy, _) => legacy,
+                (slot, Some((committed, count))) if slot == committed => count,
+                _ => 0,
+            };
+            (slot, count.min(MAX_SWEEP_CHUNKS))
+        }))
+    }
+
+    /// The first missing chunk at or after `start`, at most `MAX_SWEEP_CHUNKS`.
+    fn sweep_end(&self, slot: Slot, start: usize) -> Result<usize, StoreError> {
+        for index in start..MAX_SWEEP_CHUNKS {
+            if self.backend.get(&slot.chunk(index))?.is_none() {
                 return Ok(index);
             }
         }
-        Ok(end)
+        Ok(start.max(MAX_SWEEP_CHUNKS))
     }
 
-    fn delete_chunks(&self, chunks: std::ops::Range<usize>) -> Result<(), StoreError> {
+    /// Deletes chunks from the highest index down and stops at the first
+    /// failure, so the chunks left behind stay contiguous for a later sweep.
+    fn delete_range(&self, slot: Slot, range: std::ops::Range<usize>) -> Result<(), StoreError> {
+        for index in range.rev() {
+            self.backend.delete(&slot.chunk(index))?;
+        }
+        Ok(())
+    }
+
+    /// Deletes every chunk except the first `count` chunks of `keep`, and the
+    /// legacy count entry.
+    fn remove_stale(&self, keep: Slot, count: usize) -> Result<(), StoreError> {
         let mut first_error = None;
-        for index in chunks {
-            if let Err(error) = self.backend.delete(&chunk_entry(index)) {
+        for slot in Slot::ALL {
+            let start = if slot == keep { count } else { 0 };
+            let result = self
+                .sweep_end(slot, start)
+                .and_then(|end| self.delete_range(slot, start..end));
+            if let Err(error) = result {
                 first_error.get_or_insert(error);
             }
+        }
+        if let Err(error) = self.backend.delete(LEGACY_COUNT_ENTRY) {
+            first_error.get_or_insert(error);
         }
         first_error.map_or(Ok(()), Err)
     }
@@ -99,14 +194,14 @@ impl<B: EntryBackend> ChunkedStore<B> {
 
 impl<B: EntryBackend> SessionStore for ChunkedStore<B> {
     fn load(&self) -> Result<Option<Secret>, StoreError> {
-        let Some(count) = self.count()? else {
+        let Some((slot, count)) = self.current()? else {
             return Ok(None);
         };
         let mut bytes = Vec::new();
         for index in 0..count {
             let chunk = self
                 .backend
-                .get(&chunk_entry(index))?
+                .get(&slot.chunk(index))?
                 .ok_or(StoreError::Corrupt("missing chunk"))?;
             bytes.extend_from_slice(&chunk);
         }
@@ -115,38 +210,40 @@ impl<B: EntryBackend> SessionStore for ChunkedStore<B> {
     }
 
     fn save(&self, header: &Secret) -> Result<(), StoreError> {
-        let old_count = self.count();
-        let chunks = header.expose().as_bytes().chunks(CHUNK_SIZE);
-        let new_count = chunks.len();
-        for (index, chunk) in chunks.enumerate() {
-            self.backend.set(&chunk_entry(index), chunk)?;
+        let chunks: Vec<&[u8]> = header.expose().as_bytes().chunks(CHUNK_SIZE).collect();
+        if chunks.len() > MAX_SWEEP_CHUNKS {
+            return Err(StoreError::Corrupt("header too long"));
         }
-        // A mid-write failure can leave a mix of old and new chunks. This can
-        // surface later as an authentication failure and require signing in again.
-        self.backend
-            .set(COUNT_ENTRY, new_count.to_string().as_bytes())?;
-        let trim_end = match old_count {
-            Ok(Some(count)) => Ok(count),
-            Ok(None) | Err(_) => self.sweep_end(new_count),
+        let committed = match self.current() {
+            Ok(current) => current.map(|(slot, _)| slot),
+            Err(StoreError::Corrupt(_)) => None,
+            Err(error) => return Err(error),
         };
-        if trim_end
-            .and_then(|end| self.delete_chunks(new_count..end))
-            .is_err()
-        {
-            tracing::warn!("Failed to trim stale session chunks");
+        let target = if committed == Some(Slot::A) {
+            Slot::B
+        } else {
+            Slot::A
+        };
+        for (index, chunk) in chunks.iter().enumerate() {
+            self.backend.set(&target.chunk(index), chunk)?;
+        }
+        let pointer = format!("{}:{}", target.tag(), chunks.len());
+        self.backend.set(CURRENT_ENTRY, pointer.as_bytes())?;
+        if self.remove_stale(target, chunks.len()).is_err() {
+            tracing::warn!("Failed to remove stale session chunks");
         }
         Ok(())
     }
 
+    /// Deletes all chunks before the entries that record them, so a failed
+    /// clear can be retried and still find every chunk.
     fn clear(&self) -> Result<(), StoreError> {
-        let count = self.count().ok().flatten().unwrap_or(0);
-        let end = self.sweep_end(count)?;
-        if end > count {
-            // Keep the full range available for a retry if deletion leaves gaps.
-            self.backend.set(COUNT_ENTRY, end.to_string().as_bytes())?;
+        for (slot, recorded) in self.recorded_counts()? {
+            let end = self.sweep_end(slot, recorded)?;
+            self.delete_range(slot, 0..end)?;
         }
-        self.delete_chunks(0..end)?;
-        self.backend.delete(COUNT_ENTRY)
+        self.backend.delete(LEGACY_COUNT_ENTRY)?;
+        self.backend.delete(CURRENT_ENTRY)
     }
 }
 
@@ -330,6 +427,7 @@ impl SessionStore for MemoryStore {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
     use super::*;
@@ -338,6 +436,8 @@ mod tests {
     struct MapBackend {
         entries: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
         fail_delete_once: Arc<Mutex<Option<&'static str>>>,
+        fail_set_once: Arc<Mutex<Option<&'static str>>>,
+        calls: Arc<AtomicUsize>,
     }
 
     impl MapBackend {
@@ -348,13 +448,28 @@ mod tests {
         fn fail_next_delete_of(&self, name: &'static str) {
             *self.fail_delete_once.lock().unwrap() = Some(name);
         }
+
+        fn fail_next_set_of(&self, name: &'static str) {
+            *self.fail_set_once.lock().unwrap() = Some(name);
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::Relaxed)
+        }
     }
 
     impl EntryBackend for MapBackend {
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, StoreError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
             Ok(self.entries.lock().unwrap().get(name).cloned())
         }
         fn set(&self, name: &str, value: &[u8]) -> Result<(), StoreError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            let mut fail_set = self.fail_set_once.lock().unwrap();
+            if *fail_set == Some(name) {
+                *fail_set = None;
+                return Err(StoreError::Keyring("platform failure"));
+            }
             self.entries
                 .lock()
                 .unwrap()
@@ -362,6 +477,7 @@ mod tests {
             Ok(())
         }
         fn delete(&self, name: &str) -> Result<(), StoreError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
             let mut fail_delete = self.fail_delete_once.lock().unwrap();
             if *fail_delete == Some(name) {
                 *fail_delete = None;
@@ -377,16 +493,17 @@ mod tests {
         Secret::new(format!("SAPISID={value}"))
     }
 
+    fn short_header() -> Secret {
+        Secret::new("SAPISID=test-sapisid")
+    }
+
     #[test]
     fn chunked_store_round_trips_a_short_header() {
         let backend = MapBackend::default();
         let store = ChunkedStore::new(backend.clone());
-        store.save(&Secret::new("SAPISID=test-sapisid")).unwrap();
-        assert_eq!(
-            store.load().unwrap(),
-            Some(Secret::new("SAPISID=test-sapisid"))
-        );
-        assert_eq!(backend.names(), ["session.0", "session.count"]);
+        store.save(&short_header()).unwrap();
+        assert_eq!(store.load().unwrap(), Some(short_header()));
+        assert_eq!(backend.names(), ["session.a.0", "session.current"]);
     }
 
     #[test]
@@ -398,45 +515,62 @@ mod tests {
         assert_eq!(store.load().unwrap(), Some(header));
         assert_eq!(
             backend.names(),
-            ["session.0", "session.1", "session.2", "session.count"]
+            [
+                "session.a.0",
+                "session.a.1",
+                "session.a.2",
+                "session.current"
+            ]
         );
     }
 
     #[test]
-    fn chunked_store_removes_stale_chunks_when_header_shrinks() {
+    fn chunked_store_alternates_slots_and_removes_the_previous_copy() {
         let backend = MapBackend::default();
         let store = ChunkedStore::new(backend.clone());
-        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
-        store.save(&Secret::new("SAPISID=test-sapisid")).unwrap();
-        assert_eq!(backend.names(), ["session.0", "session.count"]);
+        store.save(&short_header()).unwrap();
+        let long = long_header(CHUNK_SIZE * 3);
+        store.save(&long).unwrap();
+        assert_eq!(store.load().unwrap(), Some(long));
         assert_eq!(
-            store.load().unwrap(),
-            Some(Secret::new("SAPISID=test-sapisid"))
+            backend.names(),
+            [
+                "session.b.0",
+                "session.b.1",
+                "session.b.2",
+                "session.current"
+            ]
         );
+        store.save(&short_header()).unwrap();
+        assert_eq!(store.load().unwrap(), Some(short_header()));
+        assert_eq!(backend.names(), ["session.a.0", "session.current"]);
     }
 
     #[test]
-    fn chunked_store_sweeps_stale_chunks_when_old_count_is_corrupt() {
-        let backend = MapBackend::default();
-        let store = ChunkedStore::new(backend.clone());
-        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
-        backend.set(COUNT_ENTRY, b"invalid").unwrap();
-        let header = Secret::new("SAPISID=test-sapisid");
-        store.save(&header).unwrap();
-        assert_eq!(store.load().unwrap(), Some(header));
-        assert_eq!(backend.names(), ["session.0", "session.count"]);
+    fn chunked_store_interrupted_save_keeps_the_previous_session() {
+        for failing in ["session.b.0", "session.b.1", "session.current"] {
+            let backend = MapBackend::default();
+            let store = ChunkedStore::new(backend.clone());
+            store.save(&short_header()).unwrap();
+            backend.fail_next_set_of(failing);
+            assert!(store.save(&long_header(CHUNK_SIZE * 2)).is_err());
+            assert_eq!(store.load().unwrap(), Some(short_header()), "{failing}");
+        }
     }
 
     #[test]
-    fn chunked_store_save_succeeds_when_stale_chunk_deletion_fails() {
+    fn chunked_store_reads_and_migrates_the_legacy_layout() {
         let backend = MapBackend::default();
+        backend.set("session.count", b"2").unwrap();
+        backend.set("session.0", b"SAPISID=").unwrap();
+        backend.set("session.1", b"test-sapisid").unwrap();
         let store = ChunkedStore::new(backend.clone());
-        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
-        backend.fail_next_delete_of("session.1");
-        let header = Secret::new("SAPISID=test-sapisid");
+        assert_eq!(store.load().unwrap(), Some(short_header()));
+
+        let header = Secret::new("SAPISID=test-sapisid-2");
         store.save(&header).unwrap();
         assert_eq!(store.load().unwrap(), Some(header));
-        assert_eq!(backend.names(), ["session.0", "session.1", "session.count"]);
+        assert_eq!(backend.names(), ["session.a.0", "session.current"]);
     }
 
     #[test]
@@ -448,8 +582,8 @@ mod tests {
     #[test]
     fn chunked_store_rejects_missing_chunks() {
         let backend = MapBackend::default();
-        backend.set("session.count", b"2").unwrap();
-        backend.set("session.0", b"SAPISID=").unwrap();
+        backend.set(CURRENT_ENTRY, b"a:2").unwrap();
+        backend.set("session.a.0", b"SAPISID=").unwrap();
         let store = ChunkedStore::new(backend);
         assert!(matches!(
             store.load(),
@@ -458,85 +592,157 @@ mod tests {
     }
 
     #[test]
-    fn chunked_store_clear_removes_everything() {
+    fn chunked_store_rejects_counts_above_the_cap() {
+        let backend = MapBackend::default();
+        backend.set(CURRENT_ENTRY, b"a:65").unwrap();
+        let store = ChunkedStore::new(backend.clone());
+        assert!(matches!(store.load(), Err(StoreError::Corrupt("current"))));
+
+        backend.delete(CURRENT_ENTRY).unwrap();
+        backend.set(LEGACY_COUNT_ENTRY, b"65").unwrap();
+        assert!(matches!(store.load(), Err(StoreError::Corrupt("count"))));
+    }
+
+    #[test]
+    fn chunked_store_save_with_a_corrupt_current_entry_writes_slot_a() {
         let backend = MapBackend::default();
         let store = ChunkedStore::new(backend.clone());
+        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
+        backend.set(CURRENT_ENTRY, b"invalid").unwrap();
+        store.save(&short_header()).unwrap();
+        assert_eq!(store.load().unwrap(), Some(short_header()));
+        assert_eq!(backend.names(), ["session.a.0", "session.current"]);
+    }
+
+    #[test]
+    fn chunked_store_save_succeeds_and_later_heals_when_stale_deletion_fails() {
+        let backend = MapBackend::default();
+        let store = ChunkedStore::new(backend.clone());
+        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
+        backend.fail_next_delete_of("session.a.2");
+        store.save(&short_header()).unwrap();
+        assert_eq!(store.load().unwrap(), Some(short_header()));
+        assert_eq!(
+            backend.names(),
+            [
+                "session.a.0",
+                "session.a.1",
+                "session.a.2",
+                "session.b.0",
+                "session.current"
+            ]
+        );
+
+        let header = Secret::new("SAPISID=test-sapisid-2");
+        store.save(&header).unwrap();
+        assert_eq!(store.load().unwrap(), Some(header));
+        assert_eq!(backend.names(), ["session.a.0", "session.current"]);
+    }
+
+    #[test]
+    fn chunked_store_clear_removes_every_slot() {
+        let backend = MapBackend::default();
+        backend.set("session.count", b"1").unwrap();
+        backend.set("session.0", b"SAPISID=test-sapisid").unwrap();
+        backend.set("session.b.0", b"test-cookie").unwrap();
+        let store = ChunkedStore::new(backend.clone());
         store.save(&long_header(CHUNK_SIZE + 1)).unwrap();
+        backend.set("session.b.0", b"test-cookie").unwrap();
         store.clear().unwrap();
         assert!(backend.names().is_empty());
         assert_eq!(store.load().unwrap(), None);
     }
 
     #[test]
-    fn chunked_store_clear_sweeps_chunks_beyond_a_valid_count() {
-        let backend = MapBackend::default();
-        let store = ChunkedStore::new(backend.clone());
-        backend.set(COUNT_ENTRY, b"2").unwrap();
-        for index in 0..4 {
-            backend.set(&chunk_entry(index), b"test-cookie").unwrap();
+    fn chunked_store_clear_sweeps_beyond_recorded_and_corrupt_counts() {
+        for current in [b"a:2".as_slice(), b"invalid".as_slice()] {
+            let backend = MapBackend::default();
+            backend.set(CURRENT_ENTRY, current).unwrap();
+            for index in 0..4 {
+                backend.set(&Slot::A.chunk(index), b"test-cookie").unwrap();
+            }
+            backend.set(LEGACY_COUNT_ENTRY, b"invalid").unwrap();
+            backend.set("session.0", b"test-cookie").unwrap();
+            ChunkedStore::new(backend.clone()).clear().unwrap();
+            assert!(backend.names().is_empty());
         }
-        store.clear().unwrap();
-        assert!(backend.names().is_empty());
     }
 
     #[test]
-    fn chunked_store_clear_can_retry_failed_stale_chunk_deletions() {
-        let backend = MapBackend::default();
-        let store = ChunkedStore::new(backend.clone());
-        backend.set(COUNT_ENTRY, b"2").unwrap();
-        for index in 0..4 {
-            backend.set(&chunk_entry(index), b"test-cookie").unwrap();
+    fn chunked_store_clear_caps_huge_recorded_counts() {
+        for (name, value) in [
+            (CURRENT_ENTRY, b"a:1000000000".as_slice()),
+            (LEGACY_COUNT_ENTRY, b"1000000000".as_slice()),
+        ] {
+            let backend = MapBackend::default();
+            backend.set(name, value).unwrap();
+            backend.set("session.a.0", b"test-cookie").unwrap();
+            backend.set("session.0", b"test-cookie").unwrap();
+            let before = backend.calls();
+            ChunkedStore::new(backend.clone()).clear().unwrap();
+            assert!(backend.names().is_empty());
+            assert!(
+                backend.calls() - before <= 3 * (2 * MAX_SWEEP_CHUNKS) + 4,
+                "clear must stay bounded"
+            );
         }
-        backend.fail_next_delete_of("session.3");
-
-        assert!(matches!(
-            store.clear(),
-            Err(StoreError::Keyring("platform failure"))
-        ));
-        assert_eq!(backend.names(), ["session.3", "session.count"]);
-        store.clear().unwrap();
-        assert!(backend.names().is_empty());
-    }
-
-    #[test]
-    fn chunked_store_clear_sweeps_chunks_when_count_is_corrupt() {
-        let backend = MapBackend::default();
-        let store = ChunkedStore::new(backend.clone());
-        store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
-        backend.set(COUNT_ENTRY, b"invalid").unwrap();
-        store.clear().unwrap();
-        assert!(backend.names().is_empty());
-    }
-
-    #[test]
-    fn chunked_store_clear_sweeps_chunks_when_count_is_missing() {
-        let backend = MapBackend::default();
-        let store = ChunkedStore::new(backend.clone());
-        store.save(&long_header(CHUNK_SIZE * 2)).unwrap();
-        backend.delete(COUNT_ENTRY).unwrap();
-        store.clear().unwrap();
-        assert!(backend.names().is_empty());
     }
 
     #[test]
     fn chunked_store_clear_can_retry_failed_chunk_deletions() {
-        for count in [Some(b"3".as_slice()), Some(b"invalid".as_slice()), None] {
+        type Setup = fn(&MapBackend);
+        let cases: [(&str, Setup, &'static str); 4] = [
+            (
+                "committed",
+                |backend| {
+                    ChunkedStore::new(backend.clone())
+                        .save(&long_header(CHUNK_SIZE * 3))
+                        .unwrap();
+                },
+                "session.a.1",
+            ),
+            (
+                "corrupt current",
+                |backend| {
+                    ChunkedStore::new(backend.clone())
+                        .save(&long_header(CHUNK_SIZE * 3))
+                        .unwrap();
+                    backend.set(CURRENT_ENTRY, b"invalid").unwrap();
+                },
+                "session.a.1",
+            ),
+            (
+                "legacy",
+                |backend| {
+                    backend.set(LEGACY_COUNT_ENTRY, b"3").unwrap();
+                    for index in 0..3 {
+                        backend
+                            .set(&Slot::Legacy.chunk(index), b"test-cookie")
+                            .unwrap();
+                    }
+                },
+                "session.1",
+            ),
+            (
+                "beyond recorded",
+                |backend| {
+                    backend.set(CURRENT_ENTRY, b"a:2").unwrap();
+                    for index in 0..4 {
+                        backend.set(&Slot::A.chunk(index), b"test-cookie").unwrap();
+                    }
+                },
+                "session.a.3",
+            ),
+        ];
+        for (case, setup, failing) in cases {
             let backend = MapBackend::default();
+            setup(&backend);
+            backend.fail_next_delete_of(failing);
             let store = ChunkedStore::new(backend.clone());
-            store.save(&long_header(CHUNK_SIZE * 3)).unwrap();
-            match count {
-                Some(raw) => backend.set(COUNT_ENTRY, raw).unwrap(),
-                None => backend.delete(COUNT_ENTRY).unwrap(),
-            }
-            backend.fail_next_delete_of("session.1");
-
-            assert!(matches!(
-                store.clear(),
-                Err(StoreError::Keyring("platform failure"))
-            ));
-            assert_eq!(backend.names(), ["session.1", "session.count"]);
+            assert!(store.clear().is_err(), "{case}");
+            assert!(backend.names().contains(&failing.to_owned()), "{case}");
             store.clear().unwrap();
-            assert!(backend.names().is_empty());
+            assert!(backend.names().is_empty(), "{case}: {:?}", backend.names());
         }
     }
 
