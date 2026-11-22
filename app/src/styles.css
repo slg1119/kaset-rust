@@ -1,6 +1,4 @@
-/* Dark theme from the approved M4 mockup. The window is transparent so the
-   sidebar can show native vibrancy (macOS) or Mica (Windows 11); everything
-   else paints an opaque background. */
+/* The sidebar and content column tint the window's native backdrop when available. */
 :root {
   color-scheme: dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -12,14 +10,14 @@
   --surface: #1c1c1f;
   --surface-hover: #26262a;
   --sidebar-solid: #18181b;
-  --sidebar-glass: rgb(24 24 27 / 0.35);
-  --glass: rgb(28 28 31 / 0.72);
+  --glass: rgb(30 30 34 / 0.42);
   /* Popups sit over busy content, so they keep more of their own color. */
-  --glass-strong: rgb(28 28 31 / 0.92);
+  --glass-strong: rgb(30 30 34 / 0.70);
   --line: rgb(255 255 255 / 0.08);
+  --glass-line: rgb(255 255 255 / 0.12);
   --text: #f4f4f5;
   --muted: #a1a1aa;
-  --blur: saturate(160%) blur(20px);
+  --blur: saturate(180%) blur(28px);
   --header-height: 56px;
   --inset: 24px;
   --radius: 12px;
@@ -37,7 +35,12 @@ body {
   color: var(--text);
 }
 
-/* With native vibrancy only the content column paints; the sidebar shows the effect. */
+:root[data-vibrancy="native"] {
+  --surface: rgb(255 255 255 / 0.05);
+  --surface-hover: rgb(255 255 255 / 0.09);
+  --muted: #b4b4bc;
+}
+
 :root[data-vibrancy="native"] body {
   background: transparent;
 }
@@ -164,7 +167,7 @@ button {
 }
 
 :root[data-vibrancy="native"] .sidebar {
-  background: var(--sidebar-glass);
+  background: rgb(24 24 27 / 0.18);
 }
 
 .app-name {
@@ -236,6 +239,10 @@ button {
   background: var(--bg);
 }
 
+:root[data-vibrancy="native"] .content-column {
+  background: rgb(18 18 20 / 0.55);
+}
+
 .content {
   box-sizing: border-box;
   height: 100%;
@@ -257,7 +264,7 @@ button {
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--glass-line);
 }
 
 .content-header h1 {
@@ -472,7 +479,7 @@ button.item:hover {
   background: var(--glass-strong);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-line);
   border-radius: var(--radius);
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
 }
@@ -549,7 +556,7 @@ button.item:hover {
   background: var(--glass);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-line);
   border-radius: 16px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
 }
@@ -676,7 +683,7 @@ button.item:hover {
   background: var(--glass-strong);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-line);
   border-radius: var(--radius);
 }
 
