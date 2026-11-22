@@ -110,3 +110,15 @@ Review findings are advisory, including P2 and P3: check each one against the re
 ## Skills
 
 Repeatable, repo-specific workflows live in `.agents/skills/` (also exposed as `.claude/skills/`). Add new workflows there so this file stays focused on repo-wide rules.
+
+## Tauri port (in progress)
+
+The app is being rewritten as a Tauri 2 + Rust app (ADR-0042) on branch
+`feat/tauri-port`. Until the Swift sources are deleted, both trees exist.
+
+- Rust workspace: `crates/ytm-core` (InnerTube client, parsers; no Tauri
+  dependency) and `crates/ytm-explorer` (read-only API probes, replaces
+  `Sources/APIExplorer` for Rust work).
+- Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+- Credentials stay in `ytm_core::secret::Secret`; never log cookie values.
+- The Swift-era minimal-dependency rule does not apply to the Rust/Tauri code.
