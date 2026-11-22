@@ -5,9 +5,10 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_browse_id};
+use ytm_core::models::FeedPage;
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
-use ytm_core::parsers::home::parse_home;
+use ytm_core::parsers::home::{parse_feed, parse_feed_continuation, parse_home};
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
@@ -33,6 +34,14 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Probe a feed by browse ID. Reports shape without printing tokens.
+    Feed {
+        browse_id: String,
+        #[arg(long)]
+        params: Option<String>,
+    },
+    /// Probe the next feed page. Reports shape without printing tokens.
+    FeedContinue { token: String },
     /// POST /browse for an album or playlist. Use --parse to print the page model.
     Page {
         browse_id: String,
@@ -114,6 +123,16 @@ async fn main() -> Result<()> {
             };
             (text, out)
         }
+        Command::Feed { browse_id, params } => {
+            let raw = client
+                .browse_with_params(&browse_id, params.as_deref())
+                .await?;
+            (feed_summary(parse_feed(&raw)?), None)
+        }
+        Command::FeedContinue { token } => {
+            let raw = client.browse_continuation(&token).await?;
+            (feed_summary(parse_feed_continuation(&raw)?), None)
+        }
         Command::Page { browse_id, parse } => {
             let raw = client.browse(&playlist_browse_id(&browse_id)).await?;
             let text = if parse {
@@ -176,6 +195,20 @@ async fn main() -> Result<()> {
         None => println!("{text}"),
     }
     Ok(())
+}
+
+fn feed_summary(page: FeedPage) -> String {
+    let items = page
+        .sections
+        .iter()
+        .map(|section| section.items.len())
+        .sum::<usize>();
+    format!(
+        "{} sections, {items} items, {} chips, continuation present: {}",
+        page.sections.len(),
+        page.chips.len(),
+        page.continuation.is_some()
+    )
 }
 
 fn load_cookies() -> Result<Option<CookieJar>> {

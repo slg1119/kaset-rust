@@ -1,0 +1,45 @@
+{
+  "contents": {
+    "singleColumnBrowseResultsRenderer": {
+      "tabs": [{
+        "tabRenderer": {
+          "content": {
+            "sectionListRenderer": {
+              "header": {
+                "chipCloudRenderer": {
+                  "chips": [
+                    {"chipCloudChipRenderer": {"text": {"runs": [{"text": "All"}]}}},
+                    {"chipCloudChipRenderer": {
+                      "text": {"runs": [{"text": "Focus"}]},
+                      "navigationEndpoint": {"browseEndpoint": {"params": "test-chip%3D"}}
+                    }}
+                  ]
+                }
+              },
+              "contents": [{
+                "gridRenderer": {
+                  "header": {"gridHeaderRenderer": {"title": {"runs": [{"text": "Genres"}]}}},
+                  "items": [{
+                    "musicNavigationButtonRenderer": {
+                      "buttonText": {"runs": [{"text": "Jazz"}]},
+                      "clickCommand": {"browseEndpoint": {
+                        "browseId": "FEmusic_moods_and_genres_category", "params": "test-jazz"
+                      }},
+                      "solid": {"leftStripeColor": 4279312947}
+                    }
+                  }, {
+                    "musicNavigationButtonRenderer": {
+                      "buttonText": {"runs": [{"text": "Blues"}]},
+                      "clickCommand": {"browseEndpoint": {"browseId": "test-category"}}
+                    }
+                  }]
+                }
+              }],
+              "continuations": [{"nextContinuationData": {"continuation": "test-continuation"}}]
+            }
+          }
+        }
+      }]
+    }
+  }
+}

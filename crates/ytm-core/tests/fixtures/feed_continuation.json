@@ -1,0 +1,18 @@
+{
+  "continuationContents": {
+    "sectionListContinuation": {
+      "contents": [{
+        "musicShelfRenderer": {
+          "title": {"runs": [{"text": "More songs"}]},
+          "contents": [{
+            "musicTwoRowItemRenderer": {
+              "title": {"runs": [{"text": "Test song"}]},
+              "navigationEndpoint": {"watchEndpoint": {"videoId": "test-video1"}}
+            }
+          }]
+        }
+      }],
+      "continuations": [{"nextContinuationData": {"continuation": "test-next-continuation"}}]
+    }
+  }
+}

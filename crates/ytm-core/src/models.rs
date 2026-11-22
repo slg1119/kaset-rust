@@ -51,6 +51,12 @@ pub enum ShelfItem {
     Album(BrowseCard),
     Playlist(BrowseCard),
     Artist(BrowseCard),
+    Category {
+        title: String,
+        browse_id: String,
+        params: Option<String>,
+        color: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -65,6 +71,21 @@ pub struct HomeSection {
 pub struct HomePage {
     pub sections: Vec<HomeSection>,
     pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Chip {
+    pub title: String,
+    pub params: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct FeedPage {
+    pub sections: Vec<HomeSection>,
+    pub continuation: Option<String>,
+    pub chips: Vec<Chip>,
 }
 
 /// One search result, in server order. Songs, videos, and episodes carry a
@@ -120,6 +141,8 @@ mod specta_tests {
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<HomePage>();
+        assert_type::<Chip>();
+        assert_type::<FeedPage>();
         assert_type::<SearchItem>();
         assert_type::<SearchResults>();
         assert_type::<Account>();

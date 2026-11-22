@@ -151,9 +151,28 @@ impl InnerTubeClient {
     }
 
     pub async fn browse(&self, browse_id: &str) -> Result<Value, YtmError> {
+        self.browse_with_params(browse_id, None).await
+    }
+
+    pub async fn browse_with_params(
+        &self,
+        browse_id: &str,
+        params: Option<&str>,
+    ) -> Result<Value, YtmError> {
         let mut body = Map::new();
         body.insert("browseId".into(), browse_id.into());
+        if let Some(params) = params {
+            body.insert("params".into(), params.into());
+        }
         self.post("browse", body).await
+    }
+
+    pub async fn browse_continuation(&self, token: &str) -> Result<Value, YtmError> {
+        self.post(
+            "browse",
+            Map::from_iter([("continuation".into(), token.into())]),
+        )
+        .await
     }
 
     /// POST `search` without filter params: the mixed first page (top result,

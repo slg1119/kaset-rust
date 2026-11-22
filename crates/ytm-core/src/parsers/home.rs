@@ -6,7 +6,7 @@ use super::helpers::{
 };
 use crate::YtmError;
 use crate::json::{at, runs_text, str_at, thumbnail_url};
-use crate::models::{BrowseCard, HomePage, HomeSection, ShelfItem, Song};
+use crate::models::{BrowseCard, Chip, FeedPage, HomePage, HomeSection, ShelfItem, Song};
 
 const SECTION_LIST: &[&str] = &[
     "contents",
@@ -29,40 +29,96 @@ const PLAY_BUTTON_VIDEO_ID: &[&str] = &[
 ];
 
 pub fn parse_home(response: &Value) -> Result<HomePage, YtmError> {
-    let list = at(response, SECTION_LIST).ok_or_else(|| YtmError::Parse {
-        endpoint: "browse:FEmusic_home".into(),
-        path: SECTION_LIST.join("."),
-    })?;
+    let page = parse_feed_at(response, SECTION_LIST, "browse:FEmusic_home")?;
+    Ok(HomePage {
+        sections: page.sections,
+        continuation: page.continuation,
+    })
+}
+
+pub fn parse_feed(response: &Value) -> Result<FeedPage, YtmError> {
+    parse_feed_at(response, SECTION_LIST, "browse")
+}
+
+pub fn parse_feed_continuation(response: &Value) -> Result<FeedPage, YtmError> {
+    let path = &["continuationContents", "sectionListContinuation"];
+    if let Some(shelf) = at(
+        response,
+        &["continuationContents", "musicShelfContinuation"],
+    ) && at(response, path).is_none()
+    {
+        return Ok(FeedPage {
+            sections: parse_music_shelf(shelf).into_iter().collect(),
+            continuation: next_continuation(shelf),
+            chips: Vec::new(),
+        });
+    }
+    parse_feed_at(response, path, "browse")
+}
+
+fn parse_feed_at(response: &Value, path: &[&str], endpoint: &str) -> Result<FeedPage, YtmError> {
+    let list = at(response, path)
+        .filter(|list| list.is_object())
+        .ok_or_else(|| YtmError::Parse {
+            endpoint: endpoint.into(),
+            path: path.join("."),
+        })?;
     let sections = list
         .get("contents")
         .and_then(Value::as_array)
         .map(|contents| contents.iter().filter_map(parse_section).collect())
         .unwrap_or_default();
-    let continuation = str_at(
-        list,
-        &["continuations", "0", "nextContinuationData", "continuation"],
-    )
-    .map(str::to_owned);
-    Ok(HomePage {
+    Ok(FeedPage {
         sections,
-        continuation,
+        continuation: next_continuation(list),
+        chips: parse_chips(list),
     })
 }
 
-/// One home section. Shelf types follow the Swift `HomeResponseParser`:
-/// carousels, vertical shelves, card shelves, immersive carousels, grids, and
-/// item sections that wrap one of them. Mood and genre buttons are skipped.
+fn next_continuation(list: &Value) -> Option<String> {
+    str_at(
+        list,
+        &["continuations", "0", "nextContinuationData", "continuation"],
+    )
+    .filter(|token| !token.is_empty())
+    .map(str::to_owned)
+}
+
+fn parse_chips(list: &Value) -> Vec<Chip> {
+    let Some(header) = list.get("header") else {
+        return Vec::new();
+    };
+    let cloud = header
+        .get("chipCloudRenderer")
+        .or_else(|| header.get("musicChipCloudRenderer"));
+    cloud
+        .and_then(|cloud| cloud.get("chips"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|chip| {
+            let chip = chip.get("chipCloudChipRenderer")?;
+            let params = str_at(chip, &["navigationEndpoint", "browseEndpoint", "params"])
+                .or_else(|| str_at(chip, &["onTap", "browseEndpoint", "params"]))?;
+            if params.is_empty() {
+                return None;
+            }
+            Some(Chip {
+                title: runs_text(chip.get("text")?)?,
+                params: params.into(),
+            })
+        })
+        .collect()
+}
+
+/// Parses shelves shared by the music feeds.
 fn parse_section(section: &Value) -> Option<HomeSection> {
     if let Some(shelf) = section.get("musicCarouselShelfRenderer") {
         let title = carousel_title(shelf).unwrap_or_else(|| "Unknown Section".into());
         return shelf_section(title, shelf.get("contents"));
     }
     if let Some(shelf) = section.get("musicShelfRenderer") {
-        let title = shelf
-            .get("title")
-            .and_then(runs_text)
-            .unwrap_or_else(|| "Unknown Section".into());
-        return shelf_section(title, shelf.get("contents"));
+        return parse_music_shelf(shelf);
     }
     if let Some(shelf) = section.get("musicCardShelfRenderer") {
         let title = at(
@@ -92,9 +148,17 @@ fn parse_section(section: &Value) -> Option<HomeSection> {
     }
     tracing::debug!(
         kind = first_key(section),
-        "skipping unsupported home section"
+        "skipping unsupported feed section"
     );
     None
+}
+
+fn parse_music_shelf(shelf: &Value) -> Option<HomeSection> {
+    let title = shelf
+        .get("title")
+        .and_then(runs_text)
+        .unwrap_or_else(|| "Unknown Section".into());
+    shelf_section(title, shelf.get("contents"))
 }
 
 fn carousel_title(shelf: &Value) -> Option<String> {
@@ -113,7 +177,7 @@ fn shelf_section(title: String, contents: Option<&Value>) -> Option<HomeSection>
         .filter_map(|item| {
             let parsed = parse_item(item);
             if parsed.is_none() {
-                tracing::debug!(kind = first_key(item), "skipping unparsed home shelf item");
+                tracing::debug!(kind = first_key(item), "skipping unparsed feed shelf item");
             }
             parsed
         })
@@ -135,7 +199,16 @@ pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
     if let Some(renderer) = item.get("musicResponsiveListItemRenderer") {
         return parse_responsive(renderer);
     }
-    None
+    let button = item.get("musicNavigationButtonRenderer")?;
+    let browse = at(button, &["clickCommand", "browseEndpoint"])?;
+    Some(ShelfItem::Category {
+        title: runs_text(button.get("buttonText")?)?,
+        browse_id: str_at(browse, &["browseId"])?.into(),
+        params: str_at(browse, &["params"]).map(str::to_owned),
+        color: at(button, &["solid", "leftStripeColor"])
+            .and_then(Value::as_i64)
+            .map(|argb| format!("#{:06x}", argb & 0xff_ffff)),
+    })
 }
 
 fn parse_two_row(renderer: &Value) -> Option<ShelfItem> {

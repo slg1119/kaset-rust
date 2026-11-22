@@ -316,7 +316,8 @@ fn parses_every_supported_shelf_type() {
             "Mixed for you",
             "Featured",
             "Top artists",
-            "Wrapped carousel"
+            "Wrapped carousel",
+            "Charts"
         ]
     );
     assert_eq!(page.continuation.as_deref(), Some("test-home-continuation"));
@@ -334,6 +335,10 @@ fn parses_every_supported_shelf_type() {
     );
     assert!(
         matches!(&page.sections[4].items[0], ShelfItem::Song(song) if song.video_id == "test-vid-03")
+    );
+
+    assert!(
+        matches!(&page.sections[5].items[0], ShelfItem::Category { title, .. } if title == "Chill")
     );
 
     insta::assert_yaml_snapshot!(page);

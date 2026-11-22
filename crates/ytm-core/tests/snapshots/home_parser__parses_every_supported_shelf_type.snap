@@ -42,4 +42,11 @@ sections:
           - name: Wrapped artist
             browse_id: UCwrapped-artist
         thumbnail_url: ~
+  - title: Charts
+    items:
+      - kind: category
+        title: Chill
+        browse_id: FEmusic_moods_and_genres_category
+        params: ~
+        color: ~
 continuation: test-home-continuation

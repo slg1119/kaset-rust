@@ -304,3 +304,45 @@ async fn accounts_list_posts_an_empty_body() {
         json!({ "actions": [] })
     );
 }
+
+#[tokio::test]
+async fn feed_browse_posts_optional_params_and_body_only_continuation() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/browse"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(3)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    client
+        .browse_with_params("FEmusic_home", Some("test-chip%3D"))
+        .await
+        .unwrap();
+    client
+        .browse_with_params("test-category", None)
+        .await
+        .unwrap();
+    client
+        .browse_continuation("test-continuation")
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    for (request, expected) in requests.iter().zip([
+        json!({"browseId": "FEmusic_home", "params": "test-chip%3D"}),
+        json!({"browseId": "test-category"}),
+        json!({"continuation": "test-continuation"}),
+    ]) {
+        let mut body = request.body_json::<serde_json::Value>().unwrap();
+        assert!(body.as_object_mut().unwrap().remove("context").is_some());
+        assert_eq!(body, expected);
+        assert!(
+            !request
+                .url
+                .query_pairs()
+                .any(|(key, _)| key == "continuation")
+        );
+    }
+}
