@@ -1,13 +1,13 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ArtistRef {
     pub name: String,
     pub browse_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Song {
     pub video_id: String,
@@ -63,5 +63,25 @@ mod specta_tests {
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<HomePage>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn song_round_trips_through_json() {
+        let song = Song {
+            video_id: "test-video1".into(),
+            title: "Test song".into(),
+            artists: vec![ArtistRef {
+                name: "Test artist".into(),
+                browse_id: Some("test-browse".into()),
+            }],
+            thumbnail_url: None,
+        };
+        let json = serde_json::to_string(&song).unwrap();
+        assert_eq!(serde_json::from_str::<Song>(&json).unwrap(), song);
     }
 }

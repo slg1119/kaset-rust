@@ -2,6 +2,7 @@ pub mod commands;
 pub mod error;
 pub mod events;
 pub mod login;
+pub mod player;
 pub mod session;
 pub mod state;
 pub mod webview_session;
