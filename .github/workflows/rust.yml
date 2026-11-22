@@ -45,6 +45,8 @@ jobs:
       # The workspace build enables ytm-core/specta through the app; check the core alone too.
       - run: cargo clippy -p ytm-core --all-targets -- -D warnings
       - run: cargo test --workspace
+      # Build the standalone artifact on both platforms outside the workspace feature union.
+      - run: cargo build --locked -p kaset-cli
       # `cargo test` regenerated app/src/bindings.ts; the committed copy must match.
       - name: Generated bindings are committed
         if: runner.os == 'macOS'

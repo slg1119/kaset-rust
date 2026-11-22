@@ -2401,6 +2401,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaset-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "kaset-session",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "wiremock",
+ "ytm-core",
+]
+
+[[package]]
 name = "kaset-session"
 version = "0.1.0"
 dependencies = [

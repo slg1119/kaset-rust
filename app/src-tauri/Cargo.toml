@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "Kaset, a YouTube Music desktop client"
 edition.workspace = true
 license.workspace = true
+default-run = "kaset-desktop"
+
+# Keep the desktop artifact distinct from the standalone kaset CLI.
+[[bin]]
+name = "kaset-desktop"
+path = "src/main.rs"
 
 [lib]
 name = "kaset_lib"

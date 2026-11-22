@@ -119,7 +119,8 @@ the Swift sources are deleted, both trees exist.
 - Rust workspace: `crates/ytm-core` (InnerTube client, parsers; no Tauri
   dependency, optional `specta` feature), `crates/ytm-explorer` (read-only API
   probes, replaces `Sources/APIExplorer` for Rust work), and `app/src-tauri`
-  (crate `kaset`, the Tauri shell).
+  (crate `kaset`, the Tauri shell). `crates/kaset-cli` builds the standalone
+  `kaset` CLI and `crates/kaset-session` holds its shared non-Tauri session store.
 - Rust checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
 - App (`app/`, pnpm): `pnpm install`, `pnpm tauri dev`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm tauri build`.
 - IPC: commands and events go through `tauri-specta`. After changing a command,
