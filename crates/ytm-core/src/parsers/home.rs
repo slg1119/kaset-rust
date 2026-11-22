@@ -161,8 +161,20 @@ fn parse_two_row(renderer: &Value) -> Option<ShelfItem> {
 }
 
 fn parse_responsive(renderer: &Value) -> Option<ShelfItem> {
-    let title = flex_column(renderer, 0).and_then(runs_text)?;
-    let thumbnail = thumbnail_url(renderer);
+    if let Some(song) = parse_responsive_song(renderer) {
+        return Some(ShelfItem::Song(song));
+    }
+    let browse = at(renderer, &["navigationEndpoint", "browseEndpoint"])?;
+    let card = BrowseCard {
+        browse_id: browse.get("browseId")?.as_str()?.into(),
+        title: flex_column(renderer, 0).and_then(runs_text)?,
+        subtitle: flex_column(renderer, 1).and_then(runs_text),
+        thumbnail_url: thumbnail_url(renderer),
+    };
+    classify(page_type(browse), card)
+}
+
+pub(super) fn parse_responsive_song(renderer: &Value) -> Option<Song> {
     let video_id = str_at(renderer, &["playlistItemData", "videoId"])
         .or_else(|| {
             str_at(
@@ -170,23 +182,13 @@ fn parse_responsive(renderer: &Value) -> Option<ShelfItem> {
                 &["navigationEndpoint", "watchEndpoint", "videoId"],
             )
         })
-        .or_else(|| str_at(renderer, PLAY_BUTTON_VIDEO_ID));
-    if let Some(video_id) = video_id {
-        return Some(ShelfItem::Song(Song {
-            video_id: video_id.into(),
-            title,
-            artists: artists_from_flex_column(flex_column(renderer, 1)),
-            thumbnail_url: thumbnail,
-        }));
-    }
-    let browse = at(renderer, &["navigationEndpoint", "browseEndpoint"])?;
-    let card = BrowseCard {
-        browse_id: browse.get("browseId")?.as_str()?.into(),
-        title,
-        subtitle: flex_column(renderer, 1).and_then(runs_text),
-        thumbnail_url: thumbnail,
-    };
-    classify(page_type(browse), card)
+        .or_else(|| str_at(renderer, PLAY_BUTTON_VIDEO_ID))?;
+    Some(Song {
+        video_id: video_id.into(),
+        title: flex_column(renderer, 0).and_then(runs_text)?,
+        artists: artists_from_flex_column(flex_column(renderer, 1)),
+        thumbnail_url: thumbnail_url(renderer),
+    })
 }
 
 fn flex_column(renderer: &Value, index: usize) -> Option<&Value> {

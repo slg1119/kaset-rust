@@ -34,6 +34,17 @@ pub struct BrowseCard {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct BrowsePage {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub second_subtitle: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub songs: Vec<Song>,
+    pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ShelfItem {
     Song(Song),
@@ -105,6 +116,7 @@ mod specta_tests {
         assert_type::<Song>();
         assert_type::<RadioQueue>();
         assert_type::<BrowseCard>();
+        assert_type::<BrowsePage>();
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<HomePage>();

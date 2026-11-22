@@ -4,8 +4,9 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
-use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
+use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_browse_id};
 use ytm_core::parsers::account::parse_account;
+use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::home::parse_home;
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 use ytm_core::parsers::search::parse_search;
@@ -31,6 +32,12 @@ enum Command {
         /// Write output to a file instead of stdout.
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// POST /browse for an album or playlist. Use --parse to print the page model.
+    Page {
+        browse_id: String,
+        #[arg(long)]
+        parse: bool,
     },
     /// POST /search and print the raw JSON, or the parsed results with --parse.
     Search {
@@ -106,6 +113,15 @@ async fn main() -> Result<()> {
                 None => serde_json::to_string_pretty(&raw)?,
             };
             (text, out)
+        }
+        Command::Page { browse_id, parse } => {
+            let raw = client.browse(&playlist_browse_id(&browse_id)).await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_browse_page(&raw)?)?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, None)
         }
         Command::Search { query, parse, out } => {
             let raw = client.search(&query).await?;

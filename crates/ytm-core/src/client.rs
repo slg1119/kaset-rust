@@ -11,6 +11,19 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Converts a playlist id to its browse id, as the Swift client does.
+pub fn playlist_browse_id(id: &str) -> String {
+    if id == "FEmusic_library_privately_owned_tracks"
+        || ["VL", "RD", "MPRE", "UC"]
+            .iter()
+            .any(|prefix| id.starts_with(prefix))
+    {
+        id.to_owned()
+    } else {
+        format!("VL{id}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub base_url: String,
