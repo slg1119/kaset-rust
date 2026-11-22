@@ -6,6 +6,7 @@ export function isAppError(value: unknown): value is AppError {
     typeof value === "object" &&
     value !== null &&
     "kind" in value &&
+    typeof value.kind === "string" &&
     "message" in value &&
     typeof value.message === "string"
   );
