@@ -32,6 +32,26 @@ Music's in-page router and Up Next sync.
 **Out of scope:** App Intents, Foundation Models command bar, Liquid Glass,
 AppleScript, extensions.
 
+## User CLI (`kaset`)
+
+A user-facing CLI built on the same `ytm-core` as the GUI. It is separate from
+`ytm-explorer`, which stays a developer tool for raw API probes.
+
+- **Standalone commands** call `ytm-core` directly and need no running app:
+  search, home, playlist/album/library listing. Output is human-readable by
+  default, with `--json` for scripting.
+- **Playback commands** (`play`, `pause`, `next`, `previous`, `queue`,
+  `now-playing`) remote-control a running Kaset app over local IPC (a Unix
+  domain socket on macOS, a named pipe on Windows). Playback itself still
+  happens in the app's hidden WebView, because Widevine DRM requires a browser
+  engine (ADR-0001); the CLI never extracts stream URLs.
+- **Auth:** the CLI reads the session the app stored in the OS secure store
+  (`keyring`). It does not run its own sign-in flow; if no session exists it
+  tells the user to sign in through the app.
+- The app exposes the IPC endpoint only to the current OS user. Commands are a
+  fixed set mirroring the Tauri player commands; the endpoint never accepts
+  arbitrary JS or URLs.
+
 ## Architecture
 
 ```
@@ -41,7 +61,8 @@ kaset/
 │  └─ src-tauri/      # Tauri shell: windows, commands, events, OS integration
 ├─ crates/
 │  ├─ ytm-core/       # Pure Rust: InnerTube client, parsers, models (no Tauri dependency)
-│  └─ ytm-explorer/   # CLI replacing Sources/APIExplorer, for verifying real responses
+│  ├─ ytm-explorer/   # CLI replacing Sources/APIExplorer, for verifying real responses
+│  └─ kaset-cli/      # User CLI `kaset` (milestone 6): ytm-core + app remote control
 ├─ Cargo.toml         # Cargo workspace
 └─ Sources/, Package.swift, …  # Swift app — deleted after MVP
 ```
@@ -183,3 +204,5 @@ If any of these fails, stop and revisit the design before building further.
 3. Playback bridge, queue, OS media controls.
 4. UI shell: sidebar, home, search, player bar.
 5. Playlist and album detail. MVP complete → delete Swift sources, rewrite AGENTS.md and CI.
+6. User CLI `kaset` (see "User CLI"): standalone commands first, then the
+   app's local IPC endpoint and CLI playback remote control.
