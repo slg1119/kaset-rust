@@ -1,4 +1,4 @@
-export type Shortcut = "togglePlayback" | "nextTrack" | "previousTrack" | "goHome" | "goSearch";
+export type Shortcut = "togglePlayback" | "nextTrack" | "previousTrack" | "goHome" | "goSearch" | "back";
 
 type KeyInput = Pick<
   KeyboardEvent,
@@ -28,7 +28,7 @@ export function isMac(): boolean {
 /**
  * Maps a key press to an app shortcut, following macOS and Apple Music:
  * Space play/pause, ⌘→ next, ⌘← previous, ⌘1 Home, ⌘F Search (Ctrl instead
- * of ⌘ elsewhere). ⌘Q, ⌘W, ⌘H, ⌘M, and ⌘, are never taken.
+ * of ⌘ elsewhere). Escape and ⌘[ go back when a detail page is open. ⌘Q, ⌘W, ⌘H, ⌘M, and ⌘, are never taken.
  */
 export function shortcutFor(event: KeyInput, mac: boolean = isMac(), focusVisible?: boolean): Shortcut | null {
   if (event.defaultPrevented || event.isComposing) return null;
@@ -38,9 +38,12 @@ export function shortcutFor(event: KeyInput, mac: boolean = isMac(), focusVisibl
       ? null
       : "togglePlayback";
   }
+  if (event.key === "Escape" && !anyModifier && !event.repeat) return "back";
   const primary = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   if (!primary || event.altKey || event.shiftKey) return null;
   switch (event.key) {
+    case "[":
+      return event.repeat ? null : "back";
     case "ArrowRight":
       return matches(event.target, EDITABLE) ? null : "nextTrack";
     case "ArrowLeft":

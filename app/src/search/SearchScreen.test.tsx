@@ -5,12 +5,23 @@ import { expect, test, vi } from "vitest";
 import { mockCommands } from "../bindings";
 import { searchResults } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
+import type { Filter } from "./groups";
 import { SearchScreen } from "./SearchScreen";
 
 /** SearchScreen with the query state the shell normally keeps. */
 function Harness({ initial = "" }: { initial?: string }) {
   const [query, setQuery] = useState(initial);
-  return <SearchScreen query={query} onSubmit={setQuery} focusRequest={0} />;
+  const [filter, setFilter] = useState<Filter>("all");
+  return (
+    <SearchScreen
+      query={query}
+      onSubmit={setQuery}
+      focusRequest={0}
+      filter={filter}
+      onFilterChange={setFilter}
+      onOpenPage={() => {}}
+    />
+  );
 }
 
 function field() {
@@ -31,7 +42,6 @@ test("submitting shows the top result, then results grouped by type", async () =
   const top = screen.getByRole("region", { name: "Top result" });
   expect(within(top).getByText("Test artist")).toBeInTheDocument();
   expect(within(top).getByText("Artist • 42K subscribers")).toBeInTheDocument();
-  // An artist top result opens in M5; nothing to play yet.
   expect(within(top).queryByRole("button")).not.toBeInTheDocument();
 
   const songs = screen.getByRole("region", { name: "Songs" });
@@ -40,7 +50,7 @@ test("submitting shows the top result, then results grouped by type", async () =
     "Play Another song",
   ]);
   const albums = screen.getByRole("region", { name: "Albums" });
-  expect(within(albums).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(albums).getByRole("button", { name: "Open Found album" })).toBeInTheDocument();
   expect(within(albums).getByText("Test artist • 2024")).toBeInTheDocument();
 });
 

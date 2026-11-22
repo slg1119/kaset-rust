@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId, useRef } from "react";
-import { commands, type HomeSection, type Song } from "../bindings";
+import { commands, type BrowseCard, type HomeSection, type Song } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from "../icons";
 import { ItemCard } from "../music/ItemCard";
-import { isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { HOME_STALE_MS, queryKeys } from "../query";
 
 type PlayFn = (songs: Song[], index: number) => Promise<void>;
 
-export function HomeScreen() {
+type OpenPage = (card: BrowseCard) => void;
+
+export function HomeScreen({ onOpenPage }: { onOpenPage: OpenPage }) {
   const home = useQuery({
     queryKey: queryKeys.home,
     queryFn: () => commands.getHome(),
@@ -52,7 +54,7 @@ export function HomeScreen() {
         return index === gridIndex ? (
           <SongGrid key={`${index}-${section.title}`} section={section} onPlay={play} />
         ) : (
-          <Carousel key={`${index}-${section.title}`} section={section} onPlay={play} />
+          <Carousel key={`${index}-${section.title}`} section={section} onPlay={play} onOpenPage={onOpenPage} />
         );
       })}
     </>
@@ -96,7 +98,7 @@ function SongGrid({ section, onPlay }: ShelfProps) {
 }
 
 /** A shelf as a six-column carousel with previous/next buttons. */
-function Carousel({ section, onPlay }: ShelfProps) {
+function Carousel({ section, onPlay, onOpenPage }: ShelfProps & { onOpenPage: OpenPage }) {
   const headingId = useId();
   const list = useRef<HTMLUListElement>(null);
   const { songs, starts } = playOrder(section);
@@ -129,6 +131,7 @@ function Carousel({ section, onPlay }: ShelfProps) {
               title={item.title}
               subtitle={subtitleOf(item)}
               thumbnailUrl={item.thumbnail_url}
+              onOpen={hasBrowsePage(item) ? () => onOpenPage(item) : undefined}
               onPlay={starts[index] >= 0 ? () => void onPlay(songs, starts[index]) : undefined}
             />
           </li>

@@ -32,6 +32,8 @@ test("maps macOS shortcuts", () => {
   expect(shortcutFor(key("ArrowLeft", { metaKey: true }), true)).toBe("previousTrack");
   expect(shortcutFor(key("1", { metaKey: true }), true)).toBe("goHome");
   expect(shortcutFor(key("f", { metaKey: true }), true)).toBe("goSearch");
+  expect(shortcutFor(key("[", { metaKey: true }), true)).toBe("back");
+  expect(shortcutFor(key("Escape"), true)).toBe("back");
   expect(shortcutFor(key("ArrowRight", { ctrlKey: true }), true)).toBe(null);
 });
 

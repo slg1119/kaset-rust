@@ -35,9 +35,13 @@ afterwards.
   with `get_home` (launch gate, signed-in check, epoch-guarded expiry). Queries
   are trimmed. Empty search and empty suggestion input return no results
   without a request. Input over 200 characters returns `invalid_argument`.
-- **Navigation:** state-based routes in `Shell` (`home`, `search`), no router
-  library: a desktop WebView has no URLs to share, and two screens do not need
-  one. M5 extends the route type with a stack for detail pages and Back.
+- **Navigation** in `Shell` uses state-based routes for Home, Search, and detail
+  pages. Detail routes store their originating tab for Back.
+- **Detail pages** for albums and playlists open from Home and Search and
+  use the signed-in `get_browse_page` command. The page
+  cache is keyed by browse ID and stays fresh for 10 minutes. Back restores
+  the originating tab and Search retains its query and filter. Play, Shuffle,
+  and track rows queue up to 500 songs from the loaded page.
 - **Server data:** TanStack Query 5 (`@tanstack/react-query` 5.107.1).
   The app uses one client. Stale times are home 5 min, search 10 min,
   suggestions 60 s, and account 30 min. The client disables refetch on window
@@ -78,8 +82,8 @@ afterwards.
 - Search shape changes on YouTube's side surface as missing results, not
   errors; the parser logs skipped items at debug level and the explorer is the
   first tool to check.
-- Browse results (albums, artists, playlists) are visible but not interactive
-  until M5 adds detail pages.
+- Detail screens load the first album or playlist page. Continuation requests
+  and routes for artists, profiles, and podcasts are later work.
 - Shortcuts work only while the window has focus; global media keys still go
   through souvlaki (ADR-0044). A native menu bar with accelerators is later
   work.

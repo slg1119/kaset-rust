@@ -8,7 +8,7 @@ import { HomeScreen } from "./HomeScreen";
 
 test("the first all-song shelf is a song grid and the rest are carousels", async () => {
   mockCommands({ getHome: () => home });
-  const { container } = renderWithProviders(<HomeScreen />);
+  const { container } = renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
 
   const quickPicks = await screen.findByRole("region", { name: "Quick picks" });
   expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
@@ -20,9 +20,9 @@ test("the first all-song shelf is a song grid and the rest are carousels", async
   const mixed = screen.getByRole("region", { name: "Mixed for you" });
   expect(mixed.querySelector(".carousel")).not.toBeNull();
   expect(within(mixed).getByText("Album • 2024")).toBeInTheDocument();
-  // Only songs are interactive until album, artist, and playlist pages exist (M5).
   expect(within(mixed).getByRole("button", { name: "Play Mixed song" })).toBeInTheDocument();
-  expect(within(mixed).queryByRole("button", { name: /Test album|Round artist/ })).not.toBeInTheDocument();
+  expect(within(mixed).getByRole("button", { name: "Open Test album" })).toBeInTheDocument();
+  expect(within(mixed).queryByRole("button", { name: /Round artist/ })).not.toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Next in Mixed for you" })).toBeInTheDocument();
 
   const images = [...container.querySelectorAll("img")];
@@ -45,7 +45,7 @@ test.each([{ matches: false, behavior: "smooth" }, { matches: true, behavior: "a
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(600);
     try {
       mockCommands({ getHome: () => home });
-      renderWithProviders(<HomeScreen />);
+      renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
       await userEvent.click(await screen.findByRole("button", { name: "Next in Mixed for you" }));
       await userEvent.click(screen.getByRole("button", { name: "Previous in Mixed for you" }));
       expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
@@ -64,7 +64,7 @@ test.each([{ matches: false, behavior: "smooth" }, { matches: true, behavior: "a
 test("clicking a song plays its shelf's songs from that song", async () => {
   const playQueue = vi.fn(() => null);
   mockCommands({ getHome: () => home, playQueue });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Play Second song" }));
   expect(playQueue).toHaveBeenLastCalledWith({
@@ -94,7 +94,7 @@ test("a failed play shows one notice", async () => {
       throw { kind: "not_signed_in", message: "Sign in to continue." };
     },
   });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
   await userEvent.click(await screen.findByRole("button", { name: "Play Second song" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Sign in to continue.");
   expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -109,7 +109,7 @@ test("load errors offer a retry", async () => {
       return home;
     },
   });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent("network error");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -120,7 +120,7 @@ test("load errors offer a retry", async () => {
 test("refresh refetches the feed", async () => {
   const getHome = vi.fn(() => home);
   mockCommands({ getHome });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
   await screen.findByRole("region", { name: "Quick picks" });
   await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
   await vi.waitFor(() => expect(getHome).toHaveBeenCalledTimes(2));
@@ -128,7 +128,7 @@ test("refresh refetches the feed", async () => {
 
 test("an empty feed says so", async () => {
   mockCommands({ getHome: () => ({ sections: [], continuation: null }) });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
   expect(await screen.findByText("Nothing to show yet.")).toBeInTheDocument();
 });
 
@@ -136,7 +136,7 @@ test("empty shelves are skipped and do not take the Quick picks grid", async () 
   mockCommands({
     getHome: () => ({ ...home, sections: [{ title: "Empty shelf", items: [] }, ...home.sections] }),
   });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
   const quickPicks = await screen.findByRole("region", { name: "Quick picks" });
   expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
   expect(screen.queryByRole("region", { name: "Empty shelf" })).not.toBeInTheDocument();
@@ -144,6 +144,6 @@ test("empty shelves are skipped and do not take the Quick picks grid", async () 
 
 test("loading the home feed is announced", () => {
   mockCommands({ getHome: () => new Promise(() => {}) });
-  renderWithProviders(<HomeScreen />);
+  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
   expect(screen.getByRole("status")).toHaveTextContent("Loading…");
 });

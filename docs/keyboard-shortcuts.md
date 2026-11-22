@@ -58,6 +58,7 @@ replaces ⌘. The app never takes ⌘Q, ⌘W, ⌘H, ⌘M, or ⌘,.
 | `⌘←`     | Previous track (not in text fields) |
 | `⌘1`     | Go to Home |
 | `⌘F`     | Go to Search and focus the search field |
+| `Esc`, `⌘[` | Return from an album or playlist to Home or Search |
 
 In the search field, `↓`/`↑` move through suggestions, `Return` searches the
 highlighted suggestion, and `Esc` closes the suggestions. `Return` with no

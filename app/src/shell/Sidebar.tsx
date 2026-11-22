@@ -6,7 +6,10 @@ import { Artwork } from "../music/Artwork";
 import { useNotice } from "../notices/NoticeProvider";
 import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
-export type Route = "home" | "search";
+export type Route =
+  | { kind: "home" }
+  | { kind: "search" }
+  | { kind: "page"; browseId: string; title: string; from: "home" | "search" };
 
 const ROUTES = [
   { route: "search", label: "Search", Icon: SearchIcon },
@@ -36,6 +39,7 @@ export function Sidebar({ route, onNavigate }: Props) {
     }
   }
 
+  const selected = route.kind === "page" ? route.from : route.kind;
   const name = account.data?.name ?? "Signed in";
   return (
     <nav className="sidebar" aria-label="Main">
@@ -45,8 +49,8 @@ export function Sidebar({ route, onNavigate }: Props) {
           <li key={destination}>
             <button
               type="button"
-              aria-current={route === destination ? "page" : undefined}
-              onClick={() => onNavigate(destination)}
+              aria-current={selected === destination ? "page" : undefined}
+              onClick={() => onNavigate({ kind: destination })}
             >
               <Icon size={18} />
               {label}

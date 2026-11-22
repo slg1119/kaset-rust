@@ -2,8 +2,13 @@ import { useEffect, useEffectEvent } from "react";
 import { hasKeyboardFocus, shortcutFor, type Shortcut } from "./shortcuts";
 
 /** Runs `actions[shortcut]` for app shortcuts pressed anywhere in the window. */
-export function useShortcuts(actions: Record<Shortcut, () => void>) {
-  const run = useEffectEvent((shortcut: Shortcut) => actions[shortcut]());
+export function useShortcuts(actions: Partial<Record<Shortcut, () => void>>) {
+  const run = useEffectEvent((shortcut: Shortcut, event: KeyboardEvent) => {
+    const action = actions[shortcut];
+    if (!action) return;
+    event.preventDefault();
+    action();
+  });
 
   useEffect(() => {
     // WebKit can set :focus-visible before dispatching Space. Read it when
@@ -24,8 +29,7 @@ export function useShortcuts(actions: Record<Shortcut, () => void>) {
     function onKeyDown(event: KeyboardEvent) {
       const shortcut = shortcutFor(event, undefined, event.target === focused ? focusVisible : undefined);
       if (shortcut === null) return;
-      event.preventDefault();
-      run(shortcut);
+      run(shortcut, event);
     }
 
     window.addEventListener("focusin", onFocusIn, true);

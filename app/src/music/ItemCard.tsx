@@ -10,9 +10,10 @@ type Props = {
   shape?: "square" | "round";
   /** Plays the item; without it the item is shown but not interactive. */
   onPlay?: () => void;
+  onOpen?: () => void;
 };
 
-export function ItemCard({ title, subtitle, thumbnailUrl, layout, shape = "square", onPlay }: Props) {
+export function ItemCard({ title, subtitle, thumbnailUrl, layout, shape = "square", onPlay, onOpen }: Props) {
   const body = (
     <>
       <Artwork url={thumbnailUrl} size={layout === "card" ? "fill" : 44} shape={shape} />
@@ -23,13 +24,14 @@ export function ItemCard({ title, subtitle, thumbnailUrl, layout, shape = "squar
     </>
   );
   const className = `item item-${layout}`;
-  if (onPlay === undefined) return <div className={className}>{body}</div>;
+  const onClick = onOpen ?? onPlay;
+  if (onClick === undefined) return <div className={className}>{body}</div>;
   return (
     <button
       type="button"
       className={className}
-      aria-label={subtitle ? `Play ${title}, ${subtitle}` : `Play ${title}`}
-      onClick={onPlay}
+      aria-label={onOpen ? `Open ${title}` : subtitle ? `Play ${title}, ${subtitle}` : `Play ${title}`}
+      onClick={onClick}
     >
       {body}
     </button>

@@ -532,13 +532,113 @@ button.item:hover {
   border-radius: var(--radius);
 }
 
-.top-text p {
-  margin: 0 0 8px;
+button.top-card {
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+button.top-card:hover {
+  background: var(--surface-hover);
+}
+
+.top-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.top-text .item-subtitle {
+  max-width: 100%;
 }
 
 .top-title {
   font-size: 1.4rem;
   font-weight: 700;
+}
+
+/* Album and playlist details */
+.browse-header {
+  justify-content: flex-start;
+}
+
+.browse-header > span {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0;
+}
+
+.browse-summary {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.browse-summary h1 {
+  margin: 0 0 8px;
+  font-size: 2rem;
+}
+
+.browse-summary p {
+  margin: 4px 0;
+  color: var(--muted);
+}
+
+.browse-actions,
+.browse-shuffle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.browse-actions {
+  margin-top: 16px;
+}
+
+.browse-play {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+}
+
+.browse-shuffle:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.browse-skeleton {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.browse-track {
+  min-height: 46px;
+}
+
+.browse-index {
+  flex: 0 0 3ch;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.browse-track[aria-current="true"] :is(.browse-index, .item-title) {
+  color: var(--accent-icon);
 }
 
 /* Floating player bar, inset from the content edges, blurred over the content. */
