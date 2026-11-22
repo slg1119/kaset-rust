@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { commands, type HomePage } from "../bindings";
+import { commands, type HomePage, type ShelfItem, type Song } from "../bindings";
 import { errorMessage } from "../errors";
 
 type State =
@@ -15,8 +15,25 @@ function fetchHome(): Promise<State> {
   );
 }
 
+/** The songs in a shelf, without the `kind` tag. */
+function songsOf(items: ShelfItem[]): Song[] {
+  return items.flatMap((item) =>
+    item.kind === "song"
+      ? [
+          {
+            video_id: item.video_id,
+            title: item.title,
+            artists: item.artists,
+            thumbnail_url: item.thumbnail_url,
+          },
+        ]
+      : [],
+  );
+}
+
 export function HomeScreen() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [playError, setPlayError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +58,16 @@ export function HomeScreen() {
     }
   }
 
+  /** Plays the shelf's songs, starting with `songs[index]`. */
+  async function play(songs: Song[], index: number) {
+    setPlayError(null);
+    try {
+      await commands.playQueue(songs, index);
+    } catch (cause) {
+      setPlayError(errorMessage(cause));
+    }
+  }
+
   return (
     <main className="screen">
       <header className="toolbar">
@@ -49,6 +76,7 @@ export function HomeScreen() {
           Sign out
         </button>
       </header>
+      {playError && <p role="alert">{playError}</p>}
       {state.kind === "loading" && <p>Loading…</p>}
       {state.kind === "error" && (
         <div role="alert">
@@ -62,12 +90,30 @@ export function HomeScreen() {
         (state.page.sections.length === 0 ? (
           <p>No sections.</p>
         ) : (
-          <ul aria-label="Home sections">
-            {state.page.sections.map((section, index) => (
-              <li key={`${index}-${section.title}`}>
-                {section.title} ({section.items.length})
-              </li>
-            ))}
+          <ul aria-label="Home sections" className="sections">
+            {state.page.sections.map((section, index) => {
+              const songs = songsOf(section.items);
+              return (
+                <li key={`${index}-${section.title}`}>
+                  <h2>
+                    {section.title} ({section.items.length})
+                  </h2>
+                  {songs.length > 0 && (
+                    <ul aria-label={`${section.title} songs`} className="songs">
+                      {songs.map((song, songIndex) => (
+                        <li key={`${songIndex}-${song.video_id}`}>
+                          <button type="button" onClick={() => void play(songs, songIndex)}>
+                            {song.title}
+                            {song.artists.length > 0 &&
+                              ` · ${song.artists.map((artist) => artist.name).join(", ")}`}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ))}
     </main>

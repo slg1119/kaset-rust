@@ -1,6 +1,7 @@
 import { SignInScreen } from "./auth/SignInScreen";
 import { useAuthStatus } from "./auth/useAuthStatus";
 import { HomeScreen } from "./home/HomeScreen";
+import { PlayerBar } from "./player/PlayerBar";
 
 export function App() {
   const status = useAuthStatus();
@@ -11,6 +12,13 @@ export function App() {
       </main>
     );
   }
-  if (status === "signed_in") return <HomeScreen />;
+  if (status === "signed_in") {
+    return (
+      <>
+        <HomeScreen />
+        <PlayerBar />
+      </>
+    );
+  }
   return <SignInScreen expired={status === "expired"} />;
 }

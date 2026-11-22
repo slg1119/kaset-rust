@@ -18,3 +18,86 @@ body {
   align-items: center;
   justify-content: space-between;
 }
+
+.sections,
+.songs {
+  list-style: none;
+  padding: 0;
+}
+
+.sections h2 {
+  font-size: 1.1rem;
+  margin: 24px 0 8px;
+}
+
+.songs button {
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.songs button:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+/* Leaves room for the fixed player bar. */
+.screen:has(+ .player-bar) {
+  padding-bottom: 140px;
+}
+
+.player-bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px 24px;
+  background: Canvas;
+  border-top: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+}
+
+.player-track {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.player-track span {
+  opacity: 0.7;
+}
+
+.player-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.player-controls button[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+.player-progress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-progress input {
+  flex: 1;
+}
+
+.player-ad {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #f5c518;
+  color: #000;
+  font-weight: 600;
+}
