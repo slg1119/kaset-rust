@@ -31,10 +31,18 @@ export function PlayerBar() {
   // While the user drags the seek slider, show the drag position.
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   // After a seek, progress sampled before the page applied it must not snap the slider back.
-  const [pendingSeek, setPendingSeek] = useState<number | null>(null);
+  const [pendingSeek, setPendingSeek] = useState<{ videoId: string; target: number } | null>(null);
+  const videoId = state?.track?.video_id;
+  const [previousVideoId, setPreviousVideoId] = useState(videoId);
+  if (previousVideoId !== videoId) {
+    setPreviousVideoId(videoId);
+    setDragPosition(null);
+    setPendingSeek(null);
+  }
   const [queueOpen, setQueueOpen] = useState(false);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bar = useRef<HTMLElement>(null);
+  const queueButton = useRef<HTMLButtonElement>(null);
   const queueId = useId();
   const visible = state !== null && state.track !== null;
 
@@ -54,7 +62,28 @@ export function PlayerBar() {
     };
   }, [visible]);
 
+  useEffect(() => {
+    if (!queueOpen || !visible) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.isComposing) return;
+      setQueueOpen(false);
+      queueButton.current?.focus();
+    }
+    function onPointerDown(event: PointerEvent) {
+      if (event.target instanceof Node && !bar.current?.contains(event.target)) {
+        setQueueOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [queueOpen, visible]);
+
   if (state === null || state.track === null) return null;
+  const track = state.track;
 
   function run(action: () => Promise<unknown>) {
     dismiss();
@@ -65,19 +94,19 @@ export function PlayerBar() {
     if (dragPosition === null) return;
     const target = dragPosition;
     setDragPosition(null);
-    setPendingSeek(target);
+    setPendingSeek({ videoId: track.video_id, target });
     clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => setPendingSeek(null), SEEK_SETTLE_MS);
     run(() => commands.seekTo(target));
   }
 
-  const track = state.track;
   const artists = artistNames(track.artists);
   const playing = state.status === "playing" || state.status === "loading";
   const duration = state.duration ?? 0;
   const reported = state.position ?? 0;
-  const settled = pendingSeek === null || Math.abs(reported - pendingSeek) <= SEEK_TOLERANCE_SECONDS;
-  const position = dragPosition ?? (settled ? reported : pendingSeek);
+  const seekTarget = pendingSeek?.videoId === track.video_id ? pendingSeek.target : null;
+  const settled = seekTarget === null || Math.abs(reported - seekTarget) <= SEEK_TOLERANCE_SECONDS;
+  const position = dragPosition ?? (settled ? reported : seekTarget);
 
   return (
     <footer ref={bar} className="player-bar" aria-label="Player">
@@ -151,6 +180,7 @@ export function PlayerBar() {
         <button
           type="button"
           className="icon-button"
+          ref={queueButton}
           aria-expanded={queueOpen}
           aria-controls={queueId}
           onClick={() => setQueueOpen((open) => !open)}

@@ -35,24 +35,31 @@ test("the first all-song shelf is a song grid and the rest are carousels", async
   expect(images[1]).toHaveClass("artwork-square");
 });
 
-test("carousel buttons page by the visible width", async () => {
-  const scrollBy = vi.fn();
-  HTMLElement.prototype.scrollBy = scrollBy;
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(600);
-  try {
-    mockCommands({ getHome: () => home });
-    renderWithProviders(<HomeScreen />);
-    await userEvent.click(await screen.findByRole("button", { name: "Next in Mixed for you" }));
-    await userEvent.click(screen.getByRole("button", { name: "Previous in Mixed for you" }));
-    expect(scrollBy.mock.calls).toEqual([
-      [{ left: 600, behavior: "smooth" }],
-      [{ left: -600, behavior: "smooth" }],
-    ]);
-  } finally {
-    // @ts-expect-error -- jsdom has no scrollBy; remove the stub again.
-    delete HTMLElement.prototype.scrollBy;
-  }
-});
+test.each([{ matches: false, behavior: "smooth" }, { matches: true, behavior: "auto" }])(
+  "carousel buttons page by the visible width with $behavior scrolling",
+  async ({ matches, behavior }) => {
+    const matchMedia = vi.fn(() => ({ matches }));
+    vi.stubGlobal("matchMedia", matchMedia);
+    const scrollBy = vi.fn();
+    HTMLElement.prototype.scrollBy = scrollBy;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(600);
+    try {
+      mockCommands({ getHome: () => home });
+      renderWithProviders(<HomeScreen />);
+      await userEvent.click(await screen.findByRole("button", { name: "Next in Mixed for you" }));
+      await userEvent.click(screen.getByRole("button", { name: "Previous in Mixed for you" }));
+      expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
+      expect(scrollBy.mock.calls).toEqual([
+        [{ left: 600, behavior }],
+        [{ left: -600, behavior }],
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      // @ts-expect-error -- jsdom has no scrollBy; remove the stub again.
+      delete HTMLElement.prototype.scrollBy;
+    }
+  },
+);
 
 test("clicking a song plays its shelf's songs from that song", async () => {
   const playQueue = vi.fn(() => null);
@@ -123,4 +130,20 @@ test("an empty feed says so", async () => {
   mockCommands({ getHome: () => ({ sections: [], continuation: null }) });
   renderWithProviders(<HomeScreen />);
   expect(await screen.findByText("Nothing to show yet.")).toBeInTheDocument();
+});
+
+test("empty shelves are skipped and do not take the Quick picks grid", async () => {
+  mockCommands({
+    getHome: () => ({ ...home, sections: [{ title: "Empty shelf", items: [] }, ...home.sections] }),
+  });
+  renderWithProviders(<HomeScreen />);
+  const quickPicks = await screen.findByRole("region", { name: "Quick picks" });
+  expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
+  expect(screen.queryByRole("region", { name: "Empty shelf" })).not.toBeInTheDocument();
+});
+
+test("loading the home feed is announced", () => {
+  mockCommands({ getHome: () => new Promise(() => {}) });
+  renderWithProviders(<HomeScreen />);
+  expect(screen.getByRole("status")).toHaveTextContent("Loading…");
 });

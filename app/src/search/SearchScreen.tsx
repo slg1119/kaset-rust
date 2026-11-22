@@ -40,7 +40,7 @@ export function SearchScreen({ query, onSubmit, focusRequest }: Props) {
       </header>
       <h1 className="visually-hidden">Search</h1>
       {query === "" && <p className="hint">Search for songs, videos, albums, artists, and playlists.</p>}
-      {results.isLoading && <p className="hint">Searching…</p>}
+      {results.isLoading && <p className="hint" role="status">Searching…</p>}
       {results.isError && (
         <div role="alert" className="screen-error">
           <p>{errorMessage(results.error)}</p>

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
@@ -175,4 +175,48 @@ test("an empty query does not search", async () => {
   await userEvent.type(field(), "   {Enter}");
   expect(search).not.toHaveBeenCalled();
   expect(screen.getByText(/search for songs/i)).toBeInTheDocument();
+});
+
+test.each([{ isComposing: true }, { keyCode: 229 }])(
+  "IME commit Enter preserves the suggestion and only the next Enter searches (%j)",
+  async (ime) => {
+    const search = vi.fn(() => searchResults);
+    mockCommands({ searchSuggestions: () => ["한글 추천"], search });
+    renderWithProviders(<Harness />);
+
+    await userEvent.type(field(), "한");
+    const option = await screen.findByRole("option", { name: "한글 추천" });
+    await userEvent.keyboard("{ArrowDown}");
+    expect(option).toHaveAttribute("aria-selected", "true");
+
+    expect(fireEvent.keyDown(field(), { key: "Enter", ...ime })).toBe(true);
+    expect(option).toHaveAttribute("aria-selected", "true");
+    expect(search).not.toHaveBeenCalled();
+
+    // The final input event clears the highlight. Simulate the last character
+    // reaching the DOM ahead of React's controlled value on form submission.
+    fireEvent.change(field(), { target: { value: "한그" } });
+    (field() as HTMLInputElement).value = "한글";
+    expect(fireEvent.keyDown(field(), { key: "Enter" })).toBe(true);
+    fireEvent.submit(screen.getByRole("search"));
+    expect(search).toHaveBeenCalledExactlyOnceWith({ query: "한글" });
+  },
+);
+
+test("the first ArrowDown after Escape reopens and selects the first suggestion", async () => {
+  mockCommands({ searchSuggestions: () => ["first idea", "second idea"] });
+  renderWithProviders(<Harness />);
+  await userEvent.type(field(), "idea");
+  await screen.findByRole("listbox");
+  await userEvent.keyboard("{Escape}{ArrowDown}");
+  const first = screen.getByRole("option", { name: "first idea" });
+  expect(first).toHaveAttribute("aria-selected", "true");
+  expect(field()).toHaveAttribute("aria-activedescendant", first.id);
+});
+
+test("the search field limits input to 200 characters and announces searching", () => {
+  mockCommands({ search: () => new Promise(() => {}) });
+  renderWithProviders(<Harness initial="test query" />);
+  expect(field()).toHaveAttribute("maxlength", "200");
+  expect(screen.getByRole("status")).toHaveTextContent("Searching…");
 });

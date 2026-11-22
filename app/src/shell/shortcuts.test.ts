@@ -1,5 +1,7 @@
-import { expect, test } from "vitest";
+import { act, fireEvent, renderHook } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
 import { shortcutFor } from "./shortcuts";
+import { useShortcuts } from "./useShortcuts";
 
 const body = document.body;
 
@@ -48,7 +50,7 @@ test("leaves system and unrelated shortcuts alone", () => {
 });
 
 test("does not steal keys from controls", () => {
-  expect(shortcutFor(key(" ", { target: element("<button>Play</button>") }), true)).toBe(null);
+  expect(shortcutFor(key(" ", { target: element('<div role="option">Song</div>') }), true)).toBe(null);
   expect(shortcutFor(key(" ", { target: element('<input type="search">') }), true)).toBe(null);
   expect(shortcutFor(key(" ", { target: element('<input type="range">') }), true)).toBe(null);
   expect(shortcutFor(key("ArrowLeft", { metaKey: true, target: element("<textarea></textarea>") }), true)).toBe(
@@ -62,4 +64,63 @@ test("ignores held, composing, and handled keys", () => {
   expect(shortcutFor(key(" ", { repeat: true }), true)).toBe(null);
   expect(shortcutFor(key(" ", { isComposing: true }), true)).toBe(null);
   expect(shortcutFor(key(" ", { defaultPrevented: true }), true)).toBe(null);
+});
+
+test.each(["<button>Play</button>", '<a href="#home">Home</a>'])(
+  "Space toggles playback unless the control has keyboard focus (%s)",
+  (html) => {
+    const target = element(html);
+    const focusVisible = vi.spyOn(target, "matches").mockReturnValue(false);
+    expect(shortcutFor(key(" ", { target }), true)).toBe("togglePlayback");
+    expect(focusVisible).toHaveBeenCalledWith(":focus-visible");
+    focusVisible.mockReturnValue(true);
+    expect(shortcutFor(key(" ", { target }), true)).toBe(null);
+    focusVisible.mockImplementation(() => {
+      throw new Error("unsupported selector");
+    });
+    expect(shortcutFor(key(" ", { target }), true)).toBe("togglePlayback");
+  },
+);
+
+test("the Space shortcut prevents a mouse-focused button from also activating", () => {
+  const togglePlayback = vi.fn();
+  const noop = vi.fn();
+  renderHook(() => useShortcuts({
+    togglePlayback,
+    nextTrack: noop,
+    previousTrack: noop,
+    goHome: noop,
+    goSearch: noop,
+  }));
+  const button = element("<button>Play</button>") as HTMLButtonElement;
+  const focusVisible = vi.spyOn(button, "matches").mockReturnValue(false);
+  body.append(button);
+  function pressSpace() {
+    const event = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+    const preventDefault = vi.spyOn(event, "preventDefault");
+    act(() => {
+      button.dispatchEvent(event);
+    });
+    return preventDefault;
+  }
+
+  try {
+    button.focus();
+    // WebKit promotes :focus-visible before dispatching the first Space keydown.
+    focusVisible.mockReturnValue(true);
+    expect(pressSpace()).toHaveBeenCalledOnce();
+    expect(togglePlayback).toHaveBeenCalledOnce();
+
+    button.blur();
+    button.focus();
+    expect(pressSpace()).not.toHaveBeenCalled();
+    expect(togglePlayback).toHaveBeenCalledOnce();
+
+    // A pointer press on the already-focused button may not fire focusin again.
+    fireEvent.pointerDown(button);
+    expect(pressSpace()).toHaveBeenCalledOnce();
+    expect(togglePlayback).toHaveBeenCalledTimes(2);
+  } finally {
+    button.remove();
+  }
 });

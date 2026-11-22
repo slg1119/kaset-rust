@@ -18,7 +18,7 @@ export function HomeScreen() {
   const play = usePlayQueue();
   const sections = home.data?.sections ?? [];
   // The first all-song shelf (YouTube Music's "Quick picks") is a song grid.
-  const gridIndex = sections.findIndex((section) => section.items.every(isPlayable));
+  const gridIndex = sections.findIndex((section) => section.items.length > 0 && section.items.every(isPlayable));
 
   return (
     <>
@@ -28,7 +28,7 @@ export function HomeScreen() {
           Refresh
         </button>
       </header>
-      {home.isPending && <p className="hint">Loading…</p>}
+      {home.isPending && <p className="hint" role="status">Loading…</p>}
       {home.isError && (
         // An auth_expired error also arrives as auth://changed, which replaces the shell.
         <div role="alert" className="screen-error">
@@ -38,14 +38,15 @@ export function HomeScreen() {
           </button>
         </div>
       )}
-      {home.data && sections.length === 0 && <p className="hint">Nothing to show yet.</p>}
-      {sections.map((section, index) =>
-        index === gridIndex ? (
+      {home.data && sections.every((section) => section.items.length === 0) && <p className="hint">Nothing to show yet.</p>}
+      {sections.map((section, index) => {
+        if (section.items.length === 0) return null;
+        return index === gridIndex ? (
           <SongGrid key={`${index}-${section.title}`} section={section} onPlay={play} />
         ) : (
           <Carousel key={`${index}-${section.title}`} section={section} onPlay={play} />
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
@@ -94,7 +95,8 @@ function Carousel({ section, onPlay }: ShelfProps) {
 
   function page(direction: 1 | -1) {
     const element = list.current;
-    element?.scrollBy?.({ left: direction * element.clientWidth, behavior: "smooth" });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    element?.scrollBy?.({ left: direction * element.clientWidth, behavior: reducedMotion ? "auto" : "smooth" });
   }
 
   return (

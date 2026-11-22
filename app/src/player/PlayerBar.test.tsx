@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { events, mockCommands } from "../bindings";
@@ -6,6 +6,7 @@ import { renderWithProviders } from "../test/render";
 import { formatTime } from "./format";
 import { PlayerBar } from "./PlayerBar";
 import { idleSnapshot, playingState, testSong } from "./testing";
+import { usePlayer } from "./usePlayer";
 
 function renderPlaying(overrides: Parameters<typeof playingState>[0] = {}) {
   const handlers = {
@@ -118,10 +119,18 @@ test("command errors are shown", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("player window failed");
 });
 
-test("an event before the snapshot reply wins", async () => {
+test("the snapshot waits for both listeners, and earlier events win", async () => {
+  let finishRegistration: ((stop: () => void) => void) | undefined;
+  const listenQueue = vi.spyOn(events.playerQueue, "listen").mockImplementation(
+    () => new Promise((resolve) => (finishRegistration = resolve)),
+  );
   let reply: ((snapshot: typeof idleSnapshot) => void) | undefined;
-  mockCommands({ playerSnapshot: () => new Promise((resolve) => (reply = resolve)) });
+  const playerSnapshot = vi.fn(() => new Promise<typeof idleSnapshot>((resolve) => (reply = resolve)));
+  mockCommands({ playerSnapshot });
   renderWithProviders(<PlayerBar />);
+  await act(async () => expect(listenQueue).toHaveBeenCalledOnce());
+  expect(playerSnapshot).not.toHaveBeenCalled();
+  await act(async () => finishRegistration?.(vi.fn()));
   await vi.waitFor(() => expect(reply).toBeDefined());
   await act(() => events.playerState.emit({ state: playingState() }));
   await act(async () => reply?.(idleSnapshot));
@@ -248,4 +257,57 @@ test("publishes its height for the scrolling content", async () => {
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test("a rejected listener reports an error and the other listener is cleaned up", async () => {
+  const onError = vi.fn();
+  const stopQueue = vi.fn().mockRejectedValue(new Error("unlisten failed"));
+  vi.spyOn(events.playerState, "listen").mockRejectedValue(new Error("listen failed"));
+  vi.spyOn(events.playerQueue, "listen").mockResolvedValue(stopQueue);
+  const playerSnapshot = vi.fn(() => idleSnapshot);
+  mockCommands({ playerSnapshot });
+  const { unmount } = renderHook(() => usePlayer(onError));
+
+  await vi.waitFor(() => expect(onError).toHaveBeenCalledExactlyOnceWith(
+    "Could not listen for player updates: listen failed",
+  ));
+  expect(playerSnapshot).not.toHaveBeenCalled();
+  unmount();
+  await vi.waitFor(() => expect(stopQueue).toHaveBeenCalledOnce());
+});
+
+test.each(["pending seek", "unfinished drag"])("a track change clears a %s", async (seek) => {
+  const handlers = renderPlaying();
+  const slider = await screen.findByRole("slider", { name: "Seek" });
+  fireEvent.change(slider, { target: { value: "120" } });
+  if (seek === "pending seek") {
+    fireEvent.pointerUp(slider);
+    expect(handlers.seekTo).toHaveBeenCalledWith({ position: 120 });
+  }
+  await act(() => events.playerState.emit({
+    state: playingState({ track: { ...testSong, video_id: "test-vid-02" }, position: 0 }),
+  }));
+  expect(screen.getByRole("slider", { name: "Seek" })).toHaveValue("0");
+});
+
+test("Escape dismisses the queue and returns focus to Queue", async () => {
+  renderPlaying();
+  const button = await screen.findByRole("button", { name: /Queue/ });
+  await userEvent.click(button);
+  await userEvent.tab({ shift: true });
+  expect(button).not.toHaveFocus();
+
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("region", { name: "Queue" })).not.toBeInTheDocument();
+  expect(button).toHaveFocus();
+});
+
+test("a pointer press outside the player dismisses the queue", async () => {
+  renderPlaying();
+  await userEvent.click(await screen.findByRole("button", { name: /Queue/ }));
+  const panel = screen.getByRole("region", { name: "Queue" });
+  fireEvent.pointerDown(panel);
+  expect(panel).toBeInTheDocument();
+  fireEvent.pointerDown(document.body);
+  expect(panel).not.toBeInTheDocument();
 });

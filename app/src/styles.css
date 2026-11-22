@@ -309,16 +309,24 @@ button {
 .carousel {
   --columns: 6;
   --gap: 16px;
+  --focus-padding: 4px;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: calc((100% - (var(--columns) - 1) * var(--gap)) / var(--columns));
   gap: var(--gap);
-  margin: 0;
-  padding: 0;
+  margin: calc(-1 * var(--focus-padding));
+  padding: var(--focus-padding);
+  scroll-padding-inline: var(--focus-padding);
   list-style: none;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel {
+    scroll-behavior: auto;
+  }
 }
 
 .carousel > li {
@@ -516,6 +524,27 @@ button.item:hover {
   border: 1px solid var(--line);
   border-radius: 16px;
   box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+@media (max-width: 1000px) {
+  .player-bar {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px 12px;
+  }
+
+  .player-now {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .player-extras {
+    justify-self: end;
+  }
+
+  .player-controls .icon-button,
+  .player-extras .icon-button {
+    padding-inline: 7px;
+  }
 }
 
 .player-controls,

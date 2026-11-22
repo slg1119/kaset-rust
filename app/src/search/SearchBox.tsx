@@ -31,7 +31,8 @@ export function SearchBox({ initialText, onSubmit, focusRequest }: Props) {
     placeholderData: keepPreviousData,
   });
   // Suggestion failures are not worth an alert: the user can still press Return.
-  const options = open && text.trim() !== "" ? (suggestions.data ?? []) : [];
+  const availableOptions = text.trim() !== "" ? (suggestions.data ?? []) : [];
+  const options = open ? availableOptions : [];
   const activeIndex = active < options.length ? active : -1;
 
   useEffect(() => {
@@ -48,11 +49,12 @@ export function SearchBox({ initialText, onSubmit, focusRequest }: Props) {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
         setOpen(true);
-        setActive(Math.min(activeIndex + 1, options.length - 1));
+        setActive(Math.min(activeIndex + 1, availableOptions.length - 1));
         break;
       case "ArrowUp":
         event.preventDefault();
@@ -80,7 +82,7 @@ export function SearchBox({ initialText, onSubmit, focusRequest }: Props) {
       className="search-box"
       onSubmit={(event) => {
         event.preventDefault();
-        submit(text);
+        submit(input.current?.value ?? text);
       }}
     >
       <input
@@ -95,6 +97,7 @@ export function SearchBox({ initialText, onSubmit, focusRequest }: Props) {
         placeholder="Songs, albums, artists"
         autoComplete="off"
         spellCheck={false}
+        maxLength={200}
         value={text}
         onChange={(event) => {
           setText(event.target.value);

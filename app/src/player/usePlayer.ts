@@ -10,8 +10,8 @@ export type PlayerView = {
 /**
  * The player state and queue: `null` until known, then kept current by
  * `player://state` and `player://queue`. Events that arrive before the
- * initial `playerSnapshot` reply win. `onError` hears a failed snapshot;
- * pass a stable function.
+ * initial `playerSnapshot` reply win. Pass a stable `onError` for listener
+ * and snapshot failures.
  */
 export function usePlayer(onError: (message: string) => void): PlayerView {
   const [state, setState] = useState<PlayerState | null>(null);
@@ -25,20 +25,30 @@ export function usePlayer(onError: (message: string) => void): PlayerView {
     const stopQueue = events.playerQueue.listen((event) => {
       if (active) setQueue(event.payload.queue);
     });
-    commands.playerSnapshot().then(
-      (snapshot) => {
+    async function initialize() {
+      try {
+        await Promise.all([stopState, stopQueue]);
+      } catch (cause) {
+        if (active) onError(`Could not listen for player updates: ${errorMessage(cause)}`);
+        return;
+      }
+      if (!active) return;
+
+      try {
+        const snapshot = await commands.playerSnapshot();
         if (!active) return;
         setState((previous) => previous ?? snapshot.state);
         setQueue((previous) => previous ?? snapshot.queue);
-      },
-      (cause: unknown) => {
+      } catch (cause) {
         if (active) onError(`Could not read the player state: ${errorMessage(cause)}`);
-      },
-    );
+      }
+    }
+    void initialize();
     return () => {
       active = false;
-      void stopState.then((stop) => stop());
-      void stopQueue.then((stop) => stop());
+      for (const registration of [stopState, stopQueue]) {
+        void registration.then((stop) => stop()).catch(() => {});
+      }
     };
   }, [onError]);
 
