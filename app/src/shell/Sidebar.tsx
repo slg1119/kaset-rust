@@ -8,9 +8,11 @@ import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
 type FeedRoute = { kind: FeedKind };
 type SearchRoute = { kind: "search" };
-type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: FeedRoute | CategoryRoute };
-type PageRoute = { kind: "page"; browseId: string; title: string; from: FeedRoute | SearchRoute | CategoryRoute };
-export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute;
+type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: Route };
+type PageRoute = { kind: "page"; browseId: string; title: string; from: Route };
+type ArtistRoute = { kind: "artist"; browseId: string; name: string; from: Route };
+type ArtistMoreRoute = { kind: "artist-more"; browseId: string; params: string | null; title: string; from: ArtistRoute };
+export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute | ArtistRoute | ArtistMoreRoute;
 
 const SEARCH = { route: "search", label: "Search", Icon: SearchIcon } as const;
 
@@ -50,7 +52,7 @@ export function Sidebar({ route, onNavigate }: Props) {
   }
 
   let selected = route;
-  while (selected.kind === "page" || selected.kind === "category") selected = selected.from;
+  while ("from" in selected) selected = selected.from;
   const name = account.data?.name ?? "Signed in";
   return (
     <nav className="sidebar" aria-label="Main">

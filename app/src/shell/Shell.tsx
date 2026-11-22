@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
-import { commands, type BrowseCard } from "../bindings";
+import { commands, type BrowseEndpoint, type FeedKind } from "../bindings";
+import { ArtistMoreScreen, ArtistScreen } from "../detail/ArtistScreen";
 import { BrowsePageScreen } from "../detail/BrowsePageScreen";
 import { errorMessage } from "../errors";
 import { FeedScreen, type CategoryItem } from "../home/FeedScreen";
+import type { PageCard } from "../music/items";
 import { NoticeBanner, NoticeProvider, useNotice } from "../notices/NoticeProvider";
 import { PlayerBar } from "../player/PlayerBar";
 import type { Filter } from "../search/groups";
@@ -29,14 +31,28 @@ function ShellLayout() {
   const [searchFocus, setSearchFocus] = useState(0);
   const { report, dismiss } = useNotice();
 
-  function openPage(card: BrowseCard) {
-    if (route.kind === "page") return;
+  function openArtist(browseId: string, name: string) {
+    setRoute((current) => current.kind === "artist" && current.browseId === browseId
+      ? current
+      : { kind: "artist", browseId, name, from: current });
+  }
+
+  function openPage(card: PageCard) {
+    if (card.kind === "artist") {
+      openArtist(card.browse_id, card.title);
+      return;
+    }
     setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route });
   }
 
   function openCategory(item: CategoryItem) {
-    if (route.kind === "page" || route.kind === "search") return;
     setRoute({ kind: "category", browseId: item.browse_id, params: item.params, title: item.title, from: route });
+  }
+
+  function openArtistMore(endpoint: BrowseEndpoint, title: string) {
+    if (route.kind === "artist") {
+      setRoute({ kind: "artist-more", browseId: endpoint.browse_id, params: endpoint.params, title, from: route });
+    }
   }
 
   const actions = useMemo<Partial<Record<Shortcut, () => void>>>(() => {
@@ -53,22 +69,23 @@ function ShellLayout() {
         setRoute({ kind: "search" });
         setSearchFocus((count) => count + 1);
       },
-      back: route.kind === "page" || route.kind === "category" ? () => setRoute(route.from) : undefined,
+      back: "from" in route ? () => setRoute(route.from) : undefined,
     };
   }, [report, dismiss, route]);
   useShortcuts(actions);
+
+  const artistActions = { onOpenPage: openPage, onOpenCategory: openCategory, onOpenArtist: openArtist };
 
   return (
     <div className="shell">
       <Sidebar route={route} onNavigate={setRoute} />
       <div className="content-column">
-        <main key={route.kind === "category" ? JSON.stringify([route.kind, route.browseId, route.params]) : route.kind} className="content">
-          {route.kind !== "page" && route.kind !== "search" && (
+        <main key={JSON.stringify([route.kind, "browseId" in route ? route.browseId : null, "params" in route ? route.params : null])} className="content">
+          {(route.kind === "category" || isFeedKind(route.kind)) && (
             <FeedScreen
-              source={route}
+              source={route.kind === "category" ? route : { kind: route.kind }}
               title={route.kind === "category" ? route.title : FEED_TABS[route.kind].label}
-              onOpenPage={openPage}
-              onOpenCategory={openCategory}
+              {...artistActions}
               onBack={route.kind === "category" ? () => setRoute(route.from) : undefined}
             />
           )}
@@ -80,20 +97,33 @@ function ShellLayout() {
               filter={searchFilter}
               onFilterChange={setSearchFilter}
               onOpenPage={openPage}
+              onOpenArtist={openArtist}
             />
           )}
           {route.kind === "page" && (
             <BrowsePageScreen
-              key={route.browseId}
               browseId={route.browseId}
               title={route.title}
+              onOpenArtist={openArtist}
               onBack={() => setRoute(route.from)}
             />
           )}
+          {route.kind === "artist" && (
+            <ArtistScreen browseId={route.browseId} name={route.name} {...artistActions}
+              onOpenMore={openArtistMore} onBack={() => setRoute(route.from)} />
+          )}
+          {route.kind === "artist-more" && (
+            <ArtistMoreScreen browseId={route.browseId} params={route.params} title={route.title}
+              {...artistActions} onBack={() => setRoute(route.from)} />
+          )}
         </main>
         <NoticeBanner />
-        <PlayerBar />
+        <PlayerBar onOpenArtist={openArtist} />
       </div>
     </div>
   );
+}
+
+function isFeedKind(kind: Route["kind"]): kind is FeedKind {
+  return Object.hasOwn(FEED_TABS, kind);
 }

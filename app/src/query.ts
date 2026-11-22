@@ -14,6 +14,8 @@ export const queryKeys = {
   feedCategory: (browseId: string, params: string | null) => ["feed", "category", browseId, params] as const,
   feedChip: (params: string | null) => ["feed", "chip", params] as const,
   search: (query: string) => ["search", query] as const,
+  artist: (browseId: string) => ["artist", browseId] as const,
+  artistMore: (browseId: string, params: string | null) => ["artist", browseId, "more", params] as const,
   browsePage: (browseId: string) => ["browsePage", browseId] as const,
   suggestions: (input: string) => ["suggestions", input] as const,
   account: ["account"] as const,

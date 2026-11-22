@@ -107,6 +107,10 @@ impl PlayerService {
         result
     }
 
+    pub(crate) async fn queue_generation(&self) -> u64 {
+        self.inner.lock().await.player.queue_position().0
+    }
+
     pub async fn snapshot(&self) -> (PlayerState, QueueState) {
         let inner = self.inner.lock().await;
         (inner.player.state(), inner.player.queue_state())

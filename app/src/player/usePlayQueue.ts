@@ -3,6 +3,8 @@ import { commands, type Song } from "../bindings";
 import { errorMessage } from "../errors";
 import { useNotice } from "../notices/NoticeProvider";
 
+export const MAX_QUEUE_LENGTH = 500;
+
 /** Plays `songs` from `songs[index]`; a failure goes to the app notice. */
 export function usePlayQueue(): (songs: Song[], index: number) => Promise<void> {
   const { report, dismiss } = useNotice();

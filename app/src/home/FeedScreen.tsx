@@ -1,22 +1,23 @@
 import { skipToken, useInfiniteQuery } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
-import { commands, type BrowseCard, type FeedKind, type FeedPage, type HomeSection, type ShelfItem, type Song } from "../bindings";
+import { useEffect, useRef, useState } from "react";
+import { commands, type FeedKind, type FeedPage } from "../bindings";
 import { errorMessage } from "../errors";
-import { ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from "../icons";
-import { ItemCard } from "../music/ItemCard";
-import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { ChevronLeftIcon, RefreshIcon } from "../icons";
+import type { OpenArtist } from "../music/ArtistNames";
+import { isPlayable, type PageCard } from "../music/items";
+import { CategoryGrid, FeedShelf, type CategoryItem } from "./FeedShelf";
+
+export type { CategoryItem } from "./FeedShelf";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { FEED_STALE_MS, queryKeys } from "../query";
 
-type PlayFn = (songs: Song[], index: number) => Promise<void>;
-
-export type CategoryItem = Extract<ShelfItem, { kind: "category" }>;
 export type FeedSource = { kind: FeedKind } | { kind: "category"; browseId: string; params: string | null };
 
 type Props = {
   source: FeedSource;
   title: string;
-  onOpenPage: (card: BrowseCard) => void;
+  onOpenPage: (card: PageCard) => void;
+  onOpenArtist?: OpenArtist;
   onOpenCategory: (item: CategoryItem) => void;
   onBack?: () => void;
 };
@@ -51,7 +52,7 @@ function nextPageParam(page: FeedPage, _pages: FeedPage[], _pageParam: string | 
   return token && !used.includes(token) ? token : undefined;
 }
 
-export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onBack }: Props) {
+export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenArtist, onBack }: Props) {
   const [chip, setChip] = useState<string | null>(null);
   const { feed, chips } = useFeed(source, source.kind === "home" ? chip : null);
   const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = feed;
@@ -123,8 +124,10 @@ export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onBack }
         if (section.items.every((item) => item.kind === "category")) {
           return <CategoryGrid key={key} title={section.title} items={section.items} onOpen={onOpenCategory} />;
         }
-        if (index === gridIndex) return <SongGrid key={key} section={section} onPlay={play} />;
-        return <Carousel key={key} section={section} onPlay={play} onOpenPage={onOpenPage} onOpenCategory={onOpenCategory} />;
+        return (
+          <FeedShelf key={key} section={section} onPlay={play} onOpenPage={onOpenPage} onOpenCategory={onOpenCategory}
+            onOpenArtist={onOpenArtist} layout={index === gridIndex ? "quick-picks" : "carousel"} />
+        );
       })}
       {hasNextPage && (
         <div ref={sentinel} className="feed-more">
@@ -136,110 +139,5 @@ export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onBack }
         </div>
       )}
     </>
-  );
-}
-
-function CategoryGrid({ title, items, onOpen }: { title: string; items: CategoryItem[]; onOpen: Props["onOpenCategory"] }) {
-  const headingId = useId();
-  return (
-    <section className="shelf" aria-labelledby={headingId}>
-      <div className="shelf-header"><h2 id={headingId}>{title}</h2></div>
-      <ul className="category-grid">
-        {items.map((item, index) => (
-          <li key={`${index}-${item.browse_id}`}><CategoryTile item={item} onOpen={onOpen} /></li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function CategoryTile({ item, onOpen }: { item: CategoryItem; onOpen: Props["onOpenCategory"] }) {
-  return (
-    <button type="button" className="category-tile" style={{ borderInlineStartColor: item.color ?? undefined }} onClick={() => onOpen(item)}>
-      {item.title}
-    </button>
-  );
-}
-
-/** Songs of a shelf, and for each item its index among them (-1 for non-songs). */
-function playOrder(section: HomeSection): { songs: Song[]; starts: number[] } {
-  const songs = section.items.filter(isPlayable).map(toSong);
-  let next = 0;
-  const starts = section.items.map((item) => (isPlayable(item) ? next++ : -1));
-  return { songs, starts };
-}
-
-type ShelfProps = { section: HomeSection; onPlay: PlayFn };
-
-/** Quick picks: a three-column grid of song rows. */
-function SongGrid({ section, onPlay }: ShelfProps) {
-  const headingId = useId();
-  const items = section.items.filter(isPlayable);
-  const songs = items.map(toSong);
-  return (
-    <section className="shelf" aria-labelledby={headingId}>
-      <div className="shelf-header">
-        <h2 id={headingId}>{section.title}</h2>
-      </div>
-      <ul className="song-grid">
-        {items.map((item, index) => (
-          <li key={`${index}-${itemKey(item)}`}>
-            <ItemCard
-              layout="row"
-              title={item.title}
-              subtitle={subtitleOf(item)}
-              thumbnailUrl={item.thumbnail_url}
-              onPlay={() => void onPlay(songs, index)}
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/** A shelf as a six-column carousel with previous/next buttons. */
-function Carousel({ section, onPlay, onOpenPage, onOpenCategory }: ShelfProps & Pick<Props, "onOpenPage" | "onOpenCategory">) {
-  const headingId = useId();
-  const list = useRef<HTMLUListElement>(null);
-  const { songs, starts } = playOrder(section);
-
-  function page(direction: 1 | -1) {
-    const element = list.current;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    element?.scrollBy?.({ left: direction * element.clientWidth, behavior: reducedMotion ? "auto" : "smooth" });
-  }
-
-  return (
-    <section className="shelf" aria-labelledby={headingId}>
-      <div className="shelf-header">
-        <h2 id={headingId}>{section.title}</h2>
-        <div className="shelf-nav">
-          <button type="button" className="icon-button" aria-label={`Previous in ${section.title}`} title={`Previous in ${section.title}`} onClick={() => page(-1)}>
-            <ChevronLeftIcon size={16} />
-          </button>
-          <button type="button" className="icon-button" aria-label={`Next in ${section.title}`} title={`Next in ${section.title}`} onClick={() => page(1)}>
-            <ChevronRightIcon size={16} />
-          </button>
-        </div>
-      </div>
-      <ul ref={list} className="carousel">
-        {section.items.map((item, index) => (
-          <li key={`${index}-${itemKey(item)}`}>
-            {item.kind === "category" ? <CategoryTile item={item} onOpen={onOpenCategory} /> : (
-              <ItemCard
-                layout="card"
-                shape={shapeOf(item)}
-                title={item.title}
-                subtitle={subtitleOf(item)}
-                thumbnailUrl={item.thumbnail_url}
-                onOpen={hasBrowsePage(item) ? () => onOpenPage(item) : undefined}
-                onPlay={starts[index] >= 0 ? () => void onPlay(songs, starts[index]) : undefined}
-              />
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }

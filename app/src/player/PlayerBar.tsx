@@ -3,7 +3,7 @@ import { commands, type RepeatMode } from "../bindings";
 import { errorMessage } from "../errors";
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
-import { artistNames } from "../music/items";
+import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { useNotice } from "../notices/NoticeProvider";
 import { formatTime } from "./format";
 import { usePlayer } from "./usePlayer";
@@ -26,7 +26,7 @@ const SEEK_SETTLE_MS = 2000;
  * queued. Publishes its height as `--player-space` on its parent so the
  * scrolling content can leave room below the last row.
  */
-export function PlayerBar() {
+export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   const { report, dismiss } = useNotice();
   const { state, queue } = usePlayer(report);
   // While the user drags the seek slider, show the drag position.
@@ -103,7 +103,6 @@ export function PlayerBar() {
     run(() => commands.seekTo(target));
   }
 
-  const artists = artistNames(track.artists);
   const playing = state.status === "playing" || state.status === "loading";
   const playbackLabel = playing ? "Pause" : "Play";
   const repeatLabel = REPEAT_LABEL[state.repeat];
@@ -150,7 +149,9 @@ export function PlayerBar() {
         <div className="player-meta">
           <div className="player-title">
             <strong className="item-title">{track.title}</strong>
-            {artists && <span className="item-subtitle">{artists}</span>}
+            {track.artists.length > 0 && (
+              <span className="item-subtitle"><ArtistNames artists={track.artists} onOpenArtist={onOpenArtist} /></span>
+            )}
           </div>
           <div className="player-progress">
             {state.is_ad ? (
@@ -224,7 +225,10 @@ export function PlayerBar() {
             {(queue?.songs ?? []).map((song, index) => (
               <li key={`${index}-${song.video_id}`} aria-current={index === queue?.current ? "true" : undefined}>
                 <span className="item-title">{song.title}</span>
-                <span className="item-subtitle">{artistNames(song.artists)}</span>
+                <span className="item-subtitle"><ArtistNames artists={song.artists} onOpenArtist={onOpenArtist && ((browseId, name) => {
+                  setQueueOpen(false);
+                  onOpenArtist(browseId, name);
+                })} /></span>
               </li>
             ))}
           </ol>

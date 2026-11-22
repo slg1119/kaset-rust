@@ -120,3 +120,11 @@ Rust notification plugin after releasing the player lock.
   Confirm at runtime that third-party iframes get no IPC.
 - `souvlaki` pulls in `block` 0.1.6 on macOS, which triggers a future
   incompatibility warning in Rust.
+
+## M5b artist playback
+
+The artist hero resolves a radio or shuffle endpoint through InnerTube and
+starts the returned tracks through the existing queue engine. The engine keeps
+the continuation for autoplay. A changed session or replaced queue prevents a
+late response from starting playback. When there is no mix endpoint, the hero
+queues the page’s top songs.

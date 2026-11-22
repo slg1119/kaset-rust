@@ -687,7 +687,7 @@ button.top-card:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.browse-track[aria-current="true"] :is(.browse-index, .item-title) {
+.browse-track[data-current] :is(.browse-index, .item-title) {
   color: var(--accent-icon);
 }
 
@@ -852,4 +852,123 @@ button.top-card:hover {
 
 .queue-panel li[aria-current="true"] {
   background: rgb(217 28 72 / 0.2);
+}
+
+/* Keep the row action and its artist credits independently focusable. */
+.item-with-links {
+  position: relative;
+  isolation: isolate;
+}
+
+.item-with-links:hover {
+  background: var(--surface-hover);
+}
+
+.item-action {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.artist-link {
+  position: relative;
+  z-index: 2;
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.artist-link:hover,
+.artist-link:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* Artist artwork fills the main pane behind a readable gradient. */
+.artist-hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: flex-end;
+  min-height: clamp(260px, 42vh, 420px);
+  margin-inline: -32px;
+  background: var(--surface);
+}
+
+.artist-hero-art,
+.artist-hero::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+}
+
+.artist-hero-art > .artwork {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-position: center 34%;
+}
+
+.artist-hero-art .artwork-placeholder {
+  background: var(--surface);
+}
+
+.artist-hero-art .artwork-placeholder svg {
+  width: 56px;
+  height: 56px;
+}
+
+.artist-hero::after {
+  content: "";
+  background: linear-gradient(0deg, rgb(0 0 0 / 94%), rgb(0 0 0 / 66%) 42%, rgb(0 0 0 / 8%));
+}
+
+.artist-summary {
+  padding: 32px;
+  color: white;
+}
+
+.artist-summary h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 76px);
+  line-height: 1.06;
+  overflow-wrap: anywhere;
+}
+
+.artist-summary p {
+  margin: 8px 0 0;
+}
+
+.artist-description {
+  max-width: 65ch;
+  max-height: 8em;
+  overflow: auto;
+  white-space: pre-line;
+}
+
+.artist-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.artist-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr));
+  gap: 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
 }

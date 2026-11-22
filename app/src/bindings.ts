@@ -30,6 +30,12 @@ export const commands = {
 	getFeedContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_continuation", { token }, options),
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
+	/**  Fetches the artist header and shelves. */
+	getArtist: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<ArtistPage>("get_artist", { browseId }, options),
+	/**  Fetches the grid or track list behind an artist shelf's See all button. */
+	getArtistMore: (browseId: string, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<ShelfItem[]>("get_artist_more", { browseId, params }, options),
+	/**  Resolves an artist radio or shuffle endpoint and starts its queue. */
+	playArtistMix: (playlistId: string | null, videoId: string | null, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_artist_mix", { playlistId, videoId, params }, options),
 	/**
 	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
@@ -95,6 +101,24 @@ export type AppError = {
 	message: string,
 };
 
+export type ArtistPage = {
+	name: string,
+	description: string | null,
+	thumbnail_url: string | null,
+	subscribers: string | null,
+	channel_id: string | null,
+	subscribed: boolean | null,
+	radio_playlist_id: string | null,
+	radio_video_id: string | null,
+	radio_params: string | null,
+	shuffle_playlist_id: string | null,
+	shuffle_video_id: string | null,
+	shuffle_params: string | null,
+	/**  Index of the first playable music shelf, distinct from video carousels. */
+	top_songs_section: number | null,
+	sections: HomeSection[],
+};
+
 export type ArtistRef = {
 	name: string,
 	browse_id: string | null,
@@ -119,6 +143,11 @@ export type BrowseCard = {
 	title: string,
 	subtitle: string | null,
 	thumbnail_url: string | null,
+};
+
+export type BrowseEndpoint = {
+	browse_id: string,
+	params: string | null,
 };
 
 export type BrowsePage = {
@@ -151,6 +180,7 @@ export type FeedPage = {
 export type HomeSection = {
 	title: string,
 	items: ShelfItem[],
+	more?: BrowseEndpoint | null,
 };
 
 /**
@@ -319,6 +349,9 @@ export type MockCommandHandlers = {
     getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
     getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
+    getArtist: (args: { browseId: string }) => ArtistPage | Promise<ArtistPage>,
+    getArtistMore: (args: { browseId: string; params: string | null }) => ShelfItem[] | Promise<ShelfItem[]>,
+    playArtistMix: (args: { playlistId: string | null; videoId: string | null; params: string | null }) => null | Promise<null>,
     search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
@@ -366,6 +399,9 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_feed_chip": return mockCommandHandler(mockHandlers.getFeedChip, "get_feed_chip", args);
             case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
+            case "get_artist": return mockCommandHandler(mockHandlers.getArtist, "get_artist", args);
+            case "get_artist_more": return mockCommandHandler(mockHandlers.getArtistMore, "get_artist_more", args);
+            case "play_artist_mix": return mockCommandHandler(mockHandlers.playArtistMix, "play_artist_mix", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);

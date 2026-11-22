@@ -9,8 +9,10 @@ export function isPlayable<T extends MusicItem>(item: T): item is Extract<T, { v
 }
 
 /** Browse cards with detail screens. */
-export function hasBrowsePage(item: MusicItem): item is Extract<MusicItem, { kind: "album" | "playlist" }> {
-  return item.kind === "album" || item.kind === "playlist";
+export type PageCard = Extract<MusicItem, { kind: "album" | "playlist" | "artist" }>;
+
+export function hasBrowsePage(item: MusicItem): item is PageCard {
+  return item.kind === "album" || item.kind === "playlist" || item.kind === "artist";
 }
 
 /** The `Song` that `playQueue` takes, without the `kind` tag. */

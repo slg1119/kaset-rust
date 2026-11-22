@@ -45,7 +45,7 @@ pub async fn play_queue(
         .await
 }
 
-fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
+pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
     if songs.len() > MAX_QUEUE_LEN {
         return Err(AppError::new(
             ErrorKind::InvalidArgument,

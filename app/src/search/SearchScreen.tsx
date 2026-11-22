@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId } from "react";
-import { commands, type BrowseCard, type SearchItem } from "../bindings";
+import { commands, type SearchItem } from "../bindings";
 import { errorMessage } from "../errors";
+import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { Artwork } from "../music/Artwork";
 import { ItemCard } from "../music/ItemCard";
-import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { queryKeys, SEARCH_STALE_MS } from "../query";
 import { FILTERS, groupResults, KIND_LABEL, type Filter, type ResultGroup } from "./groups";
@@ -17,10 +18,11 @@ type Props = {
   focusRequest: number;
   filter: Filter;
   onFilterChange: (filter: Filter) => void;
-  onOpenPage: (card: BrowseCard) => void;
+  onOpenPage: (card: PageCard) => void;
+  onOpenArtist?: OpenArtist;
 };
 
-export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterChange, onOpenPage }: Props) {
+export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterChange, onOpenPage, onOpenArtist }: Props) {
   const results = useQuery({
     queryKey: queryKeys.search(query),
     queryFn: () => commands.search(query),
@@ -68,9 +70,9 @@ export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterCh
             ))}
           </div>
           {filter === "all" ? (
-            <AllResults items={items} onPlay={play} onOpenPage={onOpenPage} />
+            <AllResults items={items} onPlay={play} onOpenPage={onOpenPage} onOpenArtist={onOpenArtist} />
           ) : (
-            <FilteredResults items={items} filter={filter} onPlay={play} onOpenPage={onOpenPage} />
+            <FilteredResults items={items} filter={filter} onPlay={play} onOpenPage={onOpenPage} onOpenArtist={onOpenArtist} />
           )}
         </>
       )}
@@ -78,34 +80,39 @@ export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterCh
   );
 }
 
-type ResultActions = Pick<Props, "onOpenPage"> & { onPlay: ReturnType<typeof usePlayQueue> };
+type ResultActions = Pick<Props, "onOpenPage" | "onOpenArtist"> & { onPlay: ReturnType<typeof usePlayQueue> };
 
 /** The top result as a large card, then every group without it. */
-function AllResults({ items, onPlay, onOpenPage }: { items: SearchItem[] } & ResultActions) {
+function AllResults({ items, onPlay, onOpenPage, onOpenArtist }: { items: SearchItem[] } & ResultActions) {
   const [top, ...rest] = items;
   return (
     <>
-      <TopResult item={top} onPlay={onPlay} onOpenPage={onOpenPage} />
+      <TopResult item={top} onPlay={onPlay} onOpenPage={onOpenPage} onOpenArtist={onOpenArtist} />
       {groupResults(rest).map((group) => (
-        <Group key={group.title} group={group} onPlay={onPlay} onOpenPage={onOpenPage} />
+        <Group key={group.title} group={group} onPlay={onPlay} onOpenPage={onOpenPage} onOpenArtist={onOpenArtist} />
       ))}
     </>
   );
 }
 
-function FilteredResults({ items, filter, onPlay, onOpenPage }: { items: SearchItem[]; filter: Filter } & ResultActions) {
+function FilteredResults({ items, filter, onPlay, onOpenPage, onOpenArtist }: { items: SearchItem[]; filter: Filter } & ResultActions) {
   const title = FILTERS.find((chip) => chip.value === filter)?.group;
   const group = groupResults(items).find((candidate) => candidate.title === title);
   if (group === undefined) return <p className="hint">No {title?.toLowerCase()} in these results.</p>;
-  return <Group group={group} onPlay={onPlay} onOpenPage={onOpenPage} />;
+  return <Group group={group} onPlay={onPlay} onOpenPage={onOpenPage} onOpenArtist={onOpenArtist} />;
 }
 
-function TopResult({ item, onPlay, onOpenPage }: { item: SearchItem } & ResultActions) {
+function TopResult({ item, onPlay, onOpenPage, onOpenArtist }: { item: SearchItem } & ResultActions) {
   const headingId = useId();
   const subtitle = subtitleOf(item);
   const artwork = <Artwork url={item.thumbnail_url} size={96} shape={shapeOf(item)} />;
   const title = <span className="top-title">{item.title}</span>;
-  const metadata = <span className="item-subtitle">{[KIND_LABEL[item.kind], subtitle].filter(Boolean).join(" • ")}</span>;
+  const metadata = (
+    <span className="item-subtitle">
+      {KIND_LABEL[item.kind]}
+      {subtitle && <> • {isPlayable(item) ? <ArtistNames artists={item.artists} onOpenArtist={onOpenArtist} /> : subtitle}</>}
+    </span>
+  );
   return (
     <section className="top-result" aria-labelledby={headingId}>
       <h2 id={headingId}>Top result</h2>
@@ -132,7 +139,7 @@ function TopResult({ item, onPlay, onOpenPage }: { item: SearchItem } & ResultAc
   );
 }
 
-function Group({ group, onPlay, onOpenPage }: { group: ResultGroup } & ResultActions) {
+function Group({ group, onPlay, onOpenPage, onOpenArtist }: { group: ResultGroup } & ResultActions) {
   const headingId = useId();
   const songs = group.playable ? group.items.filter(isPlayable).map(toSong) : [];
   return (
@@ -147,6 +154,8 @@ function Group({ group, onPlay, onOpenPage }: { group: ResultGroup } & ResultAct
               title={item.title}
               subtitle={subtitleOf(item)}
               thumbnailUrl={item.thumbnail_url}
+              artistCredits={isPlayable(item) && onOpenArtist && item.artists.some(({ browse_id }) => browse_id) ?
+                <ArtistNames artists={item.artists} onOpenArtist={onOpenArtist} /> : undefined}
               onOpen={hasBrowsePage(item) ? () => onOpenPage(item) : undefined}
               onPlay={group.playable && isPlayable(item) ? () => void onPlay(songs, index) : undefined}
             />

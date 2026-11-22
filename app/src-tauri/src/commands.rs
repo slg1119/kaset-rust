@@ -1,3 +1,4 @@
+pub mod artist;
 pub mod feed;
 
 use std::future::Future;

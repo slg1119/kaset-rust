@@ -86,7 +86,7 @@ afterwards.
   errors; the parser logs skipped items at debug level and the explorer is the
   first tool to check.
 - Detail screens load the first album or playlist page. Continuation requests
-  and routes for artists, profiles, and podcasts are later work.
+  and routes for profiles and podcasts are later work.
 - Shortcuts work only while the window has focus; global media keys still go
   through souvlaki (ADR-0044). A native menu bar with accelerators is later
   work.
@@ -96,3 +96,10 @@ afterwards.
   does) or it shows the material.
 - Liquid Glass window effects (available in Tauri 2.12.7 on macOS 26) are not
   used yet.
+
+## M5b artist pages
+
+Artist cards and linked track credits open reusable artist routes from feeds,
+search, detail pages, and Now Playing. The shell keeps the source route for
+Back. See all uses the shelf’s browse endpoint and caches results by ID and
+params. The hero reuses Artwork and the shelves reuse the feed components.

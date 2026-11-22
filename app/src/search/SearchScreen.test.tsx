@@ -42,7 +42,7 @@ test("submitting shows the top result, then results grouped by type", async () =
   const top = screen.getByRole("region", { name: "Top result" });
   expect(within(top).getByText("Test artist")).toBeInTheDocument();
   expect(within(top).getByText("Artist • 42K subscribers")).toBeInTheDocument();
-  expect(within(top).queryByRole("button")).not.toBeInTheDocument();
+  expect(within(top).getByRole("button", { name: "Open Test artist" })).toBeInTheDocument();
 
   const songs = screen.getByRole("region", { name: "Songs" });
   expect(within(songs).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([

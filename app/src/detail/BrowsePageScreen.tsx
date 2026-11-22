@@ -4,21 +4,21 @@ import { commands } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChevronLeftIcon, PlayIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
+import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { artistNames } from "../music/items";
 import { useNotice } from "../notices/NoticeProvider";
 import { usePlayer } from "../player/usePlayer";
-import { usePlayQueue } from "../player/usePlayQueue";
+import { MAX_QUEUE_LENGTH, usePlayQueue } from "../player/usePlayQueue";
 import { BROWSE_PAGE_STALE_MS, queryKeys } from "../query";
-
-const MAX_QUEUE_LENGTH = 500;
 
 type Props = {
   browseId: string;
   title: string;
   onBack: () => void;
+  onOpenArtist?: OpenArtist;
 };
 
-export function BrowsePageScreen({ browseId, title, onBack }: Props) {
+export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist }: Props) {
   const page = useQuery({
     queryKey: queryKeys.browsePage(browseId),
     queryFn: () => commands.getBrowsePage(browseId),
@@ -107,18 +107,22 @@ export function BrowsePageScreen({ browseId, title, onBack }: Props) {
             <ol className="rows" aria-label="Tracks">
               {songs.map((song, index) => (
                 <li key={`${index}-${song.video_id}`}>
-                  <button
-                    type="button"
-                    className="item item-row browse-track"
-                    aria-current={index === current ? "true" : undefined}
-                    onClick={() => void playFrom(index)}
-                  >
-                    <span className="browse-index">{index + 1}</span>
+                  <div className="item item-row browse-track item-with-links" data-current={index === current || undefined}>
+                    <button
+                      type="button"
+                      className="item-action"
+                      aria-label={[song.title, artistNames(song.artists)].filter(Boolean).join(", ")}
+                      aria-current={index === current ? "true" : undefined}
+                      onClick={() => void playFrom(index)}
+                    />
+                    <span className="browse-index" aria-hidden="true">{index + 1}</span>
                     <span className="item-text">
                       <span className="item-title">{song.title}</span>
-                      {song.artists.length > 0 && <span className="item-subtitle">{artistNames(song.artists)}</span>}
+                      {song.artists.length > 0 && (
+                        <span className="item-subtitle"><ArtistNames artists={song.artists} onOpenArtist={onOpenArtist} /></span>
+                      )}
                     </span>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ol>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-artist-more"
+description = "Enables the get_artist_more command without any pre-configured scope."
+commands.allow = ["get_artist_more"]
+
+[[permission]]
+identifier = "deny-get-artist-more"
+description = "Denies the get_artist_more command without any pre-configured scope."
+commands.deny = ["get_artist_more"]
