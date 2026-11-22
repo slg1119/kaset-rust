@@ -4,16 +4,19 @@
 //! music.youtube.com finishes loading. It has no capability, so pages in it
 //! cannot call any command, and its navigation is limited to Google hosts.
 
+use std::sync::Arc;
+
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_specta::Event;
+use tokio::sync::Mutex;
 
 use crate::error::AppError;
 use crate::events::AuthChanged;
 use crate::session::cookies::{is_country_google, youtube_cookie_jar};
 use crate::session::{AuthStatus, SessionError};
 use crate::state::AppState;
-use crate::webview_session::blocking;
+use crate::webview_session::{blocking, clear_webview_cookies};
 
 pub const LOGIN_LABEL: &str = "login";
 
@@ -66,6 +69,7 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
     let url: Url = LOGIN_URL
         .parse()
         .map_err(|_| AppError::internal("invalid login URL"))?;
+    let completions = Arc::new(Mutex::new(()));
     let builder = WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
         .title("Sign in to YouTube Music")
         .inner_size(500.0, 700.0)
@@ -81,13 +85,18 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
             }
             allowed
         })
-        .on_page_load(|window, payload| {
+        .on_page_load(move |window, payload| {
             if payload.event() == PageLoadEvent::Finished && is_sign_in_landing(payload.url()) {
                 let app = window.app_handle().clone();
                 // Captured before the cookie read: a sign-out in between makes
                 // this completion stale.
                 let epoch = app.state::<AppState>().session.epoch();
-                tauri::async_runtime::spawn(async move { complete_sign_in(app, epoch).await });
+                let completions = Arc::clone(&completions);
+                tauri::async_runtime::spawn(async move {
+                    // Duplicate landings must not race the expired-cookie cleanup.
+                    let _completion = completions.lock().await;
+                    complete_sign_in(app, window, epoch).await;
+                });
             }
         });
     #[cfg(target_os = "macos")]
@@ -96,27 +105,55 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SignInAction {
+    Complete(Option<AuthStatus>),
+    RetryInteractively,
+}
+
+fn sign_in_action(
+    result: Result<Option<AuthStatus>, SessionError>,
+) -> Result<SignInAction, SessionError> {
+    match result {
+        Ok(changed) => Ok(SignInAction::Complete(changed)),
+        Err(SessionError::SameAsExpired) => Ok(SignInAction::RetryInteractively),
+        Err(error) => Err(error),
+    }
+}
+
+fn interactive_login_url() -> Result<Url, AppError> {
+    LOGIN_URL
+        .replacen("&passive=true", "", 1)
+        .parse()
+        .map_err(|_| AppError::internal("invalid interactive login URL"))
+}
+
 /// Reads the login window's cookies and signs in when SAPISID is present and
 /// the session has not changed since `epoch`. The cookie read and the store
 /// save run on the blocking pool.
-async fn complete_sign_in(app: AppHandle, epoch: u64) {
-    let Some(window) = app.get_webview_window(LOGIN_LABEL) else {
-        return;
-    };
+async fn complete_sign_in(app: AppHandle, window: WebviewWindow, epoch: u64) {
     let reader = window.clone();
     let task_app = app.clone();
     let result = blocking(move || {
-        let cookies = reader.cookies()?;
         let state = task_app.state::<AppState>();
-        Ok::<_, tauri::Error>(
+        if state.session.epoch() != epoch {
+            return Ok(Err(SessionError::Stale));
+        }
+        let cookies = reader.cookies()?;
+        let action = sign_in_action(
             state
                 .session
                 .sign_in_if(epoch, youtube_cookie_jar(&cookies)),
-        )
+        );
+        if matches!(action, Ok(SignInAction::RetryInteractively)) && state.session.epoch() == epoch
+        {
+            clear_webview_cookies(&reader, "expired sign-in");
+        }
+        Ok::<_, tauri::Error>(action)
     })
     .await;
     match result {
-        Ok(Ok(Ok(changed))) => {
+        Ok(Ok(Ok(SignInAction::Complete(changed)))) => {
             if let Some(status) = changed {
                 emit_auth_changed(&app, status);
             }
@@ -125,10 +162,17 @@ async fn complete_sign_in(app: AppHandle, epoch: u64) {
         Ok(Ok(Err(SessionError::NoSapisid))) => {
             tracing::debug!("music.youtube.com loaded without SAPISID; waiting for sign-in");
         }
-        Ok(Ok(Err(SessionError::SameAsExpired))) => {
-            tracing::info!(
-                "the WebView still holds the expired session; waiting for a new sign-in"
-            );
+        Ok(Ok(Ok(SignInAction::RetryInteractively))) => {
+            if app.state::<AppState>().session.epoch() == epoch {
+                match interactive_login_url()
+                    .and_then(|url| window.navigate(url).map_err(AppError::from))
+                {
+                    Ok(()) => {
+                        tracing::info!("reopened Google sign-in after rejecting expired cookies")
+                    }
+                    Err(error) => tracing::warn!(%error, "could not reopen Google sign-in"),
+                }
+            }
         }
         Ok(Ok(Err(SessionError::Stale))) => {
             tracing::debug!("discarded a sign-in that started before a session change");
@@ -173,6 +217,29 @@ mod tests {
         assert!(allowed("https://accounts.google.co.kr/accounts/SetSID"));
         assert!(allowed("https://www.google.com.au/"));
         assert!(allowed("https://accounts.google.de/"));
+    }
+
+    #[test]
+    fn expired_cookies_restart_sign_in_without_passive_mode() {
+        assert_eq!(
+            sign_in_action(Err(SessionError::SameAsExpired)).unwrap(),
+            SignInAction::RetryInteractively,
+        );
+        assert!(matches!(
+            sign_in_action(Err(SessionError::Stale)),
+            Err(SessionError::Stale)
+        ));
+
+        let interactive = interactive_login_url().unwrap();
+        assert!(is_allowed_login_navigation(&interactive));
+        let passive: Url = LOGIN_URL.parse().unwrap();
+        assert_eq!(interactive.host_str(), passive.host_str());
+        assert_eq!(interactive.path(), passive.path());
+        let expected: Vec<_> = passive
+            .query_pairs()
+            .filter(|(name, _)| name != "passive")
+            .collect();
+        assert_eq!(interactive.query_pairs().collect::<Vec<_>>(), expected);
     }
 
     #[test]

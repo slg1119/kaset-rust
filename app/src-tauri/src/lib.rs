@@ -12,8 +12,8 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::session::Session;
 use crate::session::store::{STORE_ENV, store_for, store_kind};
-use crate::state::AppState;
-use crate::webview_session::refresh_session_from_webview;
+use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
+use crate::webview_session::{blocking, refresh_session_from_webview};
 
 /// Commands and events exposed to the UI. `bindings_are_current` exports
 /// them to `app/src/bindings.ts`.
@@ -49,9 +49,13 @@ pub fn run() {
                 cfg!(debug_assertions),
             );
             tracing::info!(store = ?kind, "session store selected");
-            let session = Session::new(store_for(kind, &data_dir));
-            let status = session.restore();
-            tracing::info!(?status, "session restored");
+            // Restore before accepting commands. Store I/O runs on the blocking pool.
+            let session = tauri::async_runtime::block_on(blocking(move || {
+                let session = Session::new(store_for(kind, &data_dir));
+                let status = session.restore();
+                tracing::info!(?status, "session restored");
+                session
+            }))?;
             app.manage(AppState::new(session));
             refresh_cookies_from_webview(app.handle().clone());
             Ok(())
@@ -60,12 +64,18 @@ pub fn run() {
         .expect("error while running Kaset");
 }
 
-/// Picks up cookies the WebView rotated since the session was saved, then
-/// opens the launch gate that API commands wait on.
-/// `Session::refresh` ignores this unless the user is signed in.
+/// Gives launch cookie rotation a bounded window before opening the API gate.
 fn refresh_cookies_from_webview(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
-        refresh_session_from_webview(&app, "main", "launch").await;
+        if tokio::time::timeout(
+            LAUNCH_REFRESH_TIMEOUT,
+            refresh_session_from_webview(&app, "main", "launch"),
+        )
+        .await
+        .is_err()
+        {
+            tracing::warn!("launch WebView cookie refresh timed out");
+        }
         app.state::<AppState>().launch.open();
     });
 }

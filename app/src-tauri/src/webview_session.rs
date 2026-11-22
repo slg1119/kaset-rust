@@ -4,10 +4,10 @@
 //! Windows when called from the main thread), and keyring calls block on the
 //! OS store, so both run on Tauri's blocking pool.
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::error::AppError;
-use crate::session::cookies::youtube_cookie_jar;
+use crate::session::cookies::{session_cookies, youtube_cookie_jar};
 use crate::state::AppState;
 
 /// Runs `work` on the blocking pool.
@@ -21,8 +21,32 @@ where
         .map_err(AppError::from)
 }
 
+/// Deletes YouTube and Google session cookies from the shared WebView store,
+/// re-reading up to three times like the Swift app's cookie clearer. Call on
+/// the blocking pool.
+pub(crate) fn clear_webview_cookies(window: &WebviewWindow, reason: &'static str) {
+    for _ in 0..3 {
+        let remaining = match window.cookies() {
+            Ok(cookies) => session_cookies(cookies),
+            Err(error) => {
+                tracing::warn!(%error, reason, "could not read cookies for WebView cleanup");
+                return;
+            }
+        };
+        if remaining.is_empty() {
+            return;
+        }
+        for cookie in remaining {
+            if let Err(error) = window.delete_cookie(cookie) {
+                tracing::warn!(%error, reason, "could not delete a WebView cookie");
+            }
+        }
+    }
+    tracing::warn!(reason, "Google cookies remained after WebView cleanup");
+}
+
 /// Reads the shared cookie store through the `label` window and passes the
-/// YouTube cookies to `Session::refresh`. Runs at launch and after every
+/// YouTube cookies to `Session::refresh_if`. Runs at launch and after every
 /// player page load. Returns true when the in-memory cookies changed.
 pub async fn refresh_session_from_webview(
     app: &AppHandle,
@@ -34,9 +58,14 @@ pub async fn refresh_session_from_webview(
     };
     let task_app = app.clone();
     let result = blocking(move || {
-        let cookies = window.cookies()?;
         let state = task_app.state::<AppState>();
-        Ok::<_, tauri::Error>(state.session.refresh(youtube_cookie_jar(&cookies)))
+        let epoch = state.session.epoch();
+        let cookies = window.cookies()?;
+        Ok::<_, tauri::Error>(
+            state
+                .session
+                .refresh_if(epoch, youtube_cookie_jar(&cookies)),
+        )
     })
     .await;
     match result {

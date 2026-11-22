@@ -89,8 +89,8 @@ impl Session {
     }
 
     /// The current session identity. Capture it before slow work (reading
-    /// login cookies, an API request) and pass it to `sign_in_if` or
-    /// `mark_expired_if`. Never blocks on store I/O.
+    /// WebView cookies, an API request) and pass it to the corresponding
+    /// epoch-guarded operation. Never blocks on store I/O.
     pub fn epoch(&self) -> u64 {
         self.lock_state().epoch
     }
@@ -169,6 +169,9 @@ impl Session {
             {
                 return Err(SessionError::SameAsExpired);
             }
+            if state.status == AuthStatus::SignedIn && self.cookies.get().as_ref() == Some(&jar) {
+                return Ok(None);
+            }
         }
         if let Err(error) = self.store.save(jar.header()) {
             tracing::warn!(%error, "signed in, but the session could not be saved");
@@ -182,13 +185,23 @@ impl Session {
         self.sign_in_if(self.epoch(), jar)
     }
 
-    /// Picks up rotated cookies from the WebView. Ignored unless signed in,
-    /// so it can never sign a user back in after sign-out. Only changes to the
-    /// auth cookie set trigger a save. The epoch is unchanged: rotation keeps
-    /// the same session.
+    /// `refresh_if` with the current epoch.
     pub fn refresh(&self, jar: CookieJar) -> bool {
+        self.refresh_if(self.epoch(), jar)
+    }
+
+    /// Picks up rotated WebView cookies for the current signed-in session.
+    /// Only changes to the auth cookie set trigger a save. Rotation keeps the
+    /// same epoch.
+    pub fn refresh_if(&self, epoch: u64, jar: CookieJar) -> bool {
         let _transition = self.lock_transition();
-        if self.status() != AuthStatus::SignedIn || jar.sapisid().is_none() {
+        {
+            let state = self.lock_state();
+            if state.epoch != epoch || state.status != AuthStatus::SignedIn {
+                return false;
+            }
+        }
+        if jar.sapisid().is_none() {
             return false;
         }
         let previous = self.cookies.get();
@@ -367,7 +380,9 @@ mod tests {
 
     #[test]
     fn sign_in_sets_cookies_persists_and_reports_change() {
-        let session = session_with(MemoryStore::default());
+        let store = CountingStore::default();
+        let saves = Arc::clone(&store.saves);
+        let session = Session::new(Box::new(store));
         assert_eq!(
             session.sign_in(jar("test-sapisid")).unwrap(),
             Some(AuthStatus::SignedIn)
@@ -378,7 +393,10 @@ mod tests {
             Some(Secret::new("SAPISID=test-sapisid; HSID=test-cookie"))
         );
         // A second completion (the page can finish loading twice) is not a change.
+        let epoch = session.epoch();
         assert_eq!(session.sign_in(jar("test-sapisid")).unwrap(), None);
+        assert_eq!(session.epoch(), epoch);
+        assert_eq!(saves.load(Ordering::Relaxed), 1);
     }
 
     #[test]
@@ -483,6 +501,20 @@ mod tests {
             session.store.load().unwrap().as_ref(),
             Some(updated.header())
         );
+    }
+
+    #[test]
+    fn stale_refresh_cannot_overwrite_a_newer_session() {
+        let (session, saves) = restored_counting_session(&jar("test-old"));
+        let epoch = session.epoch();
+        session.sign_out().unwrap();
+        let new = jar("test-new");
+        session.sign_in(new.clone()).unwrap();
+
+        assert!(!session.refresh_if(epoch, jar("test-old-rotated")));
+        assert_eq!(session.cookies().get().as_ref(), Some(&new));
+        assert_eq!(session.store.load().unwrap().as_ref(), Some(new.header()));
+        assert_eq!(saves.load(Ordering::Relaxed), 1);
     }
 
     #[test]
