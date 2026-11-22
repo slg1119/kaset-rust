@@ -1,11 +1,25 @@
 fn main() {
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
-        tauri_build::AppManifest::new().commands(&[
-            "auth_status",
-            "sign_in",
-            "sign_out",
-            "get_home",
-        ]),
-    ))
+    // Test executables need the manifest too, but tauri-build links it only into binaries.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo");
+        let manifest = std::path::Path::new(&manifest_dir).join("windows-app-manifest.xml");
+        println!("cargo:rerun-if-changed=windows-app-manifest.xml");
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    }
+
+    tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(&[
+                "auth_status",
+                "sign_in",
+                "sign_out",
+                "get_home",
+            ]))
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest()),
+    )
     .expect("failed to run tauri-build");
 }
