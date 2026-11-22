@@ -3,6 +3,7 @@
 
 pub mod commands;
 pub mod engine;
+pub mod media;
 pub mod queue;
 pub mod service;
 pub mod video_id;

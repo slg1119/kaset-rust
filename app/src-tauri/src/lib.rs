@@ -70,6 +70,7 @@ pub fn run() {
                 session
             }))?;
             app.manage(AppState::new(session));
+            player::media::attach(app.handle());
             refresh_cookies_from_webview(app.handle().clone());
             Ok(())
         })

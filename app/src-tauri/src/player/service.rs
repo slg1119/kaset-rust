@@ -1,5 +1,5 @@
 //! Applies engine outcomes: drives the player window, emits `player://state`
-//! and `player://queue` to the main window.
+//! and `player://queue` to the main window, and updates the OS media controls.
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -8,6 +8,7 @@ use tauri_specta::Event;
 use tokio::sync::Mutex;
 
 use super::engine::{Outcome, Player, PlayerState, QueueState, WebCommand};
+use super::media::{self, MediaPublisher};
 use super::window;
 use crate::error::AppError;
 use crate::events::{PlayerStateChanged, QueueChanged};
@@ -16,10 +17,15 @@ use crate::events::{PlayerStateChanged, QueueChanged};
 /// no event permissions, so its pages cannot listen to them either.
 const UI_WINDOW: &str = "main";
 
+struct Inner {
+    player: Player,
+    media: MediaPublisher,
+}
+
 pub struct PlayerService {
     // A tokio mutex, held while an outcome is applied, so window commands run
     // in the order the engine produced them. Never locked on the main thread.
-    player: Mutex<Player>,
+    inner: Mutex<Inner>,
 }
 
 impl PlayerService {
@@ -29,7 +35,10 @@ impl PlayerService {
             .map(|elapsed| elapsed.as_nanos() as u64)
             .unwrap_or(1);
         Self {
-            player: Mutex::new(Player::new(seed)),
+            inner: Mutex::new(Inner {
+                player: Player::new(seed),
+                media: MediaPublisher::default(),
+            }),
         }
     }
 
@@ -38,14 +47,19 @@ impl PlayerService {
     where
         F: FnOnce(&mut Player, Instant) -> Result<Outcome, AppError>,
     {
-        let mut player = self.player.lock().await;
-        let outcome = change(&mut player, Instant::now())?;
+        let mut inner = self.inner.lock().await;
+        let now = Instant::now();
+        let outcome = change(&mut inner.player, now)?;
+        if let Some(state) = &outcome.state {
+            let update = inner.media.update(state, now);
+            media::publish(app, update);
+        }
         apply(app, outcome)
     }
 
     pub async fn snapshot(&self) -> (PlayerState, QueueState) {
-        let player = self.player.lock().await;
-        (player.state(), player.queue_state())
+        let inner = self.inner.lock().await;
+        (inner.player.state(), inner.player.queue_state())
     }
 
     /// Stops playback and keeps player commands serialized until sign-out
@@ -55,8 +69,14 @@ impl PlayerService {
         app: &AppHandle,
         sign_out: impl Future<Output = T>,
     ) -> T {
-        let mut player = self.player.lock().await;
-        if let Err(error) = apply(app, player.stop(Instant::now())) {
+        let mut inner = self.inner.lock().await;
+        let now = Instant::now();
+        let outcome = inner.player.stop(now);
+        if let Some(state) = &outcome.state {
+            let update = inner.media.update(state, now);
+            media::publish(app, update);
+        }
+        if let Err(error) = apply(app, outcome) {
             tracing::warn!(%error, "could not stop the player during sign-out");
         }
         sign_out.await
