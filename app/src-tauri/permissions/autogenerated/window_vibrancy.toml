@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-window-vibrancy"
+description = "Enables the window_vibrancy command without any pre-configured scope."
+commands.allow = ["window_vibrancy"]
+
+[[permission]]
+identifier = "deny-window-vibrancy"
+description = "Denies the window_vibrancy command without any pre-configured scope."
+commands.deny = ["window_vibrancy"]

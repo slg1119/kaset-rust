@@ -6,6 +6,7 @@ pub mod player;
 pub mod session;
 pub mod state;
 pub mod webview_session;
+pub mod window_effects;
 
 use tauri::Manager;
 use tauri_specta::{Builder, collect_commands, collect_events};
@@ -24,6 +25,10 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::sign_in,
             commands::sign_out,
             commands::get_home,
+            commands::search,
+            commands::search_suggestions,
+            commands::get_account,
+            commands::window_vibrancy,
             player::commands::play_queue,
             player::commands::toggle_playback,
             player::commands::next_track,
@@ -70,6 +75,11 @@ pub fn run() {
                 session
             }))?;
             app.manage(AppState::new(session));
+            let vibrancy = app
+                .get_webview_window("main")
+                .is_some_and(|window| window_effects::apply(&window));
+            tracing::info!(vibrancy, "main window effects");
+            app.manage(window_effects::WindowEffects { vibrancy });
             player::media::attach(app.handle());
             refresh_cookies_from_webview(app.handle().clone());
             Ok(())

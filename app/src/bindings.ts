@@ -20,12 +20,28 @@ export const commands = {
 	 *  Google cookies.
 	 */
 	signOut: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_out", undefined, options),
-	/**
-	 *  Fetches and parses the signed-in home feed. Waits for the launch cookie
-	 *  refresh first, and expires the session on 401/403 only if it is still the
-	 *  session the request started with.
-	 */
+	/**  Fetches and parses the signed-in home feed. */
 	getHome: (options?: InvokeOptions) => __TAURI_INVOKE<HomePage>("get_home", undefined, options),
+	/**
+	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
+	 *  no results without a request. Overlong queries return `invalid_argument`.
+	 */
+	search: (query: string, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search", { query }, options),
+	/**
+	 *  Autocomplete suggestions for `input`. An empty input returns none
+	 *  without a request.
+	 */
+	searchSuggestions: (input: string, options?: InvokeOptions) => __TAURI_INVOKE<string[]>("search_suggestions", { input }, options),
+	/**
+	 *  The signed-in account's name, handle, and photo for the sidebar; `None`
+	 *  when the response lists no named account.
+	 */
+	getAccount: (options?: InvokeOptions) => __TAURI_INVOKE<Account | null>("get_account", undefined, options),
+	/**
+	 *  Whether native translucency is behind the sidebar (macOS vibrancy,
+	 *  Windows 11 Mica). The UI paints a solid sidebar when it is not.
+	 */
+	windowVibrancy: (options?: InvokeOptions) => __TAURI_INVOKE<boolean>("window_vibrancy", undefined, options),
 	/**  Replaces the queue with `songs` and plays `songs[start_index]`. */
 	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
 	/**  Pauses when playing or loading; otherwise plays. */
@@ -54,6 +70,14 @@ export const events = {
 };
 
 /* Types */
+/**  The signed-in YouTube Music account, for display only. */
+export type Account = {
+	name: string,
+	/**  Channel handle such as `@name`, when the account has one. */
+	handle: string | null,
+	photo_url: string | null,
+};
+
 /**
  *  Error returned by every command. Serializes as `{ kind, message }`.
  *  `message` is for display and never contains cookies or headers.
@@ -174,6 +198,40 @@ export type RepeatMode = "off" |
 /**  Replay the current song when it ends. Next and previous still move. */
 "one";
 
+/**
+ *  One search result, in server order. Songs, videos, and episodes carry a
+ *  video id and can be queued; the rest open detail pages (milestone 5).
+ */
+export type SearchItem = {
+	kind: "song",
+} & Song | {
+	kind: "video",
+} & Song | 
+/**  A podcast episode; `artists` holds the show when the result links it. */
+{
+	kind: "episode",
+} & Song | 
+/**  Albums, singles, EPs, and audiobooks. */
+{
+	kind: "album",
+} & BrowseCard | {
+	kind: "playlist",
+} & BrowseCard | {
+	kind: "artist",
+} & BrowseCard | 
+/**  A user channel (`MUSIC_PAGE_TYPE_USER_CHANNEL`). */
+{
+	kind: "profile",
+} & BrowseCard | {
+	kind: "podcast",
+} & BrowseCard;
+
+export type SearchResults = {
+	items: SearchItem[],
+	/**  Token for the next page; not requested yet. */
+	continuation: string | null,
+};
+
 export type ShelfItem = {
 	kind: "song",
 } & Song | {
@@ -232,6 +290,10 @@ export type MockCommandHandlers = {
     signIn: () => null | Promise<null>,
     signOut: () => null | Promise<null>,
     getHome: () => HomePage | Promise<HomePage>,
+    search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
+    searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
+    getAccount: () => Account | null | Promise<Account | null>,
+    windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
     togglePlayback: () => null | Promise<null>,
     nextTrack: () => null | Promise<null>,
@@ -271,6 +333,10 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "sign_in": return mockCommandHandler(mockHandlers.signIn, "sign_in", args);
             case "sign_out": return mockCommandHandler(mockHandlers.signOut, "sign_out", args);
             case "get_home": return mockCommandHandler(mockHandlers.getHome, "get_home", args);
+            case "search": return mockCommandHandler(mockHandlers.search, "search", args);
+            case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
+            case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);
+            case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);
             case "play_queue": return mockCommandHandler(mockHandlers.playQueue, "play_queue", args);
             case "toggle_playback": return mockCommandHandler(mockHandlers.togglePlayback, "toggle_playback", args);
             case "next_track": return mockCommandHandler(mockHandlers.nextTrack, "next_track", args);

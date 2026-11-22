@@ -1,12 +1,20 @@
+use std::future::Future;
+use std::sync::Arc;
+
 use tauri::{AppHandle, Manager, State};
-use ytm_core::models::HomePage;
+use ytm_core::client::InnerTubeClient;
+use ytm_core::models::{Account, HomePage, SearchResults};
+use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::home::parse_home;
+use ytm_core::parsers::search::parse_search;
+use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
 use crate::error::{AppError, ErrorKind};
 use crate::login::{LOGIN_LABEL, close_login_window, emit_auth_changed, open_login_window};
 use crate::session::AuthStatus;
 use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
 use crate::webview_session::{blocking, clear_webview_cookies};
+use crate::window_effects::WindowEffects;
 
 /// The current sign-in state. The UI calls this once at start and then
 /// follows `auth://changed`.
@@ -51,12 +59,99 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         .map_err(|error| AppError::internal(error.to_string()))
 }
 
-/// Fetches and parses the signed-in home feed. Waits for the launch cookie
-/// refresh first, and expires the session on 401/403 only if it is still the
-/// session the request started with.
+/// Fetches and parses the signed-in home feed.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_home(app: AppHandle, state: State<'_, AppState>) -> Result<HomePage, AppError> {
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_home(&client.browse("FEmusic_home").await?)?)
+    })
+    .await
+}
+
+/// The signed-in account's name, handle, and photo for the sidebar; `None`
+/// when the response lists no named account.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<Account>, AppError> {
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_account(&client.accounts_list().await?))
+    })
+    .await
+}
+
+/// Longest accepted search query or suggestion input, in characters.
+pub const MAX_QUERY_CHARS: usize = 200;
+
+/// Searches YouTube Music (the unfiltered first page). An empty query returns
+/// no results without a request. Overlong queries return `invalid_argument`.
+#[tauri::command]
+#[specta::specta]
+pub async fn search(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<SearchResults, AppError> {
+    let Some(query) = checked_query(&query)?.map(str::to_owned) else {
+        return Ok(SearchResults {
+            items: Vec::new(),
+            continuation: None,
+        });
+    };
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_search(&client.search(&query).await?))
+    })
+    .await
+}
+
+/// Autocomplete suggestions for `input`. An empty input returns none
+/// without a request.
+#[tauri::command]
+#[specta::specta]
+pub async fn search_suggestions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: String,
+) -> Result<Vec<String>, AppError> {
+    let Some(input) = checked_query(&input)?.map(str::to_owned) else {
+        return Ok(Vec::new());
+    };
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_search_suggestions(
+            &client.search_suggestions(&input).await?,
+        ))
+    })
+    .await
+}
+
+/// The trimmed query; `None` when empty, `invalid_argument` when longer than
+/// `MAX_QUERY_CHARS`.
+fn checked_query(query: &str) -> Result<Option<&str>, AppError> {
+    let query = query.trim();
+    if query.chars().count() > MAX_QUERY_CHARS {
+        return Err(AppError::new(
+            ErrorKind::InvalidArgument,
+            format!("Search text is limited to {MAX_QUERY_CHARS} characters."),
+        ));
+    }
+    Ok((!query.is_empty()).then_some(query))
+}
+
+/// Runs an API request for the signed-in session. Waits for the launch cookie
+/// refresh first, and expires the session on 401/403 only if it is still the
+/// session the request started with.
+async fn signed_in_request<T, F, Fut>(
+    app: &AppHandle,
+    state: &AppState,
+    request: F,
+) -> Result<T, AppError>
+where
+    F: FnOnce(Arc<InnerTubeClient>) -> Fut,
+    Fut: Future<Output = Result<T, AppError>>,
+{
     if !state.launch.wait(LAUNCH_REFRESH_TIMEOUT).await {
         tracing::warn!("launch cookie refresh did not finish in time");
     }
@@ -64,16 +159,19 @@ pub async fn get_home(app: AppHandle, state: State<'_, AppState>) -> Result<Home
         return Err(AppError::not_signed_in());
     }
     let epoch = state.session.epoch();
-    let result = async {
-        let client = state.client().await?;
-        let response = client.browse("FEmusic_home").await?;
-        Ok::<_, AppError>(parse_home(&response)?)
-    }
-    .await;
+    let result = async { request(state.client().await?).await }.await;
     match result {
-        Ok(page) => Ok(page),
-        Err(error) => Err(on_error(&app, epoch, error).await),
+        Ok(value) => Ok(value),
+        Err(error) => Err(on_error(app, epoch, error).await),
     }
+}
+
+/// Whether native translucency is behind the sidebar (macOS vibrancy,
+/// Windows 11 Mica). The UI paints a solid sidebar when it is not.
+#[tauri::command]
+#[specta::specta]
+pub async fn window_vibrancy(effects: State<'_, WindowEffects>) -> Result<bool, AppError> {
+    Ok(effects.vibrancy)
 }
 
 /// Moves the session to `Expired` on an auth error for a request that started
@@ -93,4 +191,23 @@ async fn on_error(app: &AppHandle, epoch: u64, error: AppError) -> AppError {
         }
     }
     error
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_query_trims_and_skips_empty_text() {
+        assert_eq!(checked_query("  lofi  ").unwrap(), Some("lofi"));
+        assert_eq!(checked_query(" \t ").unwrap(), None);
+    }
+
+    #[test]
+    fn checked_query_rejects_overlong_text() {
+        let limit = "가".repeat(MAX_QUERY_CHARS);
+        assert_eq!(checked_query(&limit).unwrap(), Some(limit.as_str()));
+        let error = checked_query(&format!("{limit}a")).unwrap_err();
+        assert_eq!(error.kind, ErrorKind::InvalidArgument);
+    }
 }
