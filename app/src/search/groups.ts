@@ -1,41 +1,62 @@
-import type { SearchItem } from "../bindings";
+import type { SearchFilter, SearchItem, SearchResults } from "../bindings";
+import { isPlayable, itemKey } from "../music/items";
 
 export type ResultGroup = {
   title: string;
   items: SearchItem[];
-  /** Songs, videos, and episodes play as a queue from the clicked item. */
-  playable: boolean;
 };
 
-const GROUPS: { title: string; kinds: SearchItem["kind"][]; playable: boolean }[] = [
-  { title: "Songs", kinds: ["song"], playable: true },
-  { title: "Videos", kinds: ["video"], playable: true },
-  { title: "Albums", kinds: ["album"], playable: false },
-  { title: "Artists", kinds: ["artist", "profile"], playable: false },
-  { title: "Playlists", kinds: ["playlist"], playable: false },
-  { title: "Podcasts", kinds: ["podcast"], playable: false },
-  { title: "Episodes", kinds: ["episode"], playable: true },
+const GROUPS: { title: string; kinds: SearchItem["kind"][] }[] = [
+  { title: "Songs", kinds: ["song"] },
+  { title: "Videos", kinds: ["video"] },
+  { title: "Albums", kinds: ["album"] },
+  { title: "Artists", kinds: ["artist", "profile"] },
+  { title: "Playlists", kinds: ["playlist"] },
+  { title: "Podcasts", kinds: ["podcast"] },
+  { title: "Episodes", kinds: ["episode"] },
 ];
 
 /** Results grouped by type in a fixed order, keeping server order inside each group. */
 export function groupResults(items: SearchItem[]): ResultGroup[] {
   return GROUPS.map((group) => ({
     title: group.title,
-    playable: group.playable,
     items: items.filter((item) => group.kinds.includes(item.kind)),
   })).filter((group) => group.items.length > 0);
 }
 
-export type Filter = "all" | "songs" | "albums" | "artists" | "playlists";
-
-/** The filter chips, in display order. They filter the loaded results; no new request. */
-export const FILTERS: { value: Filter; label: string; group?: string }[] = [
+/** Server-side filter chips in display order. */
+export const FILTERS = [
   { value: "all", label: "All" },
-  { value: "songs", label: "Songs", group: "Songs" },
-  { value: "albums", label: "Albums", group: "Albums" },
-  { value: "artists", label: "Artists", group: "Artists" },
-  { value: "playlists", label: "Playlists", group: "Playlists" },
-];
+  { value: "songs", label: "Songs" },
+  { value: "albums", label: "Albums" },
+  { value: "artists", label: "Artists" },
+  { value: "playlists", label: "Playlists" },
+  { value: "videos", label: "Videos" },
+  { value: "podcasts", label: "Podcasts" },
+  { value: "episodes", label: "Episodes" },
+  { value: "profiles", label: "Profiles" },
+] as const satisfies readonly { value: "all" | SearchFilter; label: string }[];
+
+export type Filter = (typeof FILTERS)[number]["value"];
+
+/** Keep the first result for an identity, including overlaps across pages. */
+export function mergeSearchPages(pages: SearchResults[]): SearchItem[] {
+  const items = new Map<string, SearchItem>();
+  for (const page of pages) {
+    for (const item of page.items) {
+      const key = searchIdentity(item);
+      if (!items.has(key)) items.set(key, item);
+    }
+  }
+  return [...items.values()];
+}
+
+function searchIdentity(item: SearchItem): string {
+  if (isPlayable(item)) return `video:${item.video_id}`;
+  if (item.kind === "profile") return `artist:${item.browse_id}`;
+  if (item.kind === "playlist") return `playlist:${item.browse_id.replace(/^VL/, "")}`;
+  return itemKey(item);
+}
 
 /** The kind label shown on the top-result card. */
 export const KIND_LABEL: Record<SearchItem["kind"], string> = {

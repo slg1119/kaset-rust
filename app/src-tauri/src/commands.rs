@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
 use ytm_core::client::{InnerTubeClient, playlist_browse_id};
-use ytm_core::models::{Account, BrowsePage, SearchResults};
+use ytm_core::models::{Account, BrowsePage, SearchFilter, SearchResults};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
-use ytm_core::parsers::search::parse_search;
+use ytm_core::parsers::search::{parse_search, parse_search_continuation};
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
 use crate::error::{AppError, ErrorKind};
@@ -115,7 +115,7 @@ pub async fn get_account(
 /// Longest accepted search query or suggestion input, in characters.
 pub const MAX_QUERY_CHARS: usize = 200;
 
-/// Searches YouTube Music (the unfiltered first page). An empty query returns
+/// Searches YouTube Music with an optional filter. An empty query returns
 /// no results without a request. Overlong queries return `invalid_argument`.
 #[tauri::command]
 #[specta::specta]
@@ -123,6 +123,7 @@ pub async fn search(
     app: AppHandle,
     state: State<'_, AppState>,
     query: String,
+    filter: Option<SearchFilter>,
 ) -> Result<SearchResults, AppError> {
     let Some(query) = checked_query(&query)?.map(str::to_owned) else {
         return Ok(SearchResults {
@@ -131,9 +132,37 @@ pub async fn search(
         });
     };
     signed_in_request(&app, &state, |client| async move {
-        Ok(parse_search(&client.search(&query).await?))
+        let response = match filter {
+            Some(filter) => client.search_filtered(&query, filter).await?,
+            None => client.search(&query).await?,
+        };
+        Ok(parse_search(&response))
     })
     .await
+}
+
+/// Fetches another search page. The UI tracks the filter for its cache, and
+/// YouTube Music uses the filter already encoded in the continuation token.
+#[tauri::command]
+#[specta::specta]
+pub async fn search_continuation(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    token: String,
+    filter: Option<SearchFilter>,
+) -> Result<SearchResults, AppError> {
+    let _ = filter;
+    checked_search_token(&token)?;
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_search_continuation(
+            &client.search_continuation(&token).await?,
+        ))
+    })
+    .await
+}
+
+fn checked_search_token(token: &str) -> Result<(), AppError> {
+    checked_browse_value(token, 1..=4096, b"%=+/.", "Invalid search continuation.")
 }
 
 /// Autocomplete suggestions for `input`. An empty input returns none
@@ -256,5 +285,25 @@ mod tests {
         assert_eq!(checked_query(&limit).unwrap(), Some(limit.as_str()));
         let error = checked_query(&format!("{limit}a")).unwrap_err();
         assert_eq!(error.kind, ErrorKind::InvalidArgument);
+    }
+
+    #[test]
+    fn search_continuation_enforces_the_opaque_token_contract() {
+        for token in ["test_-%3D=+/.9", &"a".repeat(4096)] {
+            assert!(checked_search_token(token).is_ok());
+        }
+        for token in [
+            "",
+            "test?token",
+            "test token",
+            "token\n",
+            "가",
+            &"a".repeat(4097),
+        ] {
+            assert_eq!(
+                checked_search_token(token).unwrap_err().kind,
+                ErrorKind::InvalidArgument
+            );
+        }
     }
 }

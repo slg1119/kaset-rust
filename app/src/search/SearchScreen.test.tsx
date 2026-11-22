@@ -1,8 +1,8 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
-import { mockCommands } from "../bindings";
+import { mockCommands, type SearchItem } from "../bindings";
 import { searchResults } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import type { Filter } from "./groups";
@@ -35,7 +35,7 @@ test("submitting shows the top result, then results grouped by type", async () =
 
   expect(field()).toHaveFocus();
   await userEvent.type(field(), "  test query {Enter}");
-  expect(search).toHaveBeenCalledWith({ query: "test query" });
+  expect(search).toHaveBeenCalledWith({ query: "test query", filter: null });
 
   const headings = await screen.findAllByRole("heading", { level: 2 });
   expect(headings.map((heading) => heading.textContent)).toEqual(["Top result", "Songs", "Videos", "Albums"]);
@@ -54,28 +54,102 @@ test("submitting shows the top result, then results grouped by type", async () =
   expect(within(albums).getByText("Test artist • 2024")).toBeInTheDocument();
 });
 
-test("filter chips narrow the loaded results without a new request", async () => {
-  const search = vi.fn(() => searchResults);
+test("filter chips request server results and All restores its cached results", async () => {
+  const search = vi.fn(({ filter }: { filter?: string | null }) => {
+    if (filter === "albums") return { items: searchResults.items.filter((item) => item.kind === "album"), continuation: null };
+    if (filter === "profiles") return { items: [], continuation: null };
+    return searchResults;
+  });
   mockCommands({ search, searchSuggestions: () => [] });
   renderWithProviders(<Harness initial="test query" />);
 
   const chips = await screen.findByRole("group", { name: "Filter results" });
   expect(within(chips).getAllByRole("button").map((chip) => chip.textContent)).toEqual([
-    "All",
-    "Songs",
-    "Albums",
-    "Artists",
-    "Playlists",
+    "All", "Songs", "Albums", "Artists", "Playlists", "Videos", "Podcasts", "Episodes", "Profiles",
   ]);
   expect(within(chips).getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
 
   await userEvent.click(within(chips).getByRole("button", { name: "Albums" }));
-  expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Albums"]);
-  await userEvent.click(within(chips).getByRole("button", { name: "Artists" }));
-  expect(screen.getByRole("region", { name: "Artists" })).toHaveTextContent("Test artist");
-  await userEvent.click(within(chips).getByRole("button", { name: "Playlists" }));
-  expect(screen.getByText("No playlists in these results.")).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "Albums" })).toHaveTextContent("Found album");
+  expect(screen.queryByRole("heading", { name: "Top result" })).not.toBeInTheDocument();
+  expect(search).toHaveBeenLastCalledWith({ query: "test query", filter: "albums" });
+
+  await userEvent.click(within(chips).getByRole("button", { name: "Profiles" }));
+  expect(await screen.findByText("No results for “test query”.")).toBeInTheDocument();
+  expect(search).toHaveBeenLastCalledWith({ query: "test query", filter: "profiles" });
+
+  await userEvent.click(within(chips).getByRole("button", { name: "All" }));
+  expect(await screen.findByRole("region", { name: "Top result" })).toBeInTheDocument();
+  expect(search).toHaveBeenCalledTimes(3);
+});
+
+const video: SearchItem = { kind: "video", video_id: "test-video1", title: "First video", artists: [], thumbnail_url: null };
+const moreVideo = { ...video, video_id: "test-video2", title: "More video" };
+
+test("scroll appends filtered video results once and the new video plays", async () => {
+  const searchContinuation = vi.fn(() => ({
+    items: [video, moreVideo],
+    continuation: "test-continuation",
+  }));
+  const playQueue = vi.fn(() => null);
+  let intersect: (() => void) | undefined;
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: IntersectionObserverCallback) {
+      intersect = () => callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    }
+    observe() {}
+    disconnect() {}
+  });
+  try {
+    mockCommands({
+      search: ({ filter }) => filter === "videos" ? {
+        items: [video], continuation: "test-continuation",
+      } : searchResults,
+      searchContinuation,
+      playQueue,
+    });
+    renderWithProviders(<Harness initial="test query" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Videos" }));
+    await screen.findByRole("button", { name: "Play First video" });
+    await vi.waitFor(() => expect(intersect).toBeDefined());
+    act(() => intersect?.());
+    const more = await screen.findByRole("button", { name: "Play More video" });
+    expect(screen.getAllByRole("button", { name: "Play First video" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(searchContinuation).toHaveBeenCalledExactlyOnceWith({ token: "test-continuation", filter: "videos" });
+
+    await userEvent.click(more);
+    expect(playQueue).toHaveBeenCalledWith({
+      songs: [
+        { video_id: "test-video1", title: "First video", artists: [], thumbnail_url: null },
+        { video_id: "test-video2", title: "More video", artists: [], thumbnail_url: null },
+      ],
+      startIndex: 1,
+    });
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test("continuation failure leaves results visible and retries only the next page", async () => {
+  const search = vi.fn(() => ({ ...searchResults, continuation: "test-continuation" }));
+  const searchContinuation = vi.fn()
+    .mockImplementationOnce(() => { throw { kind: "network", message: "Page unavailable" }; })
+    .mockReturnValue({ items: [moreVideo], continuation: null });
+  mockCommands({ search, searchContinuation });
+  renderWithProviders(<Harness initial="test query" />);
+
+  await userEvent.click(await screen.findByRole("button", { name: "Load more" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Page unavailable");
+  expect(screen.getByRole("region", { name: "Top result" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Retry loading more" }));
+  expect(await screen.findByRole("button", { name: "Play More video" })).toBeInTheDocument();
   expect(search).toHaveBeenCalledTimes(1);
+  expect(searchContinuation.mock.calls).toEqual([
+    [{ token: "test-continuation", filter: null }],
+    [{ token: "test-continuation", filter: null }],
+  ]);
 });
 
 test("a playable top result plays on its own", async () => {
@@ -141,7 +215,7 @@ test("suggestions are debounced and selectable with the keyboard", async () => {
   expect(field()).toHaveAttribute("aria-activedescendant", remix.id);
 
   await userEvent.keyboard("{Enter}");
-  expect(search).toHaveBeenCalledWith({ query: "lofi remix" });
+  expect(search).toHaveBeenCalledWith({ query: "lofi remix", filter: null });
   expect(field()).toHaveValue("lofi remix");
   expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 });
@@ -158,7 +232,7 @@ test("clicking a suggestion searches for it and Escape closes the list", async (
 
   await userEvent.type(field(), "s");
   await userEvent.click(await screen.findByRole("option", { name: "second idea" }));
-  expect(search).toHaveBeenCalledWith({ query: "second idea" });
+  expect(search).toHaveBeenCalledWith({ query: "second idea", filter: null });
 });
 
 test("no results and errors are explained", async () => {
@@ -209,7 +283,7 @@ test.each([{ isComposing: true }, { keyCode: 229 }])(
     (field() as HTMLInputElement).value = "한글";
     expect(fireEvent.keyDown(field(), { key: "Enter" })).toBe(true);
     fireEvent.submit(screen.getByRole("search"));
-    expect(search).toHaveBeenCalledExactlyOnceWith({ query: "한글" });
+    expect(search).toHaveBeenCalledExactlyOnceWith({ query: "한글", filter: null });
   },
 );
 

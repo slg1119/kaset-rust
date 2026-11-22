@@ -31,6 +31,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::feed::get_feed_continuation,
             commands::get_browse_page,
             commands::search,
+            commands::search_continuation,
             commands::search_suggestions,
             commands::get_account,
             commands::window_vibrancy,

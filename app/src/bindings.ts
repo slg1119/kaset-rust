@@ -31,10 +31,15 @@ export const commands = {
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
 	/**
-	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
+	 *  Searches YouTube Music with an optional filter. An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
 	 */
-	search: (query: string, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search", { query }, options),
+	search: (query: string, filter: SearchFilter | null, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search", { query, filter }, options),
+	/**
+	 *  Fetches another search page. The UI tracks the filter for its cache, and
+	 *  YouTube Music uses the filter already encoded in the continuation token.
+	 */
+	searchContinuation: (token: string, filter: SearchFilter | null, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search_continuation", { token, filter }, options),
 	/**
 	 *  Autocomplete suggestions for `input`. An empty input returns none
 	 *  without a request.
@@ -223,6 +228,9 @@ export type RepeatMode = "off" |
 /**  Replay the current song when it ends. Next and previous still move. */
 "one";
 
+/**  A server-side YouTube Music search filter. */
+export type SearchFilter = "songs" | "videos" | "albums" | "artists" | "profiles" | "playlists" | "featured_playlists" | "community_playlists" | "podcasts" | "episodes";
+
 /**
  *  One search result, in server order. Songs, videos, and episodes carry a
  *  video id and can be queued; the rest open detail pages (milestone 5).
@@ -253,7 +261,7 @@ export type SearchItem = {
 
 export type SearchResults = {
 	items: SearchItem[],
-	/**  Token for the next page; not requested yet. */
+	/**  Token for the next page. */
 	continuation: string | null,
 };
 
@@ -319,7 +327,8 @@ export type MockCommandHandlers = {
     getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
     getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
-    search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
+    search: (args: { query: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
+    searchContinuation: (args: { token: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
     windowVibrancy: () => boolean | Promise<boolean>,
@@ -367,6 +376,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
+            case "search_continuation": return mockCommandHandler(mockHandlers.searchContinuation, "search_continuation", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);
             case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);

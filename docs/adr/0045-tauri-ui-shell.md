@@ -24,17 +24,17 @@ afterwards.
   Swift `SearchResponseParser` (server order, first occurrence wins, browse
   semantics before watch fallbacks). `SearchItem` is `song | video | episode`
   (playable `Song`) or `album | playlist | artist | profile | podcast`
-  (`BrowseCard`); audiobooks fold into `album`. One unfiltered request; filtered
-  searches and continuation pages are later work. `parse_search_suggestions`
-  returns text and history suggestions, deduplicated. `ytm-explorer` gains
-  `search` and `suggest`.
+  (`BrowseCard`); audiobooks fold into `album`. M5b adds the Swift client's
+  server-side filters and parses continuation shelves and action envelopes.
+  `parse_search_suggestions` returns text and history suggestions, deduplicated.
+  `ytm-explorer` supports `search`, `search-filtered`, `search-continue`, and `suggest`.
 - **Shared music feeds** in M5b include Home, Explore, Charts, Moods & Genres,
   New releases, History, and category pages. Mood and genre
   buttons open a feed keyed by browse ID and params. Home queries each topic
   by its own params. Infinite queries append continuation shelves and stop
   when a token is missing or repeats. History is stale immediately so it
   refreshes on entry.
-- **Commands:** `search` and `search_suggestions` share `signed_in_request`
+- **Commands:** `search`, `search_continuation`, and `search_suggestions` share `signed_in_request`
   with `get_feed` (launch gate, signed-in check, epoch-guarded expiry). Queries
   are trimmed. Empty search and empty suggestion input return no results
   without a request. Input over 200 characters returns `invalid_argument`.
@@ -50,6 +50,10 @@ afterwards.
   suggestions 60 s, and account 30 min. The client disables refetch on window
   focus and retries `network`/`http` errors once. The cache is cleared whenever
   the auth status leaves `signed_in`.
+- **Search pagination** keys results by submitted query and filter. Scrolling
+  appends unique results and stops when the continuation is missing or repeats.
+  Load more provides a keyboard-accessible trigger and retries preserve loaded
+  results. Filtered results retain server order, and videos use the song queue.
 - **Errors:** one app-wide notice area for action errors (play, controls,
   shortcuts, sign out, player snapshot); screens keep their own load errors with
   Retry. Auth routing stays backend-driven through `auth://changed`.
@@ -65,7 +69,7 @@ afterwards.
   240 px sidebar (Search, music feeds, account block), a 56 px sticky header, Home as a
   three-column Quick picks grid plus six-column carousels (round artist cards),
   Search with the field in the header, filter chips (All, Songs, Albums,
-  Artists, Playlists; English until localization), and a top-result card; a
+  Artists, Playlists, Videos, Podcasts, Episodes, Profiles, in English), and a top-result card; a
   floating player bar inset 24 px whose measured height sets the content's
   bottom padding. Plain CSS, no UI framework.
 - **Blur:** CSS `backdrop-filter` (with `-webkit-`) on the sticky header, the

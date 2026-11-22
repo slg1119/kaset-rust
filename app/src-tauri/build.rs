@@ -23,6 +23,7 @@ fn main() {
                 "get_feed_continuation",
                 "get_browse_page",
                 "search",
+                "search_continuation",
                 "search_suggestions",
                 "get_account",
                 "window_vibrancy",
