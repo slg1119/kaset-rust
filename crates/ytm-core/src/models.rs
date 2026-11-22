@@ -76,6 +76,16 @@ pub struct SearchResults {
     pub continuation: Option<String>,
 }
 
+/// The signed-in YouTube Music account, for display only.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Account {
+    pub name: String,
+    /// Channel handle such as `@name`, when the account has one.
+    pub handle: Option<String>,
+    pub photo_url: Option<String>,
+}
+
 #[cfg(all(test, feature = "specta"))]
 mod specta_tests {
     use super::*;
@@ -92,6 +102,7 @@ mod specta_tests {
         assert_type::<HomePage>();
         assert_type::<SearchItem>();
         assert_type::<SearchResults>();
+        assert_type::<Account>();
     }
 }
 

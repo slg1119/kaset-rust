@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
+use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::home::parse_home;
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
@@ -43,6 +44,15 @@ enum Command {
     /// parsed suggestions with --parse.
     Suggest {
         input: String,
+        #[arg(long)]
+        parse: bool,
+        /// Write output to a file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// POST /account/accounts_list (needs KASET_COOKIE_FILE) and print the raw
+    /// JSON, or the selected account with --parse.
+    Account {
         #[arg(long)]
         parse: bool,
         /// Write output to a file instead of stdout.
@@ -97,6 +107,15 @@ async fn main() -> Result<()> {
             let raw = client.search_suggestions(&input).await?;
             let text = if parse {
                 serde_json::to_string_pretty(&parse_search_suggestions(&raw))?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, out)
+        }
+        Command::Account { parse, out } => {
+            let raw = client.accounts_list().await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_account(&raw))?
             } else {
                 serde_json::to_string_pretty(&raw)?
             };

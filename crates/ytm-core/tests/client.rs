@@ -227,3 +227,24 @@ async fn search_maps_auth_errors() {
         Err(YtmError::AuthExpired)
     ));
 }
+
+#[tokio::test]
+async fn accounts_list_posts_an_empty_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/account/accounts_list"))
+        .and(body_partial_json(json!({
+            "context": { "client": { "clientName": "WEB_REMIX" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "actions": [] })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let jar = CookieJar::from_header("SAPISID=test-sapisid");
+    let client = InnerTubeClient::new(config_for(&server), Some(jar)).unwrap();
+    assert_eq!(
+        client.accounts_list().await.unwrap(),
+        json!({ "actions": [] })
+    );
+}

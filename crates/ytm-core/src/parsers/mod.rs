@@ -1,3 +1,4 @@
+pub mod account;
 mod helpers;
 pub mod home;
 pub mod search;

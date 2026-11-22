@@ -157,4 +157,9 @@ impl InnerTubeClient {
         body.insert("input".into(), input.into());
         self.post("music/get_search_suggestions", body).await
     }
+
+    /// POST `account/accounts_list`: the Google account's YouTube identities.
+    pub async fn accounts_list(&self) -> Result<Value, YtmError> {
+        self.post("account/accounts_list", Map::new()).await
+    }
 }
