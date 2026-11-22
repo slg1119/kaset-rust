@@ -93,6 +93,11 @@ mod tests {
     }
 
     #[test]
+    fn empty_webview_cookies_have_no_sapisid() {
+        assert!(youtube_cookie_jar(&[]).sapisid().is_none());
+    }
+
+    #[test]
     fn jar_prefers_secure_sapisid_from_webview_cookies() {
         let cookies = vec![
             cookie("SAPISID", "test-sapisid", ".youtube.com"),

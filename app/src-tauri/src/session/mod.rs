@@ -7,7 +7,7 @@ pub mod store;
 
 pub use status::AuthStatus;
 
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use store::{SessionStore, StoreError};
 use ytm_core::auth::{CookieJar, SharedCookies};
@@ -22,12 +22,14 @@ pub enum SessionError {
 
 /// Owns the cookies the API client sends and the persisted copy.
 ///
-/// Every mutating method returns `Some(new_status)` when the status changed,
-/// so the caller knows to emit `auth://changed`.
+/// A return value of `Some(new_status)` signals that the caller should emit
+/// `auth://changed`.
 pub struct Session {
     cookies: SharedCookies,
     status: Mutex<AuthStatus>,
     store: Box<dyn SessionStore>,
+    // Serializes status decisions, store I/O, and shared cookie updates.
+    transition: Mutex<()>,
 }
 
 impl Session {
@@ -36,6 +38,7 @@ impl Session {
             cookies: SharedCookies::default(),
             status: Mutex::new(AuthStatus::SignedOut),
             store,
+            transition: Mutex::new(()),
         }
     }
 
@@ -46,6 +49,12 @@ impl Session {
 
     pub fn status(&self) -> AuthStatus {
         *self.status.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn lock_transition(&self) -> MutexGuard<'_, ()> {
+        self.transition
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     fn set_status(&self, next: AuthStatus) -> Option<AuthStatus> {
@@ -59,6 +68,7 @@ impl Session {
     /// Loads the stored session at launch. A store error or a stored header
     /// without SAPISID leaves the user signed out.
     pub fn restore(&self) -> AuthStatus {
+        let _transition = self.lock_transition();
         let jar = match self.store.load() {
             Ok(Some(header)) => Some(CookieJar::from_header(header.expose())),
             Ok(None) => None,
@@ -84,6 +94,7 @@ impl Session {
     /// A failed save keeps the in-memory session and is logged; the user stays
     /// signed in until the app quits.
     pub fn sign_in(&self, jar: CookieJar) -> Result<Option<AuthStatus>, SessionError> {
+        let _transition = self.lock_transition();
         if jar.sapisid().is_none() {
             return Err(SessionError::NoSapisid);
         }
@@ -97,6 +108,7 @@ impl Session {
     /// Picks up rotated cookies from the WebView. Ignored unless signed in,
     /// so it can never sign a user back in after sign-out.
     pub fn refresh(&self, jar: CookieJar) -> bool {
+        let _transition = self.lock_transition();
         if self.status() != AuthStatus::SignedIn || jar.sapisid().is_none() {
             return false;
         }
@@ -113,6 +125,7 @@ impl Session {
     /// The API answered 401/403. Keeps the cookies (a new sign-in replaces
     /// them) and asks the UI to prompt for sign-in.
     pub fn mark_expired(&self) -> Option<AuthStatus> {
+        let _transition = self.lock_transition();
         if self.status() != AuthStatus::SignedIn {
             return None;
         }
@@ -122,6 +135,7 @@ impl Session {
     /// Forgets the session in memory and in the store. The in-memory state is
     /// cleared even when the store fails, and the error is returned.
     pub fn sign_out(&self) -> Result<Option<AuthStatus>, SessionError> {
+        let _transition = self.lock_transition();
         self.cookies.set(None);
         let changed = self.set_status(AuthStatus::SignedOut);
         self.store.clear()?;
@@ -131,6 +145,10 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::thread;
+    use std::time::Duration;
+
     use super::*;
     use store::{MemoryStore, SessionStore};
     use ytm_core::auth::CookieJar;
@@ -142,6 +160,48 @@ mod tests {
 
     fn session_with(store: MemoryStore) -> Session {
         Session::new(Box::new(store))
+    }
+
+    struct BlockingSaveStore {
+        inner: MemoryStore,
+        save_started: Sender<()>,
+        release_save: Mutex<Receiver<()>>,
+    }
+
+    impl SessionStore for BlockingSaveStore {
+        fn load(&self) -> Result<Option<Secret>, StoreError> {
+            self.inner.load()
+        }
+
+        fn save(&self, header: &Secret) -> Result<(), StoreError> {
+            self.save_started.send(()).unwrap();
+            self.release_save
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            self.inner.save(header)
+        }
+
+        fn clear(&self) -> Result<(), StoreError> {
+            self.inner.clear()
+        }
+    }
+
+    struct NoSaveStore(MemoryStore);
+
+    impl SessionStore for NoSaveStore {
+        fn load(&self) -> Result<Option<Secret>, StoreError> {
+            self.0.load()
+        }
+
+        fn save(&self, _: &Secret) -> Result<(), StoreError> {
+            panic!("an empty WebView cookie jar must never be saved");
+        }
+
+        fn clear(&self) -> Result<(), StoreError> {
+            self.0.clear()
+        }
     }
 
     #[test]
@@ -255,6 +315,80 @@ mod tests {
             ))
         );
         assert!(!session.refresh(CookieJar::from_pairs([("HSID", "test-cookie")])));
+    }
+
+    #[test]
+    fn sign_out_clears_a_concurrent_refresh() {
+        let (save_started, wait_for_save) = mpsc::channel();
+        let (release_save, wait_for_release) = mpsc::channel();
+        let inner = MemoryStore::default();
+        inner.save(jar("test-sapisid").header()).unwrap();
+        let session = Session::new(Box::new(BlockingSaveStore {
+            inner,
+            save_started,
+            release_save: Mutex::new(wait_for_release),
+        }));
+        assert_eq!(session.restore(), AuthStatus::SignedIn);
+
+        thread::scope(|scope| {
+            let refresh = scope.spawn(|| session.refresh(jar("test-sapisid-rotated")));
+            wait_for_save.recv_timeout(Duration::from_secs(5)).unwrap();
+
+            let (sign_out_started, wait_for_sign_out) = mpsc::channel();
+            let (sign_out_finished, wait_for_finish) = mpsc::channel();
+            let session = &session;
+            let sign_out = scope.spawn(move || {
+                sign_out_started.send(()).unwrap();
+                let result = session.sign_out();
+                sign_out_finished.send(()).unwrap();
+                result
+            });
+            wait_for_sign_out
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            // The old code can complete sign-out while save is parked. The
+            // fixed code waits, so release save after a bounded wait.
+            let _ = wait_for_finish.recv_timeout(Duration::from_secs(1));
+            release_save.send(()).unwrap();
+
+            assert!(refresh.join().unwrap());
+            assert_eq!(
+                sign_out.join().unwrap().unwrap(),
+                Some(AuthStatus::SignedOut)
+            );
+        });
+
+        assert_eq!(session.status(), AuthStatus::SignedOut);
+        assert_eq!(
+            (
+                session.cookies().get().is_none(),
+                session.store.load().unwrap().is_none()
+            ),
+            (true, true),
+            "sign-out must clear both shared cookies and the persisted session"
+        );
+    }
+
+    #[test]
+    fn empty_webview_jar_leaves_the_session_unchanged_without_saving() {
+        let original = jar("test-sapisid");
+        let store = MemoryStore::default();
+        store.save(original.header()).unwrap();
+        let session = Session::new(Box::new(NoSaveStore(store)));
+        assert_eq!(session.restore(), AuthStatus::SignedIn);
+
+        let empty = cookies::youtube_cookie_jar(&[]);
+        assert!(matches!(
+            session.sign_in(empty.clone()),
+            Err(SessionError::NoSapisid)
+        ));
+        assert!(!session.refresh(empty));
+        assert_eq!(session.status(), AuthStatus::SignedIn);
+        assert_eq!(session.cookies().get().as_ref(), Some(&original));
+        assert_eq!(
+            session.store.load().unwrap().as_ref(),
+            Some(original.header())
+        );
     }
 
     #[test]
