@@ -113,12 +113,24 @@ Repeatable, repo-specific workflows live in `.agents/skills/` (also exposed as `
 
 ## Tauri port (in progress)
 
-The app is being rewritten as a Tauri 2 + Rust app (ADR-0042) on branch
-`feat/tauri-port`. Until the Swift sources are deleted, both trees exist.
+The app is being rewritten as a Tauri 2 + Rust app (ADR-0042) on `main`. Until
+the Swift sources are deleted, both trees exist.
 
 - Rust workspace: `crates/ytm-core` (InnerTube client, parsers; no Tauri
-  dependency) and `crates/ytm-explorer` (read-only API probes, replaces
-  `Sources/APIExplorer` for Rust work).
-- Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
-- Credentials stay in `ytm_core::secret::Secret`; never log cookie values.
+  dependency, optional `specta` feature), `crates/ytm-explorer` (read-only API
+  probes, replaces `Sources/APIExplorer` for Rust work), and `app/src-tauri`
+  (crate `kaset`, the Tauri shell).
+- Rust checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
+- App (`app/`, pnpm): `pnpm install`, `pnpm tauri dev`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm tauri build`.
+- IPC: commands and events go through `tauri-specta`. After changing a command,
+  event, or a type they use, run `cargo test -p kaset bindings_are_current` and
+  commit `app/src/bindings.ts`. Never hand-write `invoke("…")` in the frontend.
+- Session storage (ADR-0043): OS secure store via `keyring`. For local debug
+  builds, `KASET_SESSION_STORE=file pnpm tauri dev` stores the session in
+  `dev-session.txt` in the app data directory instead of the Keychain (debug
+  builds only).
+- Read WebView cookies with `Webview::cookies()` plus a domain filter, never
+  `cookies_for_url`, and only from async code (it deadlocks on Windows otherwise).
+- Credentials stay in `ytm_core::secret::Secret`; never log cookie values or
+  format `keyring::Error`.
 - The Swift-era minimal-dependency rule does not apply to the Rust/Tauri code.
