@@ -218,3 +218,34 @@ fn classify(page_type: Option<&str>, card: BrowseCard) -> Option<ShelfItem> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn two_row_album_reads_thumbnail_renderer_artwork() {
+        let item = json!({
+            "musicTwoRowItemRenderer": {
+                "title": {"runs": [{"text": "Test Album"}]},
+                "navigationEndpoint": {"browseEndpoint": {"browseId": "MPREtest"}},
+                "thumbnailRenderer": {
+                    "musicThumbnailRenderer": {
+                        "thumbnail": {
+                            "thumbnails": [{"url": "https://lh3.googleusercontent.com/test-art"}]
+                        }
+                    }
+                }
+            }
+        });
+
+        let Some(ShelfItem::Album(card)) = parse_item(&item) else {
+            panic!("expected an album card");
+        };
+        assert_eq!(
+            card.thumbnail_url.as_deref(),
+            Some("https://lh3.googleusercontent.com/test-art")
+        );
+    }
+}
