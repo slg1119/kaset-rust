@@ -144,7 +144,7 @@ fn is_english_engagement_count(text: &str) -> bool {
     ) && (count == "no" || count.chars().all(|ch| "0123456789.,+kmbt".contains(ch)))
 }
 
-fn is_clock_duration(text: &str) -> bool {
+pub(super) fn is_clock_duration(text: &str) -> bool {
     if !text.contains(':') {
         return false;
     }

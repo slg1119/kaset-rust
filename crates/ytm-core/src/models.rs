@@ -49,6 +49,33 @@ pub struct HomePage {
     pub continuation: Option<String>,
 }
 
+/// One search result, in server order. Songs, videos, and episodes carry a
+/// video id and can be queued; the rest open detail pages (milestone 5).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SearchItem {
+    Song(Song),
+    Video(Song),
+    /// A podcast episode; `artists` holds the show when the result links it.
+    Episode(Song),
+    /// Albums, singles, EPs, and audiobooks.
+    Album(BrowseCard),
+    Playlist(BrowseCard),
+    Artist(BrowseCard),
+    /// A user channel (`MUSIC_PAGE_TYPE_USER_CHANNEL`).
+    Profile(BrowseCard),
+    Podcast(BrowseCard),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct SearchResults {
+    pub items: Vec<SearchItem>,
+    /// Token for the next page; not requested yet.
+    pub continuation: Option<String>,
+}
+
 #[cfg(all(test, feature = "specta"))]
 mod specta_tests {
     use super::*;
@@ -63,6 +90,8 @@ mod specta_tests {
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<HomePage>();
+        assert_type::<SearchItem>();
+        assert_type::<SearchResults>();
     }
 }
 

@@ -1,0 +1,30 @@
+---
+source: crates/ytm-core/tests/search_parser.rs
+expression: results
+---
+items:
+  - kind: song
+    video_id: search-video-1
+    title: Search Result Song 1
+    artists:
+      - name: Search Artist 1
+        browse_id: UC-search-artist-1
+    thumbnail_url: "https://example.com/search-thumb-1.jpg"
+  - kind: song
+    video_id: search-video-2
+    title: Search Result Song 2
+    artists:
+      - name: Search Artist 2
+        browse_id: UC-search-artist-2
+    thumbnail_url: "https://example.com/search-thumb-2.jpg"
+  - kind: album
+    browse_id: MPREb_search_album_1
+    title: Search Album 1
+    subtitle: Album Artist
+    thumbnail_url: "https://example.com/search-album-1.jpg"
+  - kind: artist
+    browse_id: UC-search-result-artist
+    title: Search Result Artist
+    subtitle: ~
+    thumbnail_url: "https://example.com/search-artist.jpg"
+continuation: ~
