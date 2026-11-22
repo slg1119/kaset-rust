@@ -162,6 +162,9 @@ The Swift workflows are removed together with the Swift sources.
    in WebView2 (checked later on hardware). Public reports indicate WebView2
    inherits Edge's Widevine support, but nothing confirms YouTube Music
    specifically.
+4. Google sign-in is not rejected inside the embedded WebView ("This browser
+   or app may not be secure"). The Swift app signs in through WKWebView with a
+   Safari user agent; WebView2 on Windows is unverified.
 
 If any of these fails, stop and revisit the design before building further.
 
