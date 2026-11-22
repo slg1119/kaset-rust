@@ -14,6 +14,7 @@ use super::video_id::VideoId;
 pub const STATE_INTERVAL: Duration = Duration::from_millis(250);
 /// Previous restarts the current song when it has played longer than this.
 pub const PREVIOUS_RESTART_SECONDS: f64 = 3.0;
+const MAX_MEDIA_SECONDS: f64 = 86_400.0 * 7.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -112,9 +113,18 @@ pub enum PlayerError {
 
 fn seconds(value: f64) -> f64 {
     if value.is_finite() {
-        value.max(0.0)
+        value.clamp(0.0, MAX_MEDIA_SECONDS)
     } else {
         0.0
+    }
+}
+
+fn position_seconds(position: f64, duration: f64) -> f64 {
+    let position = seconds(position);
+    if duration > 0.0 {
+        position.min(duration)
+    } else {
+        position
     }
 }
 
@@ -286,10 +296,7 @@ impl Player {
         if self.queue.current().is_none() || self.is_ad {
             return Outcome::default();
         }
-        let mut position = seconds(position);
-        if self.duration > 0.0 {
-            position = position.min(self.duration);
-        }
+        let position = position_seconds(position, self.duration);
         self.position = position;
         Outcome {
             command: Some(WebCommand::Seek(position)),
@@ -354,8 +361,8 @@ impl Player {
                 };
                 let force = status != self.status || ad != self.is_ad;
                 self.status = status;
-                self.position = seconds(position);
                 self.duration = seconds(duration);
+                self.position = position_seconds(position, self.duration);
                 self.is_ad = ad;
                 Outcome {
                     command: None,
@@ -672,6 +679,35 @@ mod tests {
             (player.state().position, player.state().duration),
             (0.0, 0.0)
         );
+    }
+
+    #[test]
+    fn progress_clamps_position_to_the_bounded_duration() {
+        let (mut player, now) = playing(&[A], 0);
+        for (duration, expected) in [(1e30, MAX_MEDIA_SECONDS), (200.0, 200.0)] {
+            player.handle_event(
+                PlaybackEvent::Progress {
+                    video_id: id(A),
+                    playing: true,
+                    position: 1e30,
+                    duration,
+                    ad: false,
+                },
+                now,
+            );
+            let state = player.state();
+            assert_eq!((state.position, state.duration), (expected, expected));
+        }
+    }
+
+    #[test]
+    fn seek_clamps_to_the_limit_when_duration_is_unknown() {
+        let mut player = Player::new(1);
+        let now = Instant::now();
+        player.play_songs(vec![song(A)], 0, now).unwrap();
+        let outcome = player.seek(1e30, now);
+        assert_eq!(outcome.command, Some(WebCommand::Seek(MAX_MEDIA_SECONDS)));
+        assert_eq!(player.state().position, MAX_MEDIA_SECONDS);
     }
 
     #[test]

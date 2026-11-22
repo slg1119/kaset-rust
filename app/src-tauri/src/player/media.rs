@@ -13,7 +13,7 @@ use souvlaki::{
     MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
     SeekDirection,
 };
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Url};
 
 use super::engine::{Outcome, PlaybackStatus, Player, PlayerState};
 use crate::state::AppState;
@@ -34,12 +34,12 @@ pub struct NowPlaying {
     pub duration: Option<Duration>,
 }
 
-/// Playback state the OS shows, with the position in seconds.
+/// Playback state the OS shows, with a validated position.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Playback {
     Stopped,
-    Paused(f64),
-    Playing(f64),
+    Paused(Duration),
+    Playing(Duration),
 }
 
 /// A media key or OS control, mapped to a player change.
@@ -104,14 +104,26 @@ pub fn now_playing(state: &PlayerState) -> Option<NowPlaying> {
     Some(NowPlaying {
         title: track.title.clone(),
         artist,
-        cover_url: track.thumbnail_url.clone(),
-        duration: (state.duration > 0.0 && !state.is_ad)
-            .then(|| Duration::from_secs_f64(state.duration)),
+        cover_url: track
+            .thumbnail_url
+            .as_deref()
+            .and_then(|url| Url::parse(url).ok())
+            .filter(|url| url.scheme() == "https")
+            .map(Into::into),
+        duration: if state.duration > 0.0 && !state.is_ad {
+            Duration::try_from_secs_f64(state.duration).ok()
+        } else {
+            None
+        },
     })
 }
 
 pub fn playback(state: &PlayerState) -> Playback {
-    let position = if state.is_ad { 0.0 } else { state.position };
+    let position = if state.is_ad {
+        Duration::ZERO
+    } else {
+        Duration::try_from_secs_f64(state.position).unwrap_or_default()
+    };
     match state.status {
         PlaybackStatus::Idle => Playback::Stopped,
         PlaybackStatus::Playing => Playback::Playing(position),
@@ -124,7 +136,8 @@ pub fn playback(state: &PlayerState) -> Playback {
 /// What to send to the OS for one player state.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MediaUpdate {
-    pub metadata: Option<NowPlaying>,
+    /// `None` leaves metadata unchanged, and `Some(None)` clears it.
+    pub metadata: Option<Option<NowPlaying>>,
     pub playback: Option<Playback>,
 }
 
@@ -144,7 +157,7 @@ impl MediaPublisher {
         let mut update = MediaUpdate::default();
         let metadata = now_playing(state);
         if metadata != self.metadata {
-            update.metadata.clone_from(&metadata);
+            update.metadata = Some(metadata.clone());
             self.metadata = metadata;
             // New metadata resets the position the OS shows.
             self.playback = None;
@@ -153,10 +166,12 @@ impl MediaPublisher {
         let changed = match (self.playback, next) {
             (None, _) => true,
             (Some((Playback::Playing(was), at)), Playback::Playing(is)) => {
-                let expected = was + now.saturating_duration_since(at).as_secs_f64();
-                (is - expected).abs() > DRIFT_SECONDS
+                let expected = was.as_secs_f64() + now.saturating_duration_since(at).as_secs_f64();
+                (is.as_secs_f64() - expected).abs() > DRIFT_SECONDS
             }
-            (Some((Playback::Paused(was), _)), Playback::Paused(is)) => (is - was).abs() > 0.5,
+            (Some((Playback::Paused(was), _)), Playback::Paused(is)) => {
+                was.abs_diff(is) > Duration::from_millis(500)
+            }
             (Some((previous, _)), next) => {
                 std::mem::discriminant(&previous) != std::mem::discriminant(&next)
             }
@@ -228,11 +243,32 @@ pub fn attach(app: &AppHandle) {
     }
 }
 
+#[cfg(windows)]
+fn clear_windows_metadata(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use windows::Media::{MediaPlaybackType, SystemMediaTransportControls};
+    use windows::Win32::System::WinRT::ISystemMediaTransportControlsInterop;
+
+    let window = app.get_webview_window("main").ok_or("no main window")?;
+    let hwnd = window.hwnd()?;
+    let interop = windows::core::factory::<
+        SystemMediaTransportControls,
+        ISystemMediaTransportControlsInterop,
+    >()?;
+    // SAFETY: This is the live HWND used by souvlaki, accessed on its owning thread.
+    let controls: SystemMediaTransportControls = unsafe { interop.GetForWindow(hwnd) }?;
+    let updater = controls.DisplayUpdater()?;
+    updater.ClearAll()?;
+    updater.SetType(MediaPlaybackType::Music)?;
+    Ok(())
+}
+
 /// Sends `update` to the OS on the main thread.
 pub fn publish(app: &AppHandle, update: MediaUpdate) {
     if update == MediaUpdate::default() {
         return;
     }
+    #[cfg(windows)]
+    let handle = app.clone();
     let result = app.run_on_main_thread(move || {
         CONTROLS.with(|slot| {
             let mut slot = slot.borrow_mut();
@@ -240,27 +276,34 @@ pub fn publish(app: &AppHandle, update: MediaUpdate) {
                 return;
             };
             if let Some(metadata) = &update.metadata {
-                let result = controls.set_metadata(MediaMetadata {
-                    title: Some(&metadata.title),
-                    artist: Some(&metadata.artist),
-                    album: None,
-                    cover_url: metadata.cover_url.as_deref(),
-                    duration: metadata.duration,
-                });
-                if let Err(error) = result {
+                // On Windows, souvlaki leaves fields unchanged when they are omitted.
+                #[cfg(windows)]
+                if metadata.is_none()
+                    && let Err(error) = clear_windows_metadata(&handle)
+                {
+                    tracing::warn!(%error, "could not clear Windows media metadata");
+                }
+                let metadata = metadata
+                    .as_ref()
+                    .map_or_else(MediaMetadata::default, |metadata| MediaMetadata {
+                        title: Some(&metadata.title),
+                        artist: Some(&metadata.artist),
+                        album: None,
+                        cover_url: metadata.cover_url.as_deref(),
+                        duration: metadata.duration,
+                    });
+                if let Err(error) = controls.set_metadata(metadata) {
                     tracing::warn!(?error, "could not update media metadata");
                 }
             }
             if let Some(playback) = update.playback {
-                let position =
-                    |seconds: f64| Some(MediaPosition(Duration::from_secs_f64(seconds.max(0.0))));
                 let playback = match playback {
                     Playback::Stopped => MediaPlayback::Stopped,
-                    Playback::Paused(seconds) => MediaPlayback::Paused {
-                        progress: position(seconds),
+                    Playback::Paused(position) => MediaPlayback::Paused {
+                        progress: Some(MediaPosition(position)),
                     },
-                    Playback::Playing(seconds) => MediaPlayback::Playing {
-                        progress: position(seconds),
+                    Playback::Playing(position) => MediaPlayback::Playing {
+                        progress: Some(MediaPosition(position)),
                     },
                 };
                 if let Err(error) = controls.set_playback(playback) {
@@ -344,7 +387,30 @@ mod tests {
         let mut ad = state(PlaybackStatus::Playing, 1.0);
         ad.is_ad = true;
         assert_eq!(now_playing(&ad).unwrap().duration, None);
-        assert_eq!(playback(&ad), Playback::Playing(0.0));
+        assert_eq!(playback(&ad), Playback::Playing(Duration::ZERO));
+    }
+
+    #[test]
+    fn unrepresentable_duration_is_omitted_and_position_is_zero() {
+        let mut state = state(PlaybackStatus::Playing, 1e30);
+        state.duration = 1e30;
+        assert_eq!(now_playing(&state).unwrap().duration, None);
+        assert_eq!(playback(&state), Playback::Playing(Duration::ZERO));
+        state.status = PlaybackStatus::Paused;
+        assert_eq!(playback(&state), Playback::Paused(Duration::ZERO));
+    }
+
+    #[test]
+    fn now_playing_only_includes_valid_https_artwork() {
+        let mut state = state(PlaybackStatus::Playing, 1.0);
+        assert_eq!(
+            now_playing(&state).unwrap().cover_url.as_deref(),
+            Some("https://lh3.googleusercontent.com/test")
+        );
+        for url in ["http://example.com/cover", "file:///cover", "https://["] {
+            state.track.as_mut().unwrap().thumbnail_url = Some(url.into());
+            assert_eq!(now_playing(&state).unwrap().cover_url, None);
+        }
     }
 
     #[test]
@@ -352,8 +418,11 @@ mod tests {
         let mut publisher = MediaPublisher::default();
         let start = Instant::now();
         let first = publisher.update(&state(PlaybackStatus::Playing, 10.0), start);
-        assert!(first.metadata.is_some());
-        assert_eq!(first.playback, Some(Playback::Playing(10.0)));
+        assert!(matches!(first.metadata, Some(Some(_))));
+        assert_eq!(
+            first.playback,
+            Some(Playback::Playing(Duration::from_secs(10)))
+        );
 
         let later = start + Duration::from_secs(2);
         assert_eq!(
@@ -362,11 +431,17 @@ mod tests {
         );
         // A seek moves the position away from the extrapolated one.
         let seeked = publisher.update(&state(PlaybackStatus::Playing, 90.0), later);
-        assert_eq!(seeked.playback, Some(Playback::Playing(90.0)));
+        assert_eq!(
+            seeked.playback,
+            Some(Playback::Playing(Duration::from_secs(90)))
+        );
         assert!(seeked.metadata.is_none());
         // Pausing is a change.
         let paused = publisher.update(&state(PlaybackStatus::Paused, 90.0), later);
-        assert_eq!(paused.playback, Some(Playback::Paused(90.0)));
+        assert_eq!(
+            paused.playback,
+            Some(Playback::Paused(Duration::from_secs(90)))
+        );
     }
 
     #[test]
@@ -377,7 +452,9 @@ mod tests {
         let mut idle = state(PlaybackStatus::Idle, 0.0);
         idle.track = None;
         let update = publisher.update(&idle, now);
+        assert_eq!(update.metadata, Some(None));
         assert_eq!(update.playback, Some(Playback::Stopped));
+        assert_eq!(publisher.update(&idle, now), MediaUpdate::default());
     }
 
     #[test]
