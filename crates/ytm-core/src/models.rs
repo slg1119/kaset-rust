@@ -125,6 +125,31 @@ pub struct Account {
     pub photo_url: Option<String>,
 }
 
+/// Untimed YouTube Music lyrics and optional attribution.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Lyrics {
+    pub text: String,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct LyricLine {
+    pub start_ms: u32,
+    pub end_ms: Option<u32>,
+    pub text: String,
+}
+
+/// Best available lyrics for a track. A missing text and line list means unavailable.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct LyricsResult {
+    pub lines: Option<Vec<LyricLine>>,
+    pub text: Option<String>,
+    pub source: Option<String>,
+}
+
 #[cfg(all(test, feature = "specta"))]
 mod specta_tests {
     use super::*;
@@ -146,6 +171,9 @@ mod specta_tests {
         assert_type::<SearchItem>();
         assert_type::<SearchResults>();
         assert_type::<Account>();
+        assert_type::<Lyrics>();
+        assert_type::<LyricLine>();
+        assert_type::<LyricsResult>();
     }
 }
 

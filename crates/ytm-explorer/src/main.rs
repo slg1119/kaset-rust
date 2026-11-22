@@ -76,6 +76,8 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Read a track's lyrics and report availability without dumping the response.
+    Lyrics { video_id: String },
     /// POST /next to start a radio mix. Use --parse to print the queue model.
     Radio {
         video_id: String,
@@ -168,6 +170,15 @@ async fn main() -> Result<()> {
                 serde_json::to_string_pretty(&raw)?
             };
             (text, out)
+        }
+        Command::Lyrics { video_id } => {
+            let lyrics = client.get_timed_lyrics(&video_id).await?;
+            let summary = match (lyrics.lines, lyrics.text) {
+                (Some(lines), _) => format!("Timed lyrics: {} lines", lines.len()),
+                (None, Some(text)) => format!("Plain lyrics: {} lines", text.lines().count()),
+                (None, None) => "No lyrics".into(),
+            };
+            (summary, None)
         }
         Command::Radio { video_id, parse } => {
             let raw = client.radio(&video_id).await?;
