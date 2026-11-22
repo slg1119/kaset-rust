@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { commands } from "../bindings";
 import { errorMessage } from "../errors";
+import { HomeIcon, SearchIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { useNotice } from "../notices/NoticeProvider";
 import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
 export type Route = "home" | "search";
 
-const ROUTES: { route: Route; label: string }[] = [
-  { route: "search", label: "Search" },
-  { route: "home", label: "Home" },
-];
+const ROUTES = [
+  { route: "search", label: "Search", Icon: SearchIcon },
+  { route: "home", label: "Home", Icon: HomeIcon },
+] as const;
 
 type Props = {
   route: Route;
@@ -40,14 +41,15 @@ export function Sidebar({ route, onNavigate }: Props) {
     <nav className="sidebar" aria-label="Main">
       <p className="app-name">Kaset</p>
       <ul className="nav">
-        {ROUTES.map((item) => (
-          <li key={item.route}>
+        {ROUTES.map(({ route: destination, label, Icon }) => (
+          <li key={destination}>
             <button
               type="button"
-              aria-current={route === item.route ? "page" : undefined}
-              onClick={() => onNavigate(item.route)}
+              aria-current={route === destination ? "page" : undefined}
+              onClick={() => onNavigate(destination)}
             >
-              {item.label}
+              <Icon size={18} />
+              {label}
             </button>
           </li>
         ))}

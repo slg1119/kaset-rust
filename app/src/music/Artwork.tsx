@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MusicNoteIcon } from "../icons";
 import { safeImageUrl } from "./imageUrl";
 
 type Props = {
@@ -19,7 +20,12 @@ export function Artwork({ url, size, shape = "square" }: Props) {
   const className = `artwork artwork-${shape}${size === "fill" ? " artwork-fill" : ""}`;
   const dimensions = size === "fill" ? undefined : { width: size, height: size };
   if (src === null || src === failedSrc) {
-    return <span className={`${className} artwork-placeholder`} style={dimensions} aria-hidden="true" />;
+    const noteSize = size === "fill" ? undefined : size < 48 ? 18 : size * 0.4;
+    return (
+      <span className={`${className} artwork-placeholder`} style={dimensions} aria-hidden="true">
+        <MusicNoteIcon size={noteSize} />
+      </span>
+    );
   }
   return (
     <img

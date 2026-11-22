@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useId, useRef } from "react";
 import { commands, type HomeSection, type Song } from "../bindings";
 import { errorMessage } from "../errors";
+import { ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from "../icons";
 import { ItemCard } from "../music/ItemCard";
 import { isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
@@ -24,8 +25,15 @@ export function HomeScreen() {
     <>
       <header className="content-header">
         <h1>Home</h1>
-        <button type="button" className="ghost" onClick={() => void home.refetch()} disabled={home.isFetching}>
-          Refresh
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Refresh"
+          title="Refresh"
+          onClick={() => void home.refetch()}
+          disabled={home.isFetching}
+        >
+          <RefreshIcon />
         </button>
       </header>
       {home.isPending && <p className="hint" role="status">Loading…</p>}
@@ -105,10 +113,10 @@ function Carousel({ section, onPlay }: ShelfProps) {
         <h2 id={headingId}>{section.title}</h2>
         <div className="shelf-nav">
           <button type="button" className="icon-button" aria-label={`Previous in ${section.title}`} onClick={() => page(-1)}>
-            ‹
+            <ChevronLeftIcon size={16} />
           </button>
           <button type="button" className="icon-button" aria-label={`Next in ${section.title}`} onClick={() => page(1)}>
-            ›
+            <ChevronRightIcon size={16} />
           </button>
         </div>
       </div>

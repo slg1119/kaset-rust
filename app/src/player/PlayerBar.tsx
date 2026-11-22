@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { commands, type RepeatMode } from "../bindings";
 import { errorMessage } from "../errors";
+import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { artistNames } from "../music/items";
 import { useNotice } from "../notices/NoticeProvider";
@@ -102,6 +103,8 @@ export function PlayerBar() {
 
   const artists = artistNames(track.artists);
   const playing = state.status === "playing" || state.status === "loading";
+  const playbackLabel = playing ? "Pause" : "Play";
+  const repeatLabel = REPEAT_LABEL[state.repeat];
   const duration = state.duration ?? 0;
   const reported = state.position ?? 0;
   const seekTarget = pendingSeek?.videoId === track.video_id ? pendingSeek.target : null;
@@ -111,19 +114,33 @@ export function PlayerBar() {
   return (
     <footer ref={bar} className="player-bar" aria-label="Player">
       <div className="player-controls">
-        <button type="button" className="icon-button" onClick={() => run(() => commands.previousTrack())}>
-          Previous
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Previous"
+          title="Previous"
+          onClick={() => run(() => commands.previousTrack())}
+        >
+          <PreviousIcon />
         </button>
-        <button type="button" className="play-button" onClick={() => run(() => commands.togglePlayback())}>
-          {playing ? "Pause" : "Play"}
+        <button
+          type="button"
+          className="play-button"
+          aria-label={playbackLabel}
+          title={playbackLabel}
+          onClick={() => run(() => commands.togglePlayback())}
+        >
+          {playing ? <PauseIcon size={22} /> : <PlayIcon size={22} />}
         </button>
         <button
           type="button"
           className="icon-button"
+          aria-label="Next"
+          title="Next"
           disabled={!state.has_next}
           onClick={() => run(() => commands.nextTrack())}
         >
-          Next
+          <NextIcon />
         </button>
       </div>
       <div className="player-now">
@@ -165,30 +182,35 @@ export function PlayerBar() {
         <button
           type="button"
           className="icon-button"
+          aria-label="Shuffle"
+          title="Shuffle"
           aria-pressed={state.shuffle}
           onClick={() => run(() => commands.setShuffle(!state.shuffle))}
         >
-          Shuffle
+          <ShuffleIcon />
         </button>
         <button
           type="button"
-          className="icon-button"
+          className={state.repeat === "off" ? "icon-button" : "icon-button is-active"}
+          aria-label={repeatLabel}
+          title={repeatLabel}
           onClick={() => run(() => commands.setRepeat(NEXT_REPEAT[state.repeat]))}
         >
-          {REPEAT_LABEL[state.repeat]}
+          {state.repeat === "one" ? <RepeatOneIcon /> : <RepeatIcon />}
         </button>
         <button
           type="button"
           className="icon-button"
           ref={queueButton}
+          aria-label="Queue"
+          title="Queue"
           aria-expanded={queueOpen}
           aria-controls={queueId}
           onClick={() => setQueueOpen((open) => !open)}
         >
-          Queue
+          <QueueIcon />
           {queue && queue.current !== null && (
             <span className="player-queue">
-              {" "}
               {queue.current + 1} of {queue.songs.length}
             </span>
           )}
