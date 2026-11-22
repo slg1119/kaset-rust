@@ -136,8 +136,9 @@ the Swift sources are deleted, both trees exist.
   bounded at 64 chunks per slot.
 - Read WebView cookies with `Webview::cookies()` plus a domain filter, never
   `cookies_for_url`. Run `Webview::cookies()`, `delete_cookie()`, and keyring
-  I/O on the blocking pool (`webview_session::blocking`), never on the main
-  thread or directly on an async worker.
+  I/O on the blocking pool (`webview_session::blocking`). Startup session
+  restore is the one exception to keeping the main thread unblocked: Tauri
+  `setup` waits for keyring I/O via `block_on` while the pool performs it.
 - Work that can outlive a session change captures `Session::epoch()` before
   reading WebView cookies or starting an API request. Use `sign_in_if` for
   login completion, `refresh_if` for launch and player refresh, and

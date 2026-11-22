@@ -21,8 +21,8 @@ the queue owned by Rust.
   It shares the WebView cookie store with the login and main windows, uses the
   login window's Safari user agent on macOS, disables background throttling
   (macOS 14+), and adds no browser arguments (WebView2 windows share one
-  environment, and different arguments fail). Sign-out closes it; closing the
-  main window quits the app so hidden audio cannot outlive the UI.
+  environment, and different arguments fail). Closing the main window quits
+  the app so hidden audio cannot outlive the UI.
 - **Bridge:** an initialization script (main frame, `music.youtube.com` only)
   hooks the `<video>` element, starts playback with `video.play()` (up to five
   attempts), and reports `progress`, `ended`, and `failed`. Periodic progress
@@ -34,8 +34,9 @@ the queue owned by Rust.
   calls (`play`, `pause`, `seek(<number>)`).
 - **IPC hardening:** capability `player-remote` grants only
   `allow-playback-event` to `https://music.youtube.com/*` in the `player`
-  window. The command also checks the calling window label
-  and URL. `PlaybackEvent` is a tagged enum with fixed fields and
+  window. The command checks the calling window label and top-level URL as
+  defense in depth and returns `invalid_argument` for a wrong caller.
+  `PlaybackEvent` is a tagged enum with fixed fields and
   `deny_unknown_fields`; its video id is validated while deserializing. Events
   for any video other than the current song are ignored. Every video id is
   checked against `^[A-Za-z0-9_-]{11}$` before it reaches a URL, and songs with
@@ -44,7 +45,8 @@ the queue owned by Rust.
   with `invalid_argument`. The player window has its own navigation
   allowlist (https on YouTube, Google, and Google media/ad hosts, country Google
   domains, `about:`/`blob:`/`data:` frames); blocked navigations log scheme and
-  host only.
+  host only. In both the player and login windows, `window.open` is denied
+  (explicit policy / wry default).
 - **Queue and state:** Rust owns the queue (`player::queue`) and the player
   state machine (`player::engine`), both pure and unit-tested. Repeat is
   off/all/one; shuffle keeps the current song first and permutes the rest with
@@ -52,9 +54,9 @@ the queue owned by Rust.
   repeat one reloads it; the end of the queue holds the page in `ended`.
   Previous restarts the song after three seconds or when there is no previous
   song. The engine clamps times to one week (`MAX_MEDIA_SECONDS`).
-  `player://state` reports status, track, and ad changes immediately and
-  throttles steady progress to one event per 250 ms. `player://queue` reports
-  queue or position changes.
+  `player://state` reports status and track changes immediately. Bridge events
+  that leave the status unchanged, including ad flag flips, are throttled to
+  one event per 250 ms. `player://queue` reports queue or position changes.
 - **OS media controls:** `souvlaki` 0.9.3. Its handle is created, updated, and
   dropped only on the main thread (`run_on_main_thread` plus a thread-local), as
   macOS `MPRemoteCommandCenter` and Windows SMTC (bound to the main window's
@@ -68,10 +70,14 @@ the queue owned by Rust.
   expiry, and launch and player cookie refresh use session epochs captured
   before their reads or requests (`sign_in_if`, `mark_expired_if`,
   `refresh_if`). The launch gate opens when refresh completes or times out
-  after five seconds. WebView cookie reads and deletion, session expiry, and
-  keyring I/O run on the blocking pool. `PlayerService::stop_for_sign_out`
-  holds the player lock through cookie cleanup and session sign-out so playback
-  cannot reopen the window during cleanup. Details are in ADR-0043.
+  after five seconds. See ADR-0043 for blocking-pool and startup restore details.
+- **Playback and auth transitions:** sign-out and `SignedIn → Expired` clear the
+  queue, close the player window, and publish `Stopped` to OS media controls.
+  Expired-jar recovery stops the player before clearing the shared WebView
+  cookies. The player lock serializes playback commands with these transitions
+  and cookie cleanup. Each login window permits one interactive retry after
+  `SameAsExpired`. A second rejection closes the login window and keeps the
+  session expired.
 
 ## Consequences
 
@@ -92,7 +98,8 @@ the queue owned by Rust.
 - A pause during `Loading` can be lost before the new document installs its
   bridge. A `Failed` event leaves the current track paused without auto-skipping.
 - The navigation allowlist includes broad roots such as `google.com` and
-  `googleusercontent.com`, and allows the `data:` scheme. Runtime checks are
-  still needed for iframe IPC routing and `window.open` behavior.
+  `googleusercontent.com`, and allows the `data:` scheme. Iframe IPC is verified
+  by source (ACL on request Origin, IPC injected into the main frame only).
+  Confirm at runtime that third-party iframes get no IPC.
 - `souvlaki` pulls in `block` 0.1.6 on macOS, which triggers a future
   incompatibility warning in Rust.

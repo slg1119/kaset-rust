@@ -44,7 +44,9 @@ that sign-in works with a Safari user agent.
   `clear` caps recorded counts at 64. It deletes chunks highest index first,
   stops at the first failure, and removes `session.count` and `session.current`
   after deleting the chunks so a retry can find what remains. Keyring I/O runs
-  on the blocking pool.
+  on the blocking pool. Startup session restore is the one exception to keeping
+  the main thread unblocked: Tauri `setup` waits for the restore via `block_on`
+  while the pool performs the keyring I/O.
   Debug builds may set `KASET_SESSION_STORE=file` to use
   `<app data>/dev-session.txt` (0600) instead,
   because unsigned dev binaries make the Keychain prompt after every rebuild;
@@ -63,10 +65,11 @@ that sign-in works with a Safari user agent.
   calls `mark_expired_if` on an auth error. Both methods discard stale work.
 - **Expired jar:** expiry remembers the cookies in use. A sign-in whose auth
   cookies (the rotation list below) equal them is rejected with
-  `SameAsExpired`. While the epoch is current, recovery attempts to clear
-  session-domain WebView cookies and navigates the login window to the
-  non-passive Google sign-in URL. A successful new sign-in, sign-out, or
-  restore forgets the expired jar.
+  `SameAsExpired`. For the current epoch, recovery stops playback, attempts to
+  clear session-domain WebView cookies, and navigates to the non-passive Google
+  sign-in URL once per login window. If the same jar is rejected again, the
+  window closes and the session stays expired. A successful new sign-in,
+  sign-out, or restore forgets the expired jar.
 - **Sign-out** closes the login window if open and stops playback and closes
   the player window under `PlayerService::stop_for_sign_out`. While holding the
   player lock, it attempts to clear cookies for `youtube.com`, `google.com`,
