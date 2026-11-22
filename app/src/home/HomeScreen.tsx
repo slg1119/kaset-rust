@@ -1,121 +1,129 @@
-import { useEffect, useState } from "react";
-import { commands, type HomePage, type ShelfItem, type Song } from "../bindings";
+import { useQuery } from "@tanstack/react-query";
+import { useId, useRef } from "react";
+import { commands, type HomeSection, type Song } from "../bindings";
 import { errorMessage } from "../errors";
+import { ItemCard } from "../music/ItemCard";
+import { isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { usePlayQueue } from "../player/usePlayQueue";
+import { HOME_STALE_MS, queryKeys } from "../query";
 
-type State =
-  | { kind: "loading" }
-  | { kind: "loaded"; page: HomePage }
-  | { kind: "error"; message: string };
-
-function fetchHome(): Promise<State> {
-  return commands.getHome().then(
-    (page): State => ({ kind: "loaded", page }),
-    // An auth_expired error also arrives as auth://changed, which replaces this screen.
-    (cause: unknown): State => ({ kind: "error", message: errorMessage(cause) }),
-  );
-}
-
-/** The songs in a shelf, without the `kind` tag. */
-function songsOf(items: ShelfItem[]): Song[] {
-  return items.flatMap((item) =>
-    item.kind === "song"
-      ? [
-          {
-            video_id: item.video_id,
-            title: item.title,
-            artists: item.artists,
-            thumbnail_url: item.thumbnail_url,
-          },
-        ]
-      : [],
-  );
-}
+type PlayFn = (songs: Song[], index: number) => Promise<void>;
 
 export function HomeScreen() {
-  const [state, setState] = useState<State>({ kind: "loading" });
-  const [playError, setPlayError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void fetchHome().then((next) => {
-      if (active) setState(next);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  function retry() {
-    setState({ kind: "loading" });
-    void fetchHome().then(setState);
-  }
-
-  async function signOut() {
-    try {
-      await commands.signOut();
-    } catch (cause) {
-      setState({ kind: "error", message: errorMessage(cause) });
-    }
-  }
-
-  /** Plays the shelf's songs, starting with `songs[index]`. */
-  async function play(songs: Song[], index: number) {
-    setPlayError(null);
-    try {
-      await commands.playQueue(songs, index);
-    } catch (cause) {
-      setPlayError(errorMessage(cause));
-    }
-  }
+  const home = useQuery({
+    queryKey: queryKeys.home,
+    queryFn: () => commands.getHome(),
+    staleTime: HOME_STALE_MS,
+  });
+  const play = usePlayQueue();
+  const sections = home.data?.sections ?? [];
+  // The first all-song shelf (YouTube Music's "Quick picks") is a song grid.
+  const gridIndex = sections.findIndex((section) => section.items.every(isPlayable));
 
   return (
-    <main className="screen">
-      <header className="toolbar">
+    <>
+      <header className="content-header">
         <h1>Home</h1>
-        <button type="button" onClick={signOut}>
-          Sign out
+        <button type="button" className="ghost" onClick={() => void home.refetch()} disabled={home.isFetching}>
+          Refresh
         </button>
       </header>
-      {playError && <p role="alert">{playError}</p>}
-      {state.kind === "loading" && <p>Loading…</p>}
-      {state.kind === "error" && (
-        <div role="alert">
-          <p>{state.message}</p>
-          <button type="button" onClick={retry}>
+      {home.isPending && <p className="hint">Loading…</p>}
+      {home.isError && (
+        // An auth_expired error also arrives as auth://changed, which replaces the shell.
+        <div role="alert" className="screen-error">
+          <p>{errorMessage(home.error)}</p>
+          <button type="button" onClick={() => void home.refetch()}>
             Retry
           </button>
         </div>
       )}
-      {state.kind === "loaded" &&
-        (state.page.sections.length === 0 ? (
-          <p>No sections.</p>
+      {home.data && sections.length === 0 && <p className="hint">Nothing to show yet.</p>}
+      {sections.map((section, index) =>
+        index === gridIndex ? (
+          <SongGrid key={`${index}-${section.title}`} section={section} onPlay={play} />
         ) : (
-          <ul aria-label="Home sections" className="sections">
-            {state.page.sections.map((section, index) => {
-              const songs = songsOf(section.items);
-              return (
-                <li key={`${index}-${section.title}`}>
-                  <h2>
-                    {section.title} ({section.items.length})
-                  </h2>
-                  {songs.length > 0 && (
-                    <ul aria-label={`${section.title} songs`} className="songs">
-                      {songs.map((song, songIndex) => (
-                        <li key={`${songIndex}-${song.video_id}`}>
-                          <button type="button" onClick={() => void play(songs, songIndex)}>
-                            {song.title}
-                            {song.artists.length > 0 &&
-                              ` · ${song.artists.map((artist) => artist.name).join(", ")}`}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <Carousel key={`${index}-${section.title}`} section={section} onPlay={play} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** Songs of a shelf, and for each item its index among them (-1 for non-songs). */
+function playOrder(section: HomeSection): { songs: Song[]; starts: number[] } {
+  const songs = section.items.filter(isPlayable).map(toSong);
+  let next = 0;
+  const starts = section.items.map((item) => (isPlayable(item) ? next++ : -1));
+  return { songs, starts };
+}
+
+type ShelfProps = { section: HomeSection; onPlay: PlayFn };
+
+/** Quick picks: a three-column grid of song rows. */
+function SongGrid({ section, onPlay }: ShelfProps) {
+  const headingId = useId();
+  const { songs, starts } = playOrder(section);
+  return (
+    <section className="shelf" aria-labelledby={headingId}>
+      <div className="shelf-header">
+        <h2 id={headingId}>{section.title}</h2>
+      </div>
+      <ul className="song-grid">
+        {section.items.map((item, index) => (
+          <li key={`${index}-${itemKey(item)}`}>
+            <ItemCard
+              layout="row"
+              title={item.title}
+              subtitle={subtitleOf(item)}
+              thumbnailUrl={item.thumbnail_url}
+              onPlay={() => void onPlay(songs, starts[index])}
+            />
+          </li>
         ))}
-    </main>
+      </ul>
+    </section>
+  );
+}
+
+/** A shelf as a six-column carousel with previous/next buttons. */
+function Carousel({ section, onPlay }: ShelfProps) {
+  const headingId = useId();
+  const list = useRef<HTMLUListElement>(null);
+  const { songs, starts } = playOrder(section);
+
+  function page(direction: 1 | -1) {
+    const element = list.current;
+    element?.scrollBy?.({ left: direction * element.clientWidth, behavior: "smooth" });
+  }
+
+  return (
+    <section className="shelf" aria-labelledby={headingId}>
+      <div className="shelf-header">
+        <h2 id={headingId}>{section.title}</h2>
+        <div className="shelf-nav">
+          <button type="button" className="icon-button" aria-label={`Previous in ${section.title}`} onClick={() => page(-1)}>
+            ‹
+          </button>
+          <button type="button" className="icon-button" aria-label={`Next in ${section.title}`} onClick={() => page(1)}>
+            ›
+          </button>
+        </div>
+      </div>
+      <ul ref={list} className="carousel">
+        {section.items.map((item, index) => (
+          <li key={`${index}-${itemKey(item)}`}>
+            <ItemCard
+              layout="card"
+              shape={shapeOf(item)}
+              title={item.title}
+              subtitle={subtitleOf(item)}
+              thumbnailUrl={item.thumbnail_url}
+              onPlay={starts[index] >= 0 ? () => void onPlay(songs, starts[index]) : undefined}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

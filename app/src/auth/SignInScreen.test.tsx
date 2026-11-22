@@ -16,9 +16,10 @@ test("opens the sign-in window", async () => {
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("explains an expired session", () => {
+test("explains an expired session in an alert", () => {
   render(<SignInScreen expired />);
-  expect(screen.getByText(/your session expired/i)).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent(/your session expired/i);
+  expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
 });
 
 test("shows the error when the window cannot open", async () => {

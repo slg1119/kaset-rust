@@ -45,3 +45,19 @@ With **Show Controls on Video** on (Settings → YouTube), any key press outside
 text field reveals the watch page's on-video controls for a few seconds. With
 Keyboard navigation enabled, `Tab` keeps them up so focus can move into them,
 until the pointer moves over the video again.
+
+## Tauri app (in progress)
+
+The Tauri port (ADR-0042, ADR-0045) implements a subset so far. Off macOS, Ctrl
+replaces ⌘. The app never takes ⌘Q, ⌘W, ⌘H, ⌘M, or ⌘,.
+
+| Shortcut | Action |
+| -------- | ------ |
+| `Space`  | Play / Pause (not while a button, slider, or text field has focus) |
+| `⌘→`     | Next track (not in text fields) |
+| `⌘←`     | Previous track (not in text fields) |
+| `⌘1`     | Go to Home |
+| `⌘F`     | Go to Search and focus the search field |
+
+In the search field, `↓`/`↑` move through suggestions, `Return` searches the
+highlighted suggestion (or the typed text), and `Esc` closes the suggestions.

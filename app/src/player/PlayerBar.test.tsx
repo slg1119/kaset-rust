@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { events, mockCommands } from "../bindings";
+import { renderWithProviders } from "../test/render";
 import { formatTime } from "./format";
 import { PlayerBar } from "./PlayerBar";
 import { idleSnapshot, playingState, testSong } from "./testing";
@@ -20,7 +21,7 @@ function renderPlaying(overrides: Parameters<typeof playingState>[0] = {}) {
     setShuffle: vi.fn(() => null),
   };
   mockCommands(handlers);
-  render(<PlayerBar />);
+  renderWithProviders(<PlayerBar />);
   return handlers;
 }
 
@@ -35,14 +36,14 @@ test("formats times as m:ss", () => {
 test("stays hidden while nothing is queued", async () => {
   const playerSnapshot = vi.fn(() => idleSnapshot);
   mockCommands({ playerSnapshot });
-  const { container } = render(<PlayerBar />);
+  renderWithProviders(<PlayerBar />);
   await vi.waitFor(() => expect(playerSnapshot).toHaveBeenCalled());
-  expect(container).toBeEmptyDOMElement();
+  expect(screen.queryByRole("contentinfo", { name: "Player" })).not.toBeInTheDocument();
 });
 
 test("shows the track from player://state", async () => {
   mockCommands({ playerSnapshot: () => idleSnapshot });
-  render(<PlayerBar />);
+  renderWithProviders(<PlayerBar />);
   await act(() => events.playerState.emit({ state: playingState() }));
   expect(await screen.findByText("Test song")).toBeInTheDocument();
   expect(screen.getByText("Test artist")).toBeInTheDocument();
@@ -112,7 +113,139 @@ test("command errors are shown", async () => {
       throw { kind: "internal", message: "player window failed" };
     },
   });
-  render(<PlayerBar />);
+  renderWithProviders(<PlayerBar />);
   await userEvent.click(await screen.findByRole("button", { name: "Next" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("player window failed");
+});
+
+test("an event before the snapshot reply wins", async () => {
+  let reply: ((snapshot: typeof idleSnapshot) => void) | undefined;
+  mockCommands({ playerSnapshot: () => new Promise((resolve) => (reply = resolve)) });
+  renderWithProviders(<PlayerBar />);
+  await vi.waitFor(() => expect(reply).toBeDefined());
+  await act(() => events.playerState.emit({ state: playingState() }));
+  await act(async () => reply?.(idleSnapshot));
+  expect(screen.getByText("Test song")).toBeInTheDocument();
+});
+
+test("a failed snapshot is reported", async () => {
+  mockCommands({
+    playerSnapshot: () => {
+      throw { kind: "internal", message: "player unavailable" };
+    },
+  });
+  renderWithProviders(<PlayerBar />);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Could not read the player state: player unavailable",
+  );
+});
+
+test("keyboard seeking commits on key release", async () => {
+  const handlers = renderPlaying();
+  const slider = await screen.findByRole("slider", { name: "Seek" });
+  fireEvent.change(slider, { target: { value: "90" } });
+  fireEvent.keyUp(slider, { key: "ArrowRight" });
+  expect(handlers.seekTo).toHaveBeenCalledWith({ position: 90 });
+});
+
+test("a cancelled drag or blur drops the drag position without seeking", async () => {
+  const handlers = renderPlaying();
+  const slider = await screen.findByRole("slider", { name: "Seek" });
+  fireEvent.change(slider, { target: { value: "120" } });
+  fireEvent.pointerCancel(slider);
+  expect(screen.getByText("1:05")).toBeInTheDocument();
+  fireEvent.change(slider, { target: { value: "150" } });
+  fireEvent.blur(slider);
+  expect(screen.getByText("1:05")).toBeInTheDocument();
+  fireEvent.pointerUp(slider);
+  expect(handlers.seekTo).not.toHaveBeenCalled();
+});
+
+test("a seek does not snap back to stale progress", async () => {
+  renderPlaying();
+  const slider = await screen.findByRole("slider", { name: "Seek" });
+  fireEvent.change(slider, { target: { value: "120" } });
+  fireEvent.pointerUp(slider);
+  // Progress sampled before the page applied the seek.
+  await act(() => events.playerState.emit({ state: playingState({ position: 66 }) }));
+  expect(screen.getByText("2:00")).toBeInTheDocument();
+  // The page caught up.
+  await act(() => events.playerState.emit({ state: playingState({ position: 121 }) }));
+  expect(screen.getByText("2:01")).toBeInTheDocument();
+});
+
+test("a seek override ends after the settle time", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    renderPlaying();
+    const slider = await screen.findByRole("slider", { name: "Seek" });
+    fireEvent.change(slider, { target: { value: "120" } });
+    fireEvent.pointerUp(slider);
+    await act(() => events.playerState.emit({ state: playingState({ position: 66 }) }));
+    expect(screen.getByText("2:00")).toBeInTheDocument();
+    await act(async () => vi.advanceTimersByTime(2100));
+    expect(screen.getByText("1:06")).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("unmounting stops listening to player events", async () => {
+  const stopState = vi.fn();
+  const stopQueue = vi.fn();
+  vi.spyOn(events.playerState, "listen").mockResolvedValue(stopState);
+  vi.spyOn(events.playerQueue, "listen").mockResolvedValue(stopQueue);
+  const playerSnapshot = vi.fn(() => idleSnapshot);
+  mockCommands({ playerSnapshot });
+  const { unmount } = renderWithProviders(<PlayerBar />);
+  await vi.waitFor(() => expect(playerSnapshot).toHaveBeenCalled());
+  unmount();
+  await vi.waitFor(() => expect(stopState).toHaveBeenCalledTimes(1));
+  expect(stopQueue).toHaveBeenCalledTimes(1);
+});
+
+test("the queue button shows the queue with the current song marked", async () => {
+  renderPlaying();
+  const button = await screen.findByRole("button", { name: /Queue/ });
+  expect(button).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(button);
+  expect(button).toHaveAttribute("aria-expanded", "true");
+  const panel = screen.getByRole("region", { name: "Queue" });
+  const items = within(panel).getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(items[0]).toHaveAttribute("aria-current", "true");
+  expect(items[1]).not.toHaveAttribute("aria-current");
+  await userEvent.click(button);
+  expect(screen.queryByRole("region", { name: "Queue" })).not.toBeInTheDocument();
+});
+
+test("publishes its height for the scrolling content", async () => {
+  const observers: ResizeObserverCallback[] = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: ResizeObserverCallback) {
+        observers.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  try {
+    mockCommands({ playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }) });
+    const { container, unmount } = renderWithProviders(
+      <div className="content-column">
+        <PlayerBar />
+      </div>,
+    );
+    await screen.findByRole("contentinfo", { name: "Player" });
+    const column = container.querySelector(".content-column") as HTMLElement;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(72);
+    act(() => observers.forEach((callback) => callback([], {} as ResizeObserver)));
+    expect(column.style.getPropertyValue("--player-space")).toBe("72px");
+    unmount();
+    expect(column.style.getPropertyValue("--player-space")).toBe("");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

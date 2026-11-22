@@ -24,14 +24,16 @@ export function SignInScreen({ expired }: Props) {
   }
 
   return (
-    <main className="screen">
+    <main className="center sign-in">
       <h1>Kaset</h1>
-      <p>
-        {expired
-          ? "Your session expired. Sign in again to continue."
-          : "Sign in with your Google account to use YouTube Music."}
-      </p>
-      <button type="button" onClick={signIn} disabled={opening}>
+      {expired ? (
+        <div className="alert" role="alert">
+          Your session expired. Sign in again to continue.
+        </div>
+      ) : (
+        <p className="hint">Sign in with your Google account to use YouTube Music.</p>
+      )}
+      <button type="button" className="primary" onClick={signIn} disabled={opening}>
         Sign in with Google
       </button>
       {error && <p role="alert">{error}</p>}

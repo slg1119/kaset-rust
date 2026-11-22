@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { commands, events, type PlayerState, type QueueState } from "../bindings";
+import { errorMessage } from "../errors";
 
 export type PlayerView = {
   state: PlayerState | null;
@@ -9,9 +10,10 @@ export type PlayerView = {
 /**
  * The player state and queue: `null` until known, then kept current by
  * `player://state` and `player://queue`. Events that arrive before the
- * initial `playerSnapshot` reply win.
+ * initial `playerSnapshot` reply win. `onError` hears a failed snapshot;
+ * pass a stable function.
  */
-export function usePlayer(): PlayerView {
+export function usePlayer(onError: (message: string) => void): PlayerView {
   const [state, setState] = useState<PlayerState | null>(null);
   const [queue, setQueue] = useState<QueueState | null>(null);
 
@@ -29,8 +31,8 @@ export function usePlayer(): PlayerView {
         setState((previous) => previous ?? snapshot.state);
         setQueue((previous) => previous ?? snapshot.queue);
       },
-      () => {
-        // No snapshot: the bar stays hidden until the first event.
+      (cause: unknown) => {
+        if (active) onError(`Could not read the player state: ${errorMessage(cause)}`);
       },
     );
     return () => {
@@ -38,7 +40,7 @@ export function usePlayer(): PlayerView {
       void stopState.then((stop) => stop());
       void stopQueue.then((stop) => stop());
     };
-  }, []);
+  }, [onError]);
 
   return { state, queue };
 }

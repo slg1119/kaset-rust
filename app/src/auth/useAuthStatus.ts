@@ -1,31 +1,57 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { commands, events, type AuthStatus } from "../bindings";
+import { errorMessage } from "../errors";
+
+export type AuthView = {
+  /** `null` until known, then kept current by `auth://changed`. */
+  status: AuthStatus | null;
+  /** Why the state could not be read; shown only while `status` is `null`. */
+  error: string | null;
+  retry: () => void;
+};
 
 /**
- * The sign-in state: `null` until known, then kept current by `auth://changed`.
- * An event that arrives before the initial `authStatus` reply wins.
+ * Subscribes to `auth://changed` before asking for the current state, so a
+ * change between the reply and the subscription cannot be lost. An event that
+ * arrives before the reply wins.
  */
-export function useAuthStatus(): AuthStatus | null {
+export function useAuthStatus(): AuthView {
   const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
-    const unlisten = events.authChanged.listen((event) => {
-      if (active) setStatus(event.payload.status);
-    });
-    commands.authStatus().then(
-      (current) => {
-        if (active) setStatus((previous) => previous ?? current);
-      },
-      () => {
-        if (active) setStatus((previous) => previous ?? "signed_out");
-      },
-    );
+    let stop: (() => void) | undefined;
+    events.authChanged
+      .listen((event) => {
+        if (!active) return;
+        setError(null);
+        setStatus(event.payload.status);
+      })
+      .then((unlisten) => {
+        if (!active) {
+          unlisten();
+          return;
+        }
+        stop = unlisten;
+        return commands.authStatus().then((current) => {
+          if (active) setStatus((previous) => previous ?? current);
+        });
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(errorMessage(cause));
+      });
     return () => {
       active = false;
-      void unlisten.then((stop) => stop());
+      stop?.();
     };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setAttempt((count) => count + 1);
   }, []);
 
-  return status;
+  return { status, error, retry };
 }
