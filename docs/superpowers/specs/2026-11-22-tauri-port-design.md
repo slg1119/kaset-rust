@@ -62,6 +62,7 @@ kaset/
 ├─ crates/
 │  ├─ ytm-core/       # Pure Rust: InnerTube client, parsers, models (no Tauri dependency)
 │  ├─ ytm-explorer/   # CLI replacing Sources/APIExplorer, for verifying real responses
+│  ├─ kaset-session/  # Shared OS secure store and debug file store for app and CLI
 │  └─ kaset-cli/      # User CLI `kaset` (milestone 6): ytm-core + app remote control
 ├─ Cargo.toml         # Cargo workspace
 └─ Sources/, Package.swift, …  # Swift app — deleted after MVP

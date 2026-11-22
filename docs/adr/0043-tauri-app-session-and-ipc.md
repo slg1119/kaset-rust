@@ -50,7 +50,9 @@ that sign-in works with a Safari user agent.
   Debug builds may set `KASET_SESSION_STORE=file` to use
   `<app data>/dev-session.txt` (0600) instead,
   because unsigned dev binaries make the Keychain prompt after every rebuild;
-  release builds ignore the variable.
+  release builds ignore the variable. The desktop app and the read-only CLI
+  share the storage implementation in the Tauri-independent `kaset-session`
+  crate.
 - **States:** `signed_out`, `signed_in`, `expired`, broadcast on `auth://changed`.
   An API request can move `signed_in` to `expired` on HTTP 401/403 or when its
   cookie jar is present without a SAPISID. The expiry transition runs on the

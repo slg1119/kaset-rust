@@ -3,7 +3,8 @@
 
 pub mod cookies;
 mod status;
-pub mod store;
+
+pub use kaset_session as store;
 
 pub use status::AuthStatus;
 

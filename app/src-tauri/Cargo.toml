@@ -13,7 +13,7 @@ crate-type = ["rlib"]
 tauri-build = { version = "2.7.6", features = [] }
 
 [dependencies]
-keyring = "4.2"
+kaset-session = { path = "../../crates/kaset-session" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 souvlaki = "0.9.3"
@@ -33,5 +33,5 @@ ytm-core = { version = "0.1.0", path = "../../crates/ytm-core", features = ["spe
 windows = { version = "0.62", features = ["Media", "Win32_Foundation", "Win32_System_WinRT"] }
 
 [dev-dependencies]
-tempfile = "3"
+kaset-session = { path = "../../crates/kaset-session", features = ["test-support"] }
 tokio = { version = "1", features = ["macros", "rt"] }
