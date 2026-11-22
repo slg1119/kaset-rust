@@ -130,7 +130,8 @@ the Swift sources are deleted, both trees exist.
   `dev-session.txt` in the app data directory instead of the Keychain (debug
   builds only).
 - Read WebView cookies with `Webview::cookies()` plus a domain filter, never
-  `cookies_for_url`, and only from async code (it deadlocks on Windows otherwise).
+  `cookies_for_url`. Call both `Webview::cookies()` and `delete_cookie()` only
+  from async code to avoid deadlocks on Windows.
 - Credentials stay in `ytm_core::secret::Secret`; never log cookie values or
   format `keyring::Error`.
 - The Swift-era minimal-dependency rule does not apply to the Rust/Tauri code.

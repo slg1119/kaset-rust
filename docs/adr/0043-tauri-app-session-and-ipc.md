@@ -22,28 +22,48 @@ that sign-in works with a Safari user agent.
   CI fails when the committed file is stale. Commands reject with
   `AppError { kind, message }` (tauri-specta's default throw mode).
 - **Cookies:** read with `Webview::cookies()` and keep domains `youtube.com` and
-  its subdomains; never `cookies_for_url`. `ytm-core`'s `InnerTubeClient` reads
-  cookies from a shared `SharedCookies` handle on every request, so sign-in,
-  sign-out, and rotation need no new client.
+  its subdomains. `Webview::cookies_for_url` misses parent-domain cookies on
+  macOS. For each cookie name, keep the most specific normalized
+  domain, using the first cookie when domain lengths tie, and sort the header
+  by name. `ytm-core`'s `InnerTubeClient` reads cookies from a shared
+  `SharedCookies` handle on every request.
 - **Persistence:** the `Cookie` header goes to the OS secure store through
   `keyring` 4 under service `com.sertacozercan.kaset.desktop` (also the bundle
   identifier, distinct from the Swift app's). Windows Credential Manager caps a
   blob at 2560 bytes, so the header is split into 2000-byte entries
-  `session.0..N` with `session.count` written last. Debug builds may set
-  `KASET_SESSION_STORE=file` to use `<app data>/dev-session.txt` (0600) instead,
+  `session.0..N` with `session.count` written last. Store `clear` deletes chunks
+  before removing the count, sweeping contiguous orphaned chunks from zero when
+  the count is missing or corrupt, or stale chunks starting at the recorded
+  count. Each sweep stops at the first missing entry or after 64 chunks.
+  Debug builds may set `KASET_SESSION_STORE=file` to use
+  `<app data>/dev-session.txt` (0600) instead,
   because unsigned dev binaries make the Keychain prompt after every rebuild;
   release builds ignore the variable.
 - **States:** `signed_out`, `signed_in`, `expired`, broadcast on `auth://changed`.
-  HTTP 401/403 moves `signed_in` to `expired` without deleting cookies; a new
-  sign-in replaces them. Signed-out mode shows only the sign-in prompt.
-- **Sign-out** clears memory and the store, then deletes every youtube.com and
-  google.com cookie from the shared WebView store (up to three passes).
-- **Rotation:** at launch, WebView cookies replace the stored session only when
-  already signed in, so a sign-out is never undone.
+  An API request moves `signed_in` to `expired` on HTTP 401/403 or when its
+  cookie jar is present without a SAPISID. A new sign-in replaces the retained
+  cookies. Signed-out mode shows only the sign-in prompt. One transition lock
+  serializes session transitions, including store I/O and shared-cookie updates.
+- **Sign-out** clears memory and the store, then clears cookies for
+  `youtube.com`, `google.com`, and country Google domains such as `google.co.kr`,
+  including their subdomains, from the shared WebView store. It emits
+  `auth://changed` after the WebView cleanup attempt returns. Cleanup makes up to
+  three passes and logs failures.
+- **Rotation:** at launch, `refresh` updates shared cookies when the user is
+  already signed in, the WebView jar has a SAPISID, and the jar differs from
+  the current one. It persists only when the set of name/value pairs for
+  these auth cookies changes: `SID`, `HSID`, `SSID`, `APISID`, `SAPISID`,
+  `__Secure-1PAPISID`, `__Secure-3PAPISID`, `__Secure-1PSID`, `__Secure-3PSID`.
 - **Hardening:** `withGlobalTauri: false`; a CSP for the local UI; only the
   `main` window has a capability (the login window can call nothing); the login
-  window's navigation is limited to https Google/YouTube hosts plus `about:`,
-  `blob:`, `data:` frames, and blocked navigations log scheme and host only.
+  window permits HTTPS on `google.com`, `youtube.com`, `gstatic.com`,
+  `googleusercontent.com`, `googleapis.com`, `youtube-nocookie.com`, and country
+  Google domains of the form `google.<cc>`, `google.co.<cc>`, or
+  `google.com.<cc>` with a two-letter ASCII country code. It permits subdomains
+  of all those hosts and the `about:`, `blob:`, and `data:` schemes for frames.
+  Blocked navigations log only the scheme and host.
+- **Windows tests:** `build.rs` passes MSVC linker arguments to embed the
+  Common-Controls manifest in test executables.
 
 ## Consequences
 
