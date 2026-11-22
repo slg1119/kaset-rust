@@ -3,7 +3,7 @@
 //! windows, so it plays as the signed-in user.
 
 use tauri::utils::config::BackgroundThrottlingPolicy;
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 use super::video_id::VideoId;
@@ -88,6 +88,7 @@ pub fn load(app: &AppHandle, id: &VideoId) -> Result<(), AppError> {
         // macOS 14+: keep timers and media running while the window is hidden.
         .background_throttling(BackgroundThrottlingPolicy::Disabled)
         .initialization_script(PLAYER_SCRIPT)
+        .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_navigation(|url| {
             let allowed = is_allowed_player_navigation(url);
             if !allowed {

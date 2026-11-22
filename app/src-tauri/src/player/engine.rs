@@ -323,7 +323,7 @@ impl Player {
         }
     }
 
-    /// Empties the queue and closes the player window (sign-out).
+    /// Empties the queue and closes the player window.
     pub fn stop(&mut self, now: Instant) -> Outcome {
         self.queue.clear();
         self.status = PlaybackStatus::Idle;
@@ -359,7 +359,7 @@ impl Player {
                     (PlaybackStatus::Ended, false) => PlaybackStatus::Ended,
                     (_, false) => PlaybackStatus::Paused,
                 };
-                let force = status != self.status || ad != self.is_ad;
+                let force = status != self.status;
                 self.status = status;
                 self.duration = seconds(duration);
                 self.position = position_seconds(position, self.duration);
@@ -392,10 +392,11 @@ impl Player {
                 if self.status == PlaybackStatus::Ended {
                     return Outcome::default();
                 }
+                let force = self.status != PlaybackStatus::Paused;
                 self.status = PlaybackStatus::Paused;
                 Outcome {
                     command: None,
-                    state: self.emit(now, true),
+                    state: self.emit(now, force),
                     queue: None,
                 }
             }
@@ -541,6 +542,32 @@ mod tests {
                 .state
                 .is_some()
         );
+    }
+
+    #[test]
+    fn ad_flips_without_a_status_change_are_throttled() {
+        let (mut player, now) = playing(&[A], 0);
+        let emits = [true, false, true, false]
+            .into_iter()
+            .enumerate()
+            .filter(|&(i, ad)| {
+                player
+                    .handle_event(
+                        PlaybackEvent::Progress {
+                            video_id: id(A),
+                            playing: true,
+                            position: 1.0,
+                            duration: 15.0,
+                            ad,
+                        },
+                        now + Duration::from_millis(i as u64 * 50),
+                    )
+                    .state
+                    .is_some()
+            })
+            .count();
+        assert_eq!(emits, 1);
+        assert!(!player.state().is_ad, "throttling still updates the state");
     }
 
     #[test]
@@ -725,6 +752,12 @@ mod tests {
         let (mut player, now) = playing(&[A], 0);
         let outcome = player.handle_event(PlaybackEvent::Failed { video_id: id(A) }, now);
         assert_eq!(outcome.state.unwrap().status, PlaybackStatus::Paused);
+        assert!(
+            player
+                .handle_event(PlaybackEvent::Failed { video_id: id(A) }, now)
+                .state
+                .is_none()
+        );
     }
 
     #[test]
@@ -733,8 +766,34 @@ mod tests {
         let outcome = player.stop(now);
         assert_eq!(outcome.command, Some(WebCommand::Stop));
         assert_eq!(outcome.state.unwrap().status, PlaybackStatus::Idle);
-        assert_eq!(outcome.queue.unwrap().songs, Vec::<Song>::new());
+        assert!(outcome.queue.unwrap().songs.is_empty());
         assert_eq!(player.handle_event(ended(A), now), Outcome::default());
+    }
+
+    #[test]
+    fn stop_resets_the_player_and_publishes_stopped_inside_the_throttle_window() {
+        use crate::player::media::{MediaPublisher, Playback};
+
+        let (mut player, now) = playing(&[A, B], 0);
+        player.handle_event(progress(A, true, 7.0), now);
+        let mut media = MediaPublisher::default();
+        media.update(&player.state(), now);
+
+        let outcome = player.stop(now);
+        let state = outcome.state.unwrap();
+        assert_eq!(state.status, PlaybackStatus::Idle);
+        assert_eq!(state.track, None);
+        assert_eq!((state.position, state.duration), (0.0, 0.0));
+        assert_eq!(state, player.state());
+        let update = media.update(&state, now);
+        assert_eq!(update.playback, Some(Playback::Stopped));
+        assert_eq!(update.metadata, Some(None));
+        let queue = QueueState {
+            songs: Vec::new(),
+            current: None,
+        };
+        assert_eq!(outcome.queue, Some(queue.clone()));
+        assert_eq!(player.queue_state(), queue);
     }
 
     #[test]

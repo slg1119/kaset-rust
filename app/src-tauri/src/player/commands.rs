@@ -158,10 +158,13 @@ pub async fn playback_event(
     state: State<'_, AppState>,
     event: PlaybackEvent,
 ) -> Result<(), AppError> {
+    // The top-level URL check is defense in depth. Tauri resolves the ACL
+    // against the request Origin and injects IPC into the main frame only.
     let from_player =
         webview.label() == PLAYER_LABEL && webview.url().is_ok_and(|url| is_music_page(&url));
     if !from_player {
-        return Err(AppError::internal(
+        return Err(AppError::new(
+            ErrorKind::InvalidArgument,
             "playback events come only from the player window",
         ));
     }

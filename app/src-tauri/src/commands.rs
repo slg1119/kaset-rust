@@ -35,16 +35,17 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         .player
         .stop_for_sign_out(&app, async {
             let task_app = app.clone();
-            blocking(move || {
+            let result = blocking(move || {
                 if let Some(window) = task_app.get_webview_window("main") {
                     clear_webview_cookies(&window, "sign-out");
                 }
                 task_app.state::<AppState>().session.sign_out()
             })
-            .await
+            .await;
+            emit_auth_changed(&app, state.session.status());
+            result
         })
         .await;
-    emit_auth_changed(&app, state.session.status());
     result?
         .map(|_| ())
         .map_err(|error| AppError::internal(error.to_string()))
@@ -79,9 +80,14 @@ pub async fn get_home(app: AppHandle, state: State<'_, AppState>) -> Result<Home
 /// at `epoch`, and passes the error on.
 async fn on_error(app: &AppHandle, epoch: u64, error: AppError) -> AppError {
     if error.kind == ErrorKind::AuthExpired {
+        let state = app.state::<AppState>();
+        let mut player = state.player.lock_for_session_change().await;
         let task_app = app.clone();
         match blocking(move || task_app.state::<AppState>().session.mark_expired_if(epoch)).await {
-            Ok(Some(status)) => emit_auth_changed(app, status),
+            Ok(Some(status)) => {
+                player.stop(app);
+                emit_auth_changed(app, status);
+            }
             Ok(None) => {}
             Err(task_error) => tracing::warn!(%task_error, "session expiry task failed"),
         }

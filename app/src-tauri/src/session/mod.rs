@@ -181,11 +181,13 @@ impl Session {
     }
 
     /// `sign_in_if` with the current epoch.
+    #[cfg(test)]
     pub fn sign_in(&self, jar: CookieJar) -> Result<Option<AuthStatus>, SessionError> {
         self.sign_in_if(self.epoch(), jar)
     }
 
     /// `refresh_if` with the current epoch.
+    #[cfg(test)]
     pub fn refresh(&self, jar: CookieJar) -> bool {
         self.refresh_if(self.epoch(), jar)
     }

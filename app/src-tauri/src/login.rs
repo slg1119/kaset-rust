@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_specta::Event;
 use tokio::sync::Mutex;
@@ -69,10 +69,11 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
     let url: Url = LOGIN_URL
         .parse()
         .map_err(|_| AppError::internal("invalid login URL"))?;
-    let completions = Arc::new(Mutex::new(()));
+    let completions = Arc::new(Mutex::new(LoginCompletion::default()));
     let builder = WebviewWindowBuilder::new(app, LOGIN_LABEL, WebviewUrl::External(url))
         .title("Sign in to YouTube Music")
         .inner_size(500.0, 700.0)
+        .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_navigation(|url| {
             let allowed = is_allowed_login_navigation(url);
             if !allowed {
@@ -94,8 +95,10 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
                 let completions = Arc::clone(&completions);
                 tauri::async_runtime::spawn(async move {
                     // Duplicate landings must not race the expired-cookie cleanup.
-                    let _completion = completions.lock().await;
-                    complete_sign_in(app, window, epoch).await;
+                    let mut completion = completions.lock().await;
+                    if !completion.closed {
+                        complete_sign_in(app, window, epoch, &mut completion).await;
+                    }
                 });
             }
         });
@@ -105,18 +108,32 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+#[derive(Default)]
+struct LoginCompletion {
+    retried: bool,
+    closed: bool,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum SignInAction {
     Complete(Option<AuthStatus>),
     RetryInteractively,
+    CloseAfterRetry,
 }
 
 fn sign_in_action(
     result: Result<Option<AuthStatus>, SessionError>,
+    retried: &mut bool,
 ) -> Result<SignInAction, SessionError> {
     match result {
         Ok(changed) => Ok(SignInAction::Complete(changed)),
-        Err(SessionError::SameAsExpired) => Ok(SignInAction::RetryInteractively),
+        Err(SessionError::SameAsExpired) => {
+            if std::mem::replace(retried, true) {
+                Ok(SignInAction::CloseAfterRetry)
+            } else {
+                Ok(SignInAction::RetryInteractively)
+            }
+        }
         Err(error) => Err(error),
     }
 }
@@ -131,7 +148,14 @@ fn interactive_login_url() -> Result<Url, AppError> {
 /// Reads the login window's cookies and signs in when SAPISID is present and
 /// the session has not changed since `epoch`. The cookie read and the store
 /// save run on the blocking pool.
-async fn complete_sign_in(app: AppHandle, window: WebviewWindow, epoch: u64) {
+async fn complete_sign_in(
+    app: AppHandle,
+    window: WebviewWindow,
+    epoch: u64,
+    completion: &mut LoginCompletion,
+) {
+    let state = app.state::<AppState>();
+    let mut player = state.player.lock_for_session_change().await;
     let reader = window.clone();
     let task_app = app.clone();
     let result = blocking(move || {
@@ -140,46 +164,61 @@ async fn complete_sign_in(app: AppHandle, window: WebviewWindow, epoch: u64) {
             return Ok(Err(SessionError::Stale));
         }
         let cookies = reader.cookies()?;
-        let action = sign_in_action(
+        Ok::<_, tauri::Error>(
             state
                 .session
                 .sign_in_if(epoch, youtube_cookie_jar(&cookies)),
-        );
-        if matches!(action, Ok(SignInAction::RetryInteractively)) && state.session.epoch() == epoch
-        {
-            clear_webview_cookies(&reader, "expired sign-in");
-        }
-        Ok::<_, tauri::Error>(action)
+        )
     })
     .await;
-    match result {
-        Ok(Ok(Ok(SignInAction::Complete(changed)))) => {
+    let result = match result {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "could not read login cookies");
+            return;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "sign-in task failed");
+            return;
+        }
+    };
+    match sign_in_action(result, &mut completion.retried) {
+        Ok(SignInAction::Complete(changed)) => {
             if let Some(status) = changed {
                 emit_auth_changed(&app, status);
             }
+            completion.closed = true;
             close_login_window(&window);
         }
-        Ok(Ok(Err(SessionError::NoSapisid))) => {
+        Err(SessionError::NoSapisid) => {
             tracing::debug!("music.youtube.com loaded without SAPISID; waiting for sign-in");
         }
-        Ok(Ok(Ok(SignInAction::RetryInteractively))) => {
-            if app.state::<AppState>().session.epoch() == epoch {
-                match interactive_login_url()
-                    .and_then(|url| window.navigate(url).map_err(AppError::from))
-                {
-                    Ok(()) => {
-                        tracing::info!("reopened Google sign-in after rejecting expired cookies")
-                    }
-                    Err(error) => tracing::warn!(%error, "could not reopen Google sign-in"),
+        Ok(SignInAction::RetryInteractively) => {
+            player.stop(&app);
+            let reader = window.clone();
+            if let Err(error) =
+                blocking(move || clear_webview_cookies(&reader, "expired sign-in")).await
+            {
+                tracing::warn!(%error, "expired sign-in cookie cleanup task failed");
+            }
+            match interactive_login_url()
+                .and_then(|url| window.navigate(url).map_err(AppError::from))
+            {
+                Ok(()) => {
+                    tracing::info!("reopened Google sign-in after rejecting expired cookies")
                 }
+                Err(error) => tracing::warn!(%error, "could not reopen Google sign-in"),
             }
         }
-        Ok(Ok(Err(SessionError::Stale))) => {
+        Ok(SignInAction::CloseAfterRetry) => {
+            tracing::warn!("closing login window after expired cookies persisted through retry");
+            completion.closed = true;
+            close_login_window(&window);
+        }
+        Err(SessionError::Stale) => {
             tracing::debug!("discarded a sign-in that started before a session change");
         }
-        Ok(Ok(Err(error))) => tracing::warn!(%error, "sign-in failed"),
-        Ok(Err(error)) => tracing::warn!(%error, "could not read login cookies"),
-        Err(error) => tracing::warn!(%error, "sign-in task failed"),
+        Err(error) => tracing::warn!(%error, "sign-in failed"),
     }
 }
 
@@ -221,12 +260,13 @@ mod tests {
 
     #[test]
     fn expired_cookies_restart_sign_in_without_passive_mode() {
+        let mut retried = false;
         assert_eq!(
-            sign_in_action(Err(SessionError::SameAsExpired)).unwrap(),
+            sign_in_action(Err(SessionError::SameAsExpired), &mut retried).unwrap(),
             SignInAction::RetryInteractively,
         );
         assert!(matches!(
-            sign_in_action(Err(SessionError::Stale)),
+            sign_in_action(Err(SessionError::Stale), &mut retried),
             Err(SessionError::Stale)
         ));
 
@@ -240,6 +280,24 @@ mod tests {
             .filter(|(name, _)| name != "passive")
             .collect();
         assert_eq!(interactive.query_pairs().collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn expired_cookie_retry_is_limited_to_once_per_window() {
+        let mut retried = false;
+        assert_eq!(
+            sign_in_action(Err(SessionError::SameAsExpired), &mut retried).unwrap(),
+            SignInAction::RetryInteractively,
+        );
+        assert_eq!(
+            sign_in_action(Err(SessionError::SameAsExpired), &mut retried).unwrap(),
+            SignInAction::CloseAfterRetry,
+        );
+        let mut other_window = false;
+        assert_eq!(
+            sign_in_action(Err(SessionError::SameAsExpired), &mut other_window).unwrap(),
+            SignInAction::RetryInteractively,
+        );
     }
 
     #[test]

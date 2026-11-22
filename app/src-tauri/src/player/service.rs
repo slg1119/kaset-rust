@@ -5,7 +5,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::AppHandle;
 use tauri_specta::Event;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 use super::engine::{Outcome, Player, PlayerState, QueueState, WebCommand};
 use super::media::{self, MediaPublisher};
@@ -26,6 +26,24 @@ pub struct PlayerService {
     // A tokio mutex, held while an outcome is applied, so window commands run
     // in the order the engine produced them. Never locked on the main thread.
     inner: Mutex<Inner>,
+}
+
+pub(crate) struct SessionPlayerGuard<'a> {
+    inner: MutexGuard<'a, Inner>,
+}
+
+impl SessionPlayerGuard<'_> {
+    pub(crate) fn stop(&mut self, app: &AppHandle) {
+        let now = Instant::now();
+        let outcome = self.inner.player.stop(now);
+        if let Some(state) = &outcome.state {
+            let update = self.inner.media.update(state, now);
+            media::publish(app, update);
+        }
+        if let Err(error) = apply(app, outcome) {
+            tracing::warn!(%error, "could not stop the player during a session change");
+        }
+    }
 }
 
 impl PlayerService {
@@ -62,6 +80,13 @@ impl PlayerService {
         (inner.player.state(), inner.player.queue_state())
     }
 
+    /// Serializes auth transitions and cookie cleanup with playback commands.
+    pub(crate) async fn lock_for_session_change(&self) -> SessionPlayerGuard<'_> {
+        SessionPlayerGuard {
+            inner: self.inner.lock().await,
+        }
+    }
+
     /// Stops playback and keeps player commands serialized until sign-out
     /// finishes, so they cannot reopen the window during cookie cleanup.
     pub(crate) async fn stop_for_sign_out<T>(
@@ -69,16 +94,8 @@ impl PlayerService {
         app: &AppHandle,
         sign_out: impl Future<Output = T>,
     ) -> T {
-        let mut inner = self.inner.lock().await;
-        let now = Instant::now();
-        let outcome = inner.player.stop(now);
-        if let Some(state) = &outcome.state {
-            let update = inner.media.update(state, now);
-            media::publish(app, update);
-        }
-        if let Err(error) = apply(app, outcome) {
-            tracing::warn!(%error, "could not stop the player during sign-out");
-        }
+        let mut player = self.lock_for_session_change().await;
+        player.stop(app);
         sign_out.await
     }
 }
