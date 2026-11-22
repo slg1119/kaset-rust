@@ -10,9 +10,10 @@ use tauri_specta::Event;
 
 use crate::error::AppError;
 use crate::events::AuthChanged;
-use crate::session::AuthStatus;
 use crate::session::cookies::{is_country_google, youtube_cookie_jar};
+use crate::session::{AuthStatus, SessionError};
 use crate::state::AppState;
+use crate::webview_session::blocking;
 
 pub const LOGIN_LABEL: &str = "login";
 
@@ -83,7 +84,10 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
         .on_page_load(|window, payload| {
             if payload.event() == PageLoadEvent::Finished && is_sign_in_landing(payload.url()) {
                 let app = window.app_handle().clone();
-                tauri::async_runtime::spawn(async move { complete_sign_in(app).await });
+                // Captured before the cookie read: a sign-out in between makes
+                // this completion stale.
+                let epoch = app.state::<AppState>().session.epoch();
+                tauri::async_runtime::spawn(async move { complete_sign_in(app, epoch).await });
             }
         });
     #[cfg(target_os = "macos")]
@@ -92,34 +96,46 @@ pub fn open_login_window(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Reads the login window's cookies and signs in when SAPISID is present.
-/// Runs on the async runtime: `cookies()` deadlocks on Windows when called
-/// from the main thread or a synchronous handler.
-async fn complete_sign_in(app: AppHandle) {
+/// Reads the login window's cookies and signs in when SAPISID is present and
+/// the session has not changed since `epoch`. The cookie read and the store
+/// save run on the blocking pool.
+async fn complete_sign_in(app: AppHandle, epoch: u64) {
     let Some(window) = app.get_webview_window(LOGIN_LABEL) else {
         return;
     };
-    let cookies = match window.cookies() {
-        Ok(cookies) => cookies,
-        Err(error) => {
-            tracing::warn!(%error, "could not read login cookies");
-            return;
-        }
-    };
-    let jar = youtube_cookie_jar(&cookies);
-    if jar.sapisid().is_none() {
-        tracing::debug!("music.youtube.com loaded without SAPISID; waiting for sign-in");
-        return;
-    }
-    let state = app.state::<AppState>();
-    match state.session.sign_in(jar) {
-        Ok(changed) => {
+    let reader = window.clone();
+    let task_app = app.clone();
+    let result = blocking(move || {
+        let cookies = reader.cookies()?;
+        let state = task_app.state::<AppState>();
+        Ok::<_, tauri::Error>(
+            state
+                .session
+                .sign_in_if(epoch, youtube_cookie_jar(&cookies)),
+        )
+    })
+    .await;
+    match result {
+        Ok(Ok(Ok(changed))) => {
             if let Some(status) = changed {
                 emit_auth_changed(&app, status);
             }
             close_login_window(&window);
         }
-        Err(error) => tracing::warn!(%error, "sign-in failed"),
+        Ok(Ok(Err(SessionError::NoSapisid))) => {
+            tracing::debug!("music.youtube.com loaded without SAPISID; waiting for sign-in");
+        }
+        Ok(Ok(Err(SessionError::SameAsExpired))) => {
+            tracing::info!(
+                "the WebView still holds the expired session; waiting for a new sign-in"
+            );
+        }
+        Ok(Ok(Err(SessionError::Stale))) => {
+            tracing::debug!("discarded a sign-in that started before a session change");
+        }
+        Ok(Ok(Err(error))) => tracing::warn!(%error, "sign-in failed"),
+        Ok(Err(error)) => tracing::warn!(%error, "could not read login cookies"),
+        Err(error) => tracing::warn!(%error, "sign-in task failed"),
     }
 }
 

@@ -1,15 +1,52 @@
 use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, watch};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
 
 use crate::error::AppError;
 use crate::session::Session;
 
+/// How long API commands wait for the launch cookie refresh.
+pub const LAUNCH_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Opens once the launch cookie refresh has finished, so the first API request
+/// uses rotated cookies instead of expiring the session with stale stored ones.
+pub struct LaunchGate {
+    open: watch::Sender<bool>,
+}
+
+impl LaunchGate {
+    pub fn new() -> Self {
+        Self {
+            open: watch::Sender::new(false),
+        }
+    }
+
+    pub fn open(&self) {
+        self.open.send_replace(true);
+    }
+
+    /// True once the gate is open; false if `timeout` passes first.
+    pub async fn wait(&self, timeout: Duration) -> bool {
+        let mut open = self.open.subscribe();
+        tokio::time::timeout(timeout, open.wait_for(|open| *open))
+            .await
+            .is_ok_and(|result| result.is_ok())
+    }
+}
+
+impl Default for LaunchGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Managed Tauri state.
 pub struct AppState {
     pub session: Session,
+    pub launch: LaunchGate,
     client: OnceCell<Arc<InnerTubeClient>>,
 }
 
@@ -17,6 +54,7 @@ impl AppState {
     pub fn new(session: Session) -> Self {
         Self {
             session,
+            launch: LaunchGate::new(),
             client: OnceCell::new(),
         }
     }
@@ -39,5 +77,35 @@ impl AppState {
             })
             .await
             .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn launch_gate_waits_until_opened() {
+        let gate = Arc::new(LaunchGate::new());
+        let waiter = tokio::spawn({
+            let gate = Arc::clone(&gate);
+            async move { gate.wait(Duration::from_secs(5)).await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiter.is_finished());
+        gate.open();
+        assert!(waiter.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn launch_gate_returns_at_once_when_open() {
+        let gate = LaunchGate::new();
+        gate.open();
+        assert!(gate.wait(Duration::from_millis(1)).await);
+    }
+
+    #[tokio::test]
+    async fn launch_gate_times_out() {
+        assert!(!LaunchGate::new().wait(Duration::from_millis(10)).await);
     }
 }

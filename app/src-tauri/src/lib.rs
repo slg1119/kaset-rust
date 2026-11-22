@@ -4,14 +4,15 @@ pub mod events;
 pub mod login;
 pub mod session;
 pub mod state;
+pub mod webview_session;
 
 use tauri::Manager;
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::session::Session;
-use crate::session::cookies::youtube_cookie_jar;
 use crate::session::store::{STORE_ENV, store_for, store_kind};
 use crate::state::AppState;
+use crate::webview_session::refresh_session_from_webview;
 
 /// Commands and events exposed to the UI. `bindings_are_current` exports
 /// them to `app/src/bindings.ts`.
@@ -58,22 +59,13 @@ pub fn run() {
         .expect("error while running Kaset");
 }
 
-/// Picks up cookies the WebView rotated since the session was saved.
+/// Picks up cookies the WebView rotated since the session was saved, then
+/// opens the launch gate that API commands wait on.
 /// `Session::refresh` ignores this unless the user is signed in.
 fn refresh_cookies_from_webview(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let Some(window) = app.get_webview_window("main") else {
-            return;
-        };
-        match window.cookies() {
-            Ok(cookies) => {
-                let state = app.state::<AppState>();
-                if state.session.refresh(youtube_cookie_jar(&cookies)) {
-                    tracing::info!("refreshed session cookies from the WebView");
-                }
-            }
-            Err(error) => tracing::warn!(%error, "could not read WebView cookies at launch"),
-        }
+        refresh_session_from_webview(&app, "main", "launch").await;
+        app.state::<AppState>().launch.open();
     });
 }
 

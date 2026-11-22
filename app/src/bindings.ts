@@ -17,7 +17,11 @@ export const commands = {
 	signIn: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_in", undefined, options),
 	/**  Forgets the stored session and deletes the WebView's Google cookies. */
 	signOut: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_out", undefined, options),
-	/**  Fetches and parses the signed-in home feed. */
+	/**
+	 *  Fetches and parses the signed-in home feed. Waits for the launch cookie
+	 *  refresh first, and expires the session on 401/403 only if it is still the
+	 *  session the request started with.
+	 */
 	getHome: (options?: InvokeOptions) => __TAURI_INVOKE<HomePage>("get_home", undefined, options),
 };
 

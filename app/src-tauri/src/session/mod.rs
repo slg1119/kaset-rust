@@ -35,8 +35,22 @@ fn auth_cookie_pairs(jar: &CookieJar) -> BTreeSet<(&str, &str)> {
 pub enum SessionError {
     #[error("the sign-in cookies have no SAPISID")]
     NoSapisid,
+    #[error("the session changed after this operation started")]
+    Stale,
+    #[error("the sign-in cookies are the ones that expired")]
+    SameAsExpired,
     #[error(transparent)]
     Store(#[from] StoreError),
+}
+
+/// Sign-in state guarded by one mutex. `epoch` changes whenever the session's
+/// identity changes (restore, sign-in, sign-out), so work that started under
+/// an older epoch can be discarded.
+struct State {
+    status: AuthStatus,
+    epoch: u64,
+    /// The cookies in use when the API last answered 401/403.
+    expired_jar: Option<CookieJar>,
 }
 
 /// Owns the cookies the API client sends and the persisted copy.
@@ -45,7 +59,7 @@ pub enum SessionError {
 /// `auth://changed`.
 pub struct Session {
     cookies: SharedCookies,
-    status: Mutex<AuthStatus>,
+    state: Mutex<State>,
     store: Box<dyn SessionStore>,
     // Serializes status decisions, store I/O, and shared cookie updates.
     transition: Mutex<()>,
@@ -55,7 +69,11 @@ impl Session {
     pub fn new(store: Box<dyn SessionStore>) -> Self {
         Self {
             cookies: SharedCookies::default(),
-            status: Mutex::new(AuthStatus::SignedOut),
+            state: Mutex::new(State {
+                status: AuthStatus::SignedOut,
+                epoch: 0,
+                expired_jar: None,
+            }),
             store,
             transition: Mutex::new(()),
         }
@@ -67,7 +85,18 @@ impl Session {
     }
 
     pub fn status(&self) -> AuthStatus {
-        *self.status.lock().unwrap_or_else(PoisonError::into_inner)
+        self.lock_state().status
+    }
+
+    /// The current session identity. Capture it before slow work (reading
+    /// login cookies, an API request) and pass it to `sign_in_if` or
+    /// `mark_expired_if`. Never blocks on store I/O.
+    pub fn epoch(&self) -> u64 {
+        self.lock_state().epoch
+    }
+
+    fn lock_state(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn lock_transition(&self) -> MutexGuard<'_, ()> {
@@ -76,10 +105,15 @@ impl Session {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn set_status(&self, next: AuthStatus) -> Option<AuthStatus> {
-        let mut status = self.status.lock().unwrap_or_else(PoisonError::into_inner);
-        (*status != next).then(|| {
-            *status = next;
+    /// Sets the status, starting a new epoch when `new_epoch` is true.
+    fn set_status(&self, next: AuthStatus, new_epoch: bool) -> Option<AuthStatus> {
+        let mut state = self.lock_state();
+        if new_epoch {
+            state.epoch += 1;
+            state.expired_jar = None;
+        }
+        (state.status != next).then(|| {
+            state.status = next;
             next
         })
     }
@@ -99,34 +133,59 @@ impl Session {
         match jar.filter(|jar| jar.sapisid().is_some()) {
             Some(jar) => {
                 self.cookies.set(Some(jar));
-                self.set_status(AuthStatus::SignedIn);
+                self.set_status(AuthStatus::SignedIn, true);
             }
             None => {
                 self.cookies.set(None);
-                self.set_status(AuthStatus::SignedOut);
+                self.set_status(AuthStatus::SignedOut, true);
             }
         }
         self.status()
     }
 
-    /// Completes a sign-in with cookies read from the login WebView.
-    /// A failed save keeps the in-memory session and is logged; the user stays
-    /// signed in until the app quits.
-    pub fn sign_in(&self, jar: CookieJar) -> Result<Option<AuthStatus>, SessionError> {
+    /// Completes a sign-in with cookies read from the login WebView, unless the
+    /// session changed since `epoch` was captured (`Stale`) or the cookies are
+    /// the ones that just expired (`SameAsExpired`). A failed save keeps the
+    /// in-memory session and is logged; the user stays signed in until the app
+    /// quits.
+    pub fn sign_in_if(
+        &self,
+        epoch: u64,
+        jar: CookieJar,
+    ) -> Result<Option<AuthStatus>, SessionError> {
         let _transition = self.lock_transition();
         if jar.sapisid().is_none() {
             return Err(SessionError::NoSapisid);
+        }
+        {
+            let state = self.lock_state();
+            if state.epoch != epoch {
+                return Err(SessionError::Stale);
+            }
+            if state
+                .expired_jar
+                .as_ref()
+                .is_some_and(|expired| auth_cookie_pairs(expired) == auth_cookie_pairs(&jar))
+            {
+                return Err(SessionError::SameAsExpired);
+            }
         }
         if let Err(error) = self.store.save(jar.header()) {
             tracing::warn!(%error, "signed in, but the session could not be saved");
         }
         self.cookies.set(Some(jar));
-        Ok(self.set_status(AuthStatus::SignedIn))
+        Ok(self.set_status(AuthStatus::SignedIn, true))
+    }
+
+    /// `sign_in_if` with the current epoch.
+    pub fn sign_in(&self, jar: CookieJar) -> Result<Option<AuthStatus>, SessionError> {
+        self.sign_in_if(self.epoch(), jar)
     }
 
     /// Picks up rotated cookies from the WebView. Ignored unless signed in,
     /// so it can never sign a user back in after sign-out. Only changes to the
-    /// auth cookie set trigger a save.
+    /// auth cookie set trigger a save. The epoch is unchanged: rotation keeps
+    /// the same session.
     pub fn refresh(&self, jar: CookieJar) -> bool {
         let _transition = self.lock_transition();
         if self.status() != AuthStatus::SignedIn || jar.sapisid().is_none() {
@@ -147,22 +206,28 @@ impl Session {
         true
     }
 
-    /// The API answered 401/403. Keeps the cookies (a new sign-in replaces
-    /// them) and asks the UI to prompt for sign-in.
-    pub fn mark_expired(&self) -> Option<AuthStatus> {
+    /// The API answered 401/403 for a request that started at `epoch`. Expires
+    /// the session only if it is still that signed-in session. Keeps the
+    /// cookies (a new sign-in replaces them) and remembers them so the same
+    /// stale jar cannot sign in again.
+    pub fn mark_expired_if(&self, epoch: u64) -> Option<AuthStatus> {
         let _transition = self.lock_transition();
-        if self.status() != AuthStatus::SignedIn {
+        let mut state = self.lock_state();
+        if state.epoch != epoch || state.status != AuthStatus::SignedIn {
             return None;
         }
-        self.set_status(AuthStatus::Expired)
+        state.expired_jar = self.cookies.get();
+        state.status = AuthStatus::Expired;
+        Some(AuthStatus::Expired)
     }
 
-    /// Forgets the session in memory and in the store. The in-memory state is
-    /// cleared even when the store fails, and the error is returned.
+    /// Forgets the session in memory and in the store, and starts a new epoch.
+    /// The in-memory state is cleared even when the store fails, and the error
+    /// is returned.
     pub fn sign_out(&self) -> Result<Option<AuthStatus>, SessionError> {
         let _transition = self.lock_transition();
         self.cookies.set(None);
-        let changed = self.set_status(AuthStatus::SignedOut);
+        let changed = self.set_status(AuthStatus::SignedOut, true);
         self.store.clear()?;
         Ok(changed)
     }
@@ -170,6 +235,7 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Barrier;
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::sync::{
         Arc,
@@ -336,10 +402,13 @@ mod tests {
     #[test]
     fn expiry_only_applies_when_signed_in() {
         let session = session_with(MemoryStore::default());
-        assert_eq!(session.mark_expired(), None);
+        assert_eq!(session.mark_expired_if(session.epoch()), None);
         session.sign_in(jar("test-sapisid")).unwrap();
-        assert_eq!(session.mark_expired(), Some(AuthStatus::Expired));
-        assert_eq!(session.mark_expired(), None);
+        assert_eq!(
+            session.mark_expired_if(session.epoch()),
+            Some(AuthStatus::Expired)
+        );
+        assert_eq!(session.mark_expired_if(session.epoch()), None);
         // Signing in again recovers from expiry.
         assert_eq!(
             session.sign_in(jar("test-sapisid-2")).unwrap(),
@@ -498,5 +567,112 @@ mod tests {
         assert!(handle.get().is_some());
         session.sign_out().unwrap();
         assert!(handle.get().is_none());
+    }
+
+    #[test]
+    fn epoch_changes_on_identity_changes_only() {
+        let session = session_with(MemoryStore::default());
+        let start = session.epoch();
+        session.restore();
+        let restored = session.epoch();
+        assert!(restored > start);
+        session.sign_in(jar("test-sapisid")).unwrap();
+        let signed_in = session.epoch();
+        assert!(signed_in > restored);
+        assert!(session.refresh(jar("test-sapisid-rotated")));
+        assert_eq!(session.epoch(), signed_in, "rotation keeps the epoch");
+        session.mark_expired_if(signed_in);
+        assert_eq!(session.epoch(), signed_in, "expiry keeps the epoch");
+        session.sign_out().unwrap();
+        assert!(session.epoch() > signed_in);
+    }
+
+    #[test]
+    fn sign_in_that_started_before_sign_out_is_discarded() {
+        let session = session_with(MemoryStore::default());
+        let barrier = Barrier::new(2);
+        thread::scope(|scope| {
+            let login = scope.spawn(|| {
+                // The login page finished loading: capture the epoch, then
+                // read cookies while the user signs out.
+                let epoch = session.epoch();
+                barrier.wait();
+                barrier.wait();
+                session.sign_in_if(epoch, jar("test-sapisid"))
+            });
+            barrier.wait();
+            session.sign_out().unwrap();
+            barrier.wait();
+            assert!(matches!(login.join().unwrap(), Err(SessionError::Stale)));
+        });
+        assert_eq!(session.status(), AuthStatus::SignedOut);
+        assert!(session.cookies().get().is_none());
+        assert_eq!(session.store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn stale_auth_error_does_not_expire_a_newer_session() {
+        let session = session_with(MemoryStore::default());
+        session.sign_in(jar("test-sapisid")).unwrap();
+        let barrier = Barrier::new(2);
+        thread::scope(|scope| {
+            let request = scope.spawn(|| {
+                // get_home captured the epoch, then its 401 arrives after the
+                // user signed out and in again.
+                let epoch = session.epoch();
+                barrier.wait();
+                barrier.wait();
+                session.mark_expired_if(epoch)
+            });
+            barrier.wait();
+            session.sign_out().unwrap();
+            session.sign_in(jar("test-sapisid-2")).unwrap();
+            barrier.wait();
+            assert_eq!(request.join().unwrap(), None);
+        });
+        assert_eq!(session.status(), AuthStatus::SignedIn);
+        assert_eq!(session.cookies().get(), Some(jar("test-sapisid-2")));
+    }
+
+    #[test]
+    fn current_auth_error_expires_the_session() {
+        let session = session_with(MemoryStore::default());
+        session.sign_in(jar("test-sapisid")).unwrap();
+        let epoch = session.epoch();
+        assert_eq!(session.mark_expired_if(epoch), Some(AuthStatus::Expired));
+        assert_eq!(session.status(), AuthStatus::Expired);
+    }
+
+    #[test]
+    fn the_jar_that_expired_cannot_sign_in_again() {
+        let session = session_with(MemoryStore::default());
+        session.sign_in(jar("test-sapisid")).unwrap();
+        session.mark_expired_if(session.epoch());
+
+        // The WebView still holds the expired auth cookies; only a non-auth
+        // cookie rotated.
+        let same = CookieJar::from_pairs([
+            ("HSID", "test-cookie"),
+            ("SAPISID", "test-sapisid"),
+            ("SIDCC", "test-rotated"),
+        ]);
+        assert!(matches!(
+            session.sign_in_if(session.epoch(), same),
+            Err(SessionError::SameAsExpired)
+        ));
+        assert_eq!(session.status(), AuthStatus::Expired);
+
+        assert_eq!(
+            session
+                .sign_in_if(session.epoch(), jar("test-sapisid-2"))
+                .unwrap(),
+            Some(AuthStatus::SignedIn)
+        );
+        // After a successful sign-in the old jar is forgotten.
+        session.sign_out().unwrap();
+        assert_eq!(
+            session.sign_in(jar("test-sapisid")).unwrap(),
+            Some(AuthStatus::SignedIn)
+        );
     }
 }
