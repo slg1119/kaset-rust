@@ -153,6 +153,20 @@ the Swift sources are deleted, both trees exist.
   lock through cookie cleanup and session sign-out.
 - OS media controls (`souvlaki`) are touched only on the main thread through
   `AppHandle::run_on_main_thread`.
+- UI (ADR-0045): server data goes through TanStack Query (`app/src/query.ts`:
+  `queryKeys`, stale times, retry policy); do not fetch in `useEffect`. Action
+  errors go to the single notice area (`useNotice().report`), load errors stay
+  in the screen with Retry. Navigation is state-based (`shell/Sidebar.tsx`
+  `Route`); there is no router. Artwork goes through `music/Artwork.tsx`, which
+  only loads https URLs on the hosts the CSP allows. The main window is
+  transparent: screens paint `--bg`; only the sidebar is translucent, and only
+  when `<html data-vibrancy="native">` (set from the `window_vibrancy`
+  command). Every `backdrop-filter` needs the `-webkit-` prefix. New API commands use
+  `signed_in_request` in `commands.rs`. Test screens with
+  `test/render.tsx` (`renderWithProviders`, `renderApp`) and `mockCommands`.
+- Search (`ytm-core::parsers::search`) is a port of the Swift parser verified
+  with `cargo run -p ytm-explorer -- search "<query>" --parse` and a signed-in
+  `KASET_COOKIE_FILE` outside the repository.
 - Credentials stay in `ytm_core::secret::Secret`; never log cookie values or
   format `keyring::Error`.
 - The Swift-era minimal-dependency rule does not apply to the Rust/Tauri code.
