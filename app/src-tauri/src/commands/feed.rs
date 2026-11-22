@@ -110,7 +110,9 @@ fn checked_feed_value(value: &str) -> Result<(), AppError> {
     checked_browse_value(
         value,
         1..=4096,
-        b"%=",
+        // Base64 (standard or URL-safe, possibly percent-encoded); the value is
+        // only ever sent inside the JSON body, never in a URL or script.
+        b"%=+/.",
         "Invalid feed parameter or continuation.",
     )
 }
@@ -139,13 +141,14 @@ mod tests {
         assert!(checked_feed_category("A", None).is_ok());
         assert!(checked_feed_category(&"A".repeat(256), Some("a_-%3D=")).is_ok());
         assert!(checked_feed_value(&"a".repeat(4096)).is_ok());
+        assert!(checked_feed_value("4qmFsgK+/a.b%3D=").is_ok());
         for id in ["", "bad/id", "id%20", "테스트", &"A".repeat(257)] {
             assert_eq!(
                 checked_feed_category(id, None).unwrap_err().kind,
                 ErrorKind::InvalidArgument
             );
         }
-        for value in ["", "a+b", "a/b", "a b", " a", "a\n", "é", &"a".repeat(4097)] {
+        for value in ["", "a b", " a", "a\n", "é", &"a".repeat(4097)] {
             assert_eq!(
                 checked_feed_value(value).unwrap_err().kind,
                 ErrorKind::InvalidArgument
