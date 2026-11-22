@@ -1,0 +1,45 @@
+---
+source: crates/ytm-core/tests/home_parser.rs
+expression: page
+---
+sections:
+  - title: Top songs
+    items:
+      - kind: song
+        video_id: test-vid-01
+        title: Shelf song
+        artists:
+          - name: Shelf artist
+            browse_id: UCshelf-artist
+        thumbnail_url: "https://lh3.googleusercontent.com/test-song=w120-h120"
+  - title: Mixed for you
+    items:
+      - kind: playlist
+        browse_id: VLtest-playlist
+        title: Card playlist
+        subtitle: Playlist • Test curator
+        thumbnail_url: "https://i.ytimg.com/vi/test-vid-02/sddefault.jpg"
+  - title: Featured
+    items:
+      - kind: album
+        browse_id: MPREtest-album
+        title: Immersive album
+        subtitle: Album • Test artist
+        thumbnail_url: "https://lh3.googleusercontent.com/test-album=w226-h226"
+  - title: Top artists
+    items:
+      - kind: artist
+        browse_id: UCgrid-artist
+        title: Grid artist
+        subtitle: 1.2M subscribers
+        thumbnail_url: "https://yt3.ggpht.com/test-artist=w226-h226"
+  - title: Wrapped carousel
+    items:
+      - kind: song
+        video_id: test-vid-03
+        title: Wrapped song
+        artists:
+          - name: Wrapped artist
+            browse_id: UCwrapped-artist
+        thumbnail_url: ~
+continuation: test-home-continuation

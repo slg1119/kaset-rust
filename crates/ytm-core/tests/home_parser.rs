@@ -301,3 +301,49 @@ fn responsive_artists_prefer_navigable_links_over_plain_text_fallback() {
         assert_eq!(song.artists, [artist]);
     }
 }
+
+#[test]
+fn parses_every_supported_shelf_type() {
+    let response: Value =
+        serde_json::from_str(include_str!("fixtures/home_shelf_types.json")).unwrap();
+    let page = parse_home(&response).unwrap();
+
+    let titles: Vec<&str> = page.sections.iter().map(|s| s.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        [
+            "Top songs",
+            "Mixed for you",
+            "Featured",
+            "Top artists",
+            "Wrapped carousel"
+        ]
+    );
+    assert_eq!(page.continuation.as_deref(), Some("test-home-continuation"));
+    assert!(
+        matches!(&page.sections[0].items[0], ShelfItem::Song(song) if song.video_id == "test-vid-01")
+    );
+    assert!(
+        matches!(&page.sections[1].items[0], ShelfItem::Playlist(card) if card.browse_id == "VLtest-playlist")
+    );
+    assert!(
+        matches!(&page.sections[2].items[0], ShelfItem::Album(card) if card.browse_id == "MPREtest-album")
+    );
+    assert!(
+        matches!(&page.sections[3].items[0], ShelfItem::Artist(card) if card.browse_id == "UCgrid-artist")
+    );
+    assert!(
+        matches!(&page.sections[4].items[0], ShelfItem::Song(song) if song.video_id == "test-vid-03")
+    );
+
+    insta::assert_yaml_snapshot!(page);
+}
+
+#[test]
+fn item_section_without_a_supported_shelf_is_skipped() {
+    let response = json!({ "contents": { "singleColumnBrowseResultsRenderer": { "tabs": [ { "tabRenderer": {
+        "content": { "sectionListRenderer": { "contents": [
+            { "itemSectionRenderer": { "contents": [ { "messageRenderer": {} } ] } }
+        ] } } } } ] } } });
+    assert!(parse_home(&response).unwrap().sections.is_empty());
+}

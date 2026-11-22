@@ -49,38 +49,83 @@ pub fn parse_home(response: &Value) -> Result<HomePage, YtmError> {
     })
 }
 
+/// One home section. Shelf types follow the Swift `HomeResponseParser`:
+/// carousels, vertical shelves, card shelves, immersive carousels, grids, and
+/// item sections that wrap one of them. Mood and genre buttons are skipped.
 fn parse_section(section: &Value) -> Option<HomeSection> {
-    let Some(shelf) = section.get("musicCarouselShelfRenderer") else {
-        let kind = section
-            .as_object()
-            .and_then(|o| o.keys().next())
-            .map_or("?", String::as_str);
-        tracing::debug!(kind, "skipping unsupported home section");
-        return None;
-    };
-    let title = at(
+    if let Some(shelf) = section.get("musicCarouselShelfRenderer") {
+        let title = carousel_title(shelf).unwrap_or_else(|| "Unknown Section".into());
+        return shelf_section(title, shelf.get("contents"));
+    }
+    if let Some(shelf) = section.get("musicShelfRenderer") {
+        let title = shelf
+            .get("title")
+            .and_then(runs_text)
+            .unwrap_or_else(|| "Unknown Section".into());
+        return shelf_section(title, shelf.get("contents"));
+    }
+    if let Some(shelf) = section.get("musicCardShelfRenderer") {
+        let title = at(
+            shelf,
+            &["header", "musicCardShelfHeaderBasicRenderer", "title"],
+        )
+        .and_then(runs_text)
+        .unwrap_or_else(|| "Featured".into());
+        return shelf_section(title, shelf.get("contents"));
+    }
+    if let Some(shelf) = section.get("musicImmersiveCarouselShelfRenderer") {
+        let title = carousel_title(shelf).unwrap_or_else(|| "Featured".into());
+        return shelf_section(title, shelf.get("contents"));
+    }
+    if let Some(grid) = section.get("gridRenderer") {
+        let title = at(grid, &["header", "gridHeaderRenderer", "title"])
+            .and_then(runs_text)
+            .unwrap_or_else(|| "Charts".into());
+        return shelf_section(title, grid.get("items"));
+    }
+    if let Some(wrapper) = section.get("itemSectionRenderer") {
+        return wrapper
+            .get("contents")?
+            .as_array()?
+            .iter()
+            .find_map(parse_section);
+    }
+    tracing::debug!(
+        kind = first_key(section),
+        "skipping unsupported home section"
+    );
+    None
+}
+
+fn carousel_title(shelf: &Value) -> Option<String> {
+    at(
         shelf,
         &["header", "musicCarouselShelfBasicHeaderRenderer", "title"],
     )
     .and_then(runs_text)
-    .unwrap_or_else(|| "Unknown Section".into());
-    let items: Vec<ShelfItem> = shelf
-        .get("contents")?
+}
+
+/// A section from `contents`; `None` when no item parses.
+fn shelf_section(title: String, contents: Option<&Value>) -> Option<HomeSection> {
+    let items: Vec<ShelfItem> = contents?
         .as_array()?
         .iter()
         .filter_map(|item| {
             let parsed = parse_item(item);
             if parsed.is_none() {
-                let kind = item
-                    .as_object()
-                    .and_then(|o| o.keys().next())
-                    .map_or("?", String::as_str);
-                tracing::debug!(kind, "skipping unparsed home carousel item");
+                tracing::debug!(kind = first_key(item), "skipping unparsed home shelf item");
             }
             parsed
         })
         .collect();
     (!items.is_empty()).then_some(HomeSection { title, items })
+}
+
+fn first_key(value: &Value) -> &str {
+    value
+        .as_object()
+        .and_then(|object| object.keys().next())
+        .map_or("?", String::as_str)
 }
 
 pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
