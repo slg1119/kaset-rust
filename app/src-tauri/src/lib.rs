@@ -9,6 +9,7 @@ pub mod webview_session;
 pub mod window_effects;
 
 use tauri::Manager;
+use tauri_plugin_notification::NotificationExt;
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::session::Session;
@@ -58,9 +59,13 @@ pub fn run() {
 
     let builder = specta_builder();
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
+            if let Err(error) = app.notification().request_permission() {
+                tracing::debug!(%error, "could not request notification permission");
+            }
             let data_dir = app.path().app_data_dir()?;
             let kind = store_kind(
                 std::env::var(STORE_ENV).ok().as_deref(),

@@ -90,6 +90,12 @@ One request runs at a time, and queue generation and session epoch checks
 discard stale responses. If the current track ends while its radio request is
 in flight, playback advances when the response supplies a playable track.
 
+A playing track with a new video ID triggers a native notification once its
+content plays after any ad. The notification uses the song title and
+comma-separated artist names. Stopping clears the last notified ID so the
+same track can be announced when played again. The service sends through the
+Rust notification plugin after releasing the player lock.
+
 ## Consequences
 
 ### Positive

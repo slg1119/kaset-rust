@@ -4,12 +4,13 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tauri_specta::Event;
 use tokio::sync::{Mutex, MutexGuard};
 use ytm_core::models::RadioQueue;
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 
-use super::engine::{Outcome, Player, PlayerState, QueueState, Seed, WebCommand};
+use super::engine::{Outcome, PlaybackStatus, Player, PlayerState, QueueState, Seed, WebCommand};
 use super::media::{self, MediaPublisher};
 use super::video_id::VideoId;
 use super::window;
@@ -26,18 +27,25 @@ const UI_WINDOW: &str = "main";
 struct Inner {
     player: Player,
     media: MediaPublisher,
+    last_notified_id: Option<String>,
     autoplay_in_flight: bool,
     // A position change while a request is in flight may need another page.
     autoplay_pending: bool,
 }
 
 impl Inner {
-    fn apply(&mut self, app: &AppHandle, outcome: Outcome, now: Instant) -> Result<(), AppError> {
-        if let Some(state) = &outcome.state {
+    fn apply(
+        &mut self,
+        app: &AppHandle,
+        outcome: Outcome,
+        now: Instant,
+    ) -> (Result<(), AppError>, Option<TrackNotification>) {
+        let notification = outcome.state.as_ref().and_then(|state| {
             let update = self.media.update(state, now);
             media::publish(app, update);
-        }
-        apply(app, outcome)
+            track_notification(&mut self.last_notified_id, state)
+        });
+        (apply(app, outcome), notification)
     }
 }
 
@@ -56,7 +64,8 @@ impl SessionPlayerGuard<'_> {
         let now = Instant::now();
         let outcome = self.inner.player.stop(now);
         self.inner.autoplay_pending = false;
-        if let Err(error) = self.inner.apply(app, outcome, now) {
+        let (result, _) = self.inner.apply(app, outcome, now);
+        if let Err(error) = result {
             tracing::warn!(%error, "could not stop the player during a session change");
         }
     }
@@ -72,6 +81,7 @@ impl PlayerService {
             inner: Mutex::new(Inner {
                 player: Player::new(seed),
                 media: MediaPublisher::default(),
+                last_notified_id: None,
                 autoplay_in_flight: false,
                 autoplay_pending: false,
             }),
@@ -87,11 +97,13 @@ impl PlayerService {
         let now = Instant::now();
         let previous = inner.player.queue_position();
         let outcome = change(&mut inner.player, now)?;
-        let result = inner.apply(app, outcome, now);
+        let (result, notification) = inner.apply(app, outcome, now);
         if result.is_ok() && previous != inner.player.queue_position() {
             inner.autoplay_pending = true;
             start_autoplay(app, &mut inner);
         }
+        drop(inner);
+        send_track_notification(app, notification);
         result
     }
 
@@ -147,6 +159,7 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64)
 
     let mut inner = state.player.inner.lock().await;
     inner.autoplay_in_flight = false;
+    let mut notification = None;
     if let Ok(mut radio) = result
         && inner.player.queue_position().0 == generation
         && state.session.epoch() == epoch
@@ -160,11 +173,14 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64)
         inner.player.set_radio_continuation(radio.continuation);
         // A slow response may arrive after the current track already ended.
         // Publish the append first, then advance using the normal load path.
-        let applied = inner.apply(&app, outcome, now).and_then(|()| {
+        let (applied, notice) = inner.apply(&app, outcome, now);
+        notification = notice;
+        let applied = applied.and_then(|()| {
             if appended && inner.player.is_ended() {
                 let next = inner.player.next(now);
                 inner.autoplay_pending |= next.queue.is_some();
-                inner.apply(&app, next, now)?;
+                let (result, _) = inner.apply(&app, next, now);
+                result?;
             }
             Ok(())
         });
@@ -173,6 +189,8 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64)
         }
     }
     start_autoplay(&app, &mut inner);
+    drop(inner);
+    send_track_notification(&app, notification);
 }
 
 async fn fetch_radio(state: &AppState, seed: Seed, epoch: u64) -> Result<RadioQueue, AppError> {
@@ -194,6 +212,43 @@ async fn fetch_radio(state: &AppState, seed: Seed, epoch: u64) -> Result<RadioQu
 impl Default for PlayerService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+struct TrackNotification {
+    title: String,
+    body: String,
+}
+
+fn track_notification(last: &mut Option<String>, state: &PlayerState) -> Option<TrackNotification> {
+    if state.status == PlaybackStatus::Idle {
+        *last = None;
+    }
+    if state.status != PlaybackStatus::Playing || state.is_ad {
+        return None;
+    }
+    let id = &state.track.as_ref()?.video_id;
+    if last.as_ref() == Some(id) {
+        return None;
+    }
+    let metadata = media::now_playing(state)?;
+    *last = Some(id.clone());
+    Some(TrackNotification {
+        title: metadata.title,
+        body: metadata.artist,
+    })
+}
+
+fn send_track_notification(app: &AppHandle, notification: Option<TrackNotification>) {
+    if let Some(notification) = notification
+        && let Err(error) = app
+            .notification()
+            .builder()
+            .title(notification.title)
+            .body(notification.body)
+            .show()
+    {
+        tracing::debug!(%error, "could not show track notification");
     }
 }
 
@@ -220,4 +275,62 @@ fn apply(app: &AppHandle, outcome: Outcome) -> Result<(), AppError> {
         tracing::warn!(%error, "could not emit player://state");
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ytm_core::models::{ArtistRef, Song};
+
+    fn track(video_id: &str, artists: &[&str]) -> Song {
+        Song {
+            video_id: video_id.into(),
+            title: "Test song".into(),
+            artists: artists
+                .iter()
+                .map(|name| ArtistRef {
+                    name: (*name).into(),
+                    browse_id: None,
+                })
+                .collect(),
+            thumbnail_url: None,
+        }
+    }
+
+    #[test]
+    fn track_notification_waits_for_non_ad_playback_and_deduplicates() {
+        let mut state = Player::new(1).state();
+        state.track = Some(track("test-vid-0A", &["Artist A", "Artist B"]));
+        let mut last = None;
+
+        state.status = PlaybackStatus::Loading;
+        assert!(track_notification(&mut last, &state).is_none());
+        state.status = PlaybackStatus::Playing;
+        state.is_ad = true;
+        assert!(track_notification(&mut last, &state).is_none());
+
+        state.is_ad = false;
+        let notice = track_notification(&mut last, &state).unwrap();
+        assert_eq!(notice.title, "Test song");
+        assert_eq!(notice.body, "Artist A, Artist B");
+        state.status = PlaybackStatus::Paused;
+        assert!(track_notification(&mut last, &state).is_none());
+        state.status = PlaybackStatus::Playing;
+        assert!(track_notification(&mut last, &state).is_none());
+
+        state.track = Some(track("test-vid-0B", &[]));
+        assert_eq!(track_notification(&mut last, &state).unwrap().body, "");
+    }
+
+    #[test]
+    fn track_notification_can_repeat_the_same_id_after_stop() {
+        let mut state = Player::new(1).state();
+        let mut last = Some("test-vid-0A".into());
+        assert!(track_notification(&mut last, &state).is_none());
+        assert_eq!(last, None);
+
+        state.status = PlaybackStatus::Playing;
+        state.track = Some(track("test-vid-0A", &[]));
+        assert!(track_notification(&mut last, &state).is_some());
+    }
 }
