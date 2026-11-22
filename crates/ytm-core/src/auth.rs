@@ -53,17 +53,19 @@ impl CookieJar {
         &self.header
     }
 
-    /// Returns `__Secure-3PAPISID` when present, falling back to `SAPISID`.
-    pub fn sapisid(&self) -> Option<Secret> {
-        let mut pairs = self
-            .header
+    /// Iterates over the header's (name, value) pairs. Values are sensitive.
+    pub fn pairs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.header
             .expose()
             .split(';')
-            .filter_map(|pair| pair.trim().split_once('='));
-        pairs
-            .clone()
+            .filter_map(|pair| pair.trim().split_once('='))
+    }
+
+    /// Returns `__Secure-3PAPISID` when present, falling back to `SAPISID`.
+    pub fn sapisid(&self) -> Option<Secret> {
+        self.pairs()
             .find(|(name, _)| *name == "__Secure-3PAPISID")
-            .or_else(|| pairs.find(|(name, _)| *name == "SAPISID"))
+            .or_else(|| self.pairs().find(|(name, _)| *name == "SAPISID"))
             .map(|(_, value)| Secret::new(value))
     }
 }
@@ -150,6 +152,15 @@ mod tests {
         assert_eq!(CookieJar::from_header("SAPISID").sapisid(), None);
         let jar = CookieJar::from_header("__Secure-3PAPISID; SAPISID=test-sapisid");
         assert_eq!(jar.sapisid(), Some(Secret::new("test-sapisid")));
+    }
+
+    #[test]
+    fn cookie_jar_iterates_pairs_and_preserves_equals_in_values() {
+        let jar = CookieJar::from_header("SID=test-cookie; malformed; SAPISID=test=auth");
+        assert_eq!(
+            jar.pairs().collect::<Vec<_>>(),
+            [("SID", "test-cookie"), ("SAPISID", "test=auth")]
+        );
     }
 
     #[test]

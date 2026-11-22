@@ -4,6 +4,8 @@
 //! cookie domain to the URL host exactly, so `.youtube.com` cookies never match
 //! `music.youtube.com` (see docs/superpowers/spikes/2026-11-22-tauri-playback.md).
 
+use std::collections::BTreeMap;
+
 use tauri::webview::Cookie;
 use ytm_core::auth::CookieJar;
 
@@ -15,9 +17,10 @@ fn is_under(domain: &str, root: &str) -> bool {
     domain == root || domain.ends_with(&format!(".{root}"))
 }
 
-/// `youtube.com` or any subdomain, with or without a leading dot.
-pub fn is_youtube_domain(domain: &str) -> bool {
-    is_under(&normalize(domain), "youtube.com")
+/// The normalized length of `youtube.com` or any of its subdomains.
+fn youtube_domain_len(domain: &str) -> Option<usize> {
+    let domain = normalize(domain);
+    is_under(&domain, "youtube.com").then_some(domain.len())
 }
 
 /// Matches normalized country Google domains such as `accounts.google.co.kr`
@@ -43,14 +46,21 @@ pub fn is_session_domain(domain: &str) -> bool {
         || is_country_google(&domain)
 }
 
-/// Builds the API cookie jar from the youtube.com cookies in `cookies`.
+/// Builds a name-sorted API jar, preferring the most specific YouTube domain.
 pub fn youtube_cookie_jar(cookies: &[Cookie<'_>]) -> CookieJar {
-    CookieJar::from_pairs(
-        cookies
-            .iter()
-            .filter(|cookie| cookie.domain().is_some_and(is_youtube_domain))
-            .map(|cookie| (cookie.name(), cookie.value())),
-    )
+    let mut by_name = BTreeMap::new();
+    for cookie in cookies {
+        let Some(domain_len) = cookie.domain().and_then(youtube_domain_len) else {
+            continue;
+        };
+        let selected = by_name
+            .entry(cookie.name().trim())
+            .or_insert((domain_len, cookie.value()));
+        if domain_len > selected.0 {
+            *selected = (domain_len, cookie.value());
+        }
+    }
+    CookieJar::from_pairs(by_name.into_iter().map(|(name, (_, value))| (name, value)))
 }
 
 /// The cookies sign-out must delete.
@@ -72,14 +82,14 @@ mod tests {
 
     #[test]
     fn youtube_domain_matching() {
-        assert!(is_youtube_domain(".youtube.com"));
-        assert!(is_youtube_domain("youtube.com"));
-        assert!(is_youtube_domain("music.youtube.com"));
-        assert!(is_youtube_domain(".Music.YouTube.com"));
-        assert!(!is_youtube_domain("notyoutube.com"));
-        assert!(!is_youtube_domain("youtube.com.evil.example"));
-        assert!(!is_youtube_domain(".google.com"));
-        assert!(!is_youtube_domain(""));
+        assert!(youtube_domain_len(".youtube.com").is_some());
+        assert!(youtube_domain_len("youtube.com").is_some());
+        assert!(youtube_domain_len("music.youtube.com").is_some());
+        assert!(youtube_domain_len(".Music.YouTube.com").is_some());
+        assert!(youtube_domain_len("notyoutube.com").is_none());
+        assert!(youtube_domain_len("youtube.com.evil.example").is_none());
+        assert!(youtube_domain_len(".google.com").is_none());
+        assert!(youtube_domain_len("").is_none());
     }
 
     #[test]
@@ -110,9 +120,34 @@ mod tests {
         let jar = youtube_cookie_jar(&cookies);
         assert_eq!(
             jar.header().expose(),
-            "SAPISID=test-sapisid; HSID=test-cookie"
+            "HSID=test-cookie; SAPISID=test-sapisid"
         );
         assert_eq!(jar.sapisid(), Some(Secret::new("test-sapisid")));
+    }
+
+    #[test]
+    fn jar_keeps_the_most_specific_domain_once_and_sorts_names() {
+        let mut cookies = [
+            cookie("SAPISID", "test-parent", ".youtube.com"),
+            cookie("SAPISID", "test-music", "music.youtube.com"),
+            cookie("HSID", "test-cookie", ".youtube.com"),
+        ];
+        let expected = Secret::new("HSID=test-cookie; SAPISID=test-music");
+        assert_eq!(youtube_cookie_jar(&cookies).header(), &expected);
+        cookies.reverse();
+        assert_eq!(youtube_cookie_jar(&cookies).header(), &expected);
+    }
+
+    #[test]
+    fn jar_keeps_the_first_cookie_when_normalized_domain_lengths_tie() {
+        let cookies = [
+            cookie("SAPISID", "test-first", "music.youtube.com"),
+            cookie("SAPISID", "test-second", ".Music.YouTube.com"),
+        ];
+        assert_eq!(
+            youtube_cookie_jar(&cookies).header(),
+            &Secret::new("SAPISID=test-first")
+        );
     }
 
     #[test]

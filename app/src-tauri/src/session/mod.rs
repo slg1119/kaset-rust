@@ -7,10 +7,29 @@ pub mod store;
 
 pub use status::AuthStatus;
 
+use std::collections::BTreeSet;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use store::{SessionStore, StoreError};
 use ytm_core::auth::{CookieJar, SharedCookies};
+
+const AUTH_COOKIE_NAMES: &[&str] = &[
+    "SID",
+    "HSID",
+    "SSID",
+    "APISID",
+    "SAPISID",
+    "__Secure-1PAPISID",
+    "__Secure-3PAPISID",
+    "__Secure-1PSID",
+    "__Secure-3PSID",
+];
+
+fn auth_cookie_pairs(jar: &CookieJar) -> BTreeSet<(&str, &str)> {
+    jar.pairs()
+        .filter(|(name, _)| AUTH_COOKIE_NAMES.contains(name))
+        .collect()
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
@@ -106,16 +125,22 @@ impl Session {
     }
 
     /// Picks up rotated cookies from the WebView. Ignored unless signed in,
-    /// so it can never sign a user back in after sign-out.
+    /// so it can never sign a user back in after sign-out. Only changes to the
+    /// auth cookie set trigger a save.
     pub fn refresh(&self, jar: CookieJar) -> bool {
         let _transition = self.lock_transition();
         if self.status() != AuthStatus::SignedIn || jar.sapisid().is_none() {
             return false;
         }
-        if self.cookies.get().as_ref() == Some(&jar) {
+        let previous = self.cookies.get();
+        if previous.as_ref() == Some(&jar) {
             return false;
         }
-        if let Err(error) = self.store.save(jar.header()) {
+        if previous
+            .as_ref()
+            .is_none_or(|old| auth_cookie_pairs(old) != auth_cookie_pairs(&jar))
+            && let Err(error) = self.store.save(jar.header())
+        {
             tracing::warn!(%error, "could not save refreshed cookies");
         }
         self.cookies.set(Some(jar));
@@ -146,6 +171,10 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc::{self, Receiver, Sender};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
     use std::thread;
     use std::time::Duration;
 
@@ -202,6 +231,36 @@ mod tests {
         fn clear(&self) -> Result<(), StoreError> {
             self.0.clear()
         }
+    }
+
+    #[derive(Default)]
+    struct CountingStore {
+        inner: MemoryStore,
+        saves: Arc<AtomicUsize>,
+    }
+
+    impl SessionStore for CountingStore {
+        fn load(&self) -> Result<Option<Secret>, StoreError> {
+            self.inner.load()
+        }
+
+        fn save(&self, header: &Secret) -> Result<(), StoreError> {
+            self.saves.fetch_add(1, Ordering::Relaxed);
+            self.inner.save(header)
+        }
+
+        fn clear(&self) -> Result<(), StoreError> {
+            self.inner.clear()
+        }
+    }
+
+    fn restored_counting_session(original: &CookieJar) -> (Session, Arc<AtomicUsize>) {
+        let store = CountingStore::default();
+        store.inner.save(original.header()).unwrap();
+        let saves = Arc::clone(&store.saves);
+        let session = Session::new(Box::new(store));
+        assert_eq!(session.restore(), AuthStatus::SignedIn);
+        (session, saves)
     }
 
     #[test]
@@ -315,6 +374,46 @@ mod tests {
             ))
         );
         assert!(!session.refresh(CookieJar::from_pairs([("HSID", "test-cookie")])));
+    }
+
+    #[test]
+    fn refresh_updates_rotation_only_cookies_without_saving() {
+        let original = CookieJar::from_header("SAPISID=test-sapisid; SIDCC=test-old");
+        let updated = CookieJar::from_header("SAPISID=test-sapisid; SIDCC=test-new");
+        let (session, saves) = restored_counting_session(&original);
+
+        assert!(session.refresh(updated.clone()));
+        assert_eq!(session.cookies().get(), Some(updated));
+        assert_eq!(saves.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            session.store.load().unwrap().as_ref(),
+            Some(original.header())
+        );
+    }
+
+    #[test]
+    fn refresh_reorders_legacy_auth_cookies_without_saving() {
+        let original = CookieJar::from_header("SAPISID=test-sapisid; HSID=test-cookie");
+        let updated = CookieJar::from_header("HSID=test-cookie; SAPISID=test-sapisid");
+        let (session, saves) = restored_counting_session(&original);
+
+        assert!(session.refresh(updated.clone()));
+        assert_eq!(session.cookies().get(), Some(updated));
+        assert_eq!(saves.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn refresh_saves_a_changed_sapisid_once() {
+        let (session, saves) = restored_counting_session(&jar("test-old"));
+        let updated = jar("test-new");
+
+        assert!(session.refresh(updated.clone()));
+        assert!(!session.refresh(updated.clone()));
+        assert_eq!(saves.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            session.store.load().unwrap().as_ref(),
+            Some(updated.header())
+        );
     }
 
     #[test]

@@ -77,13 +77,13 @@ impl<B: EntryBackend> ChunkedStore<B> {
     }
 
     fn sweep_end(&self, start: usize) -> Result<usize, StoreError> {
-        for offset in 0..MAX_SWEEP_CHUNKS {
-            let index = start + offset;
+        let end = start.saturating_add(MAX_SWEEP_CHUNKS);
+        for index in start..end {
             if self.backend.get(&chunk_entry(index))?.is_none() {
                 return Ok(index);
             }
         }
-        Ok(start + MAX_SWEEP_CHUNKS)
+        Ok(end)
     }
 
     fn delete_chunks(&self, chunks: std::ops::Range<usize>) -> Result<(), StoreError> {
@@ -139,19 +139,13 @@ impl<B: EntryBackend> SessionStore for ChunkedStore<B> {
     }
 
     fn clear(&self) -> Result<(), StoreError> {
-        let count = match self.count() {
-            Ok(Some(count)) => count,
-            Ok(None) | Err(_) => {
-                let count = self.sweep_end(0)?;
-                if count > 0 {
-                    // Keep the recovered range available if deletion leaves gaps.
-                    self.backend
-                        .set(COUNT_ENTRY, count.to_string().as_bytes())?;
-                }
-                count
-            }
-        };
-        self.delete_chunks(0..count)?;
+        let count = self.count().ok().flatten().unwrap_or(0);
+        let end = self.sweep_end(count)?;
+        if end > count {
+            // Keep the full range available for a retry if deletion leaves gaps.
+            self.backend.set(COUNT_ENTRY, end.to_string().as_bytes())?;
+        }
+        self.delete_chunks(0..end)?;
         self.backend.delete(COUNT_ENTRY)
     }
 }
@@ -471,6 +465,37 @@ mod tests {
         store.clear().unwrap();
         assert!(backend.names().is_empty());
         assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn chunked_store_clear_sweeps_chunks_beyond_a_valid_count() {
+        let backend = MapBackend::default();
+        let store = ChunkedStore::new(backend.clone());
+        backend.set(COUNT_ENTRY, b"2").unwrap();
+        for index in 0..4 {
+            backend.set(&chunk_entry(index), b"test-cookie").unwrap();
+        }
+        store.clear().unwrap();
+        assert!(backend.names().is_empty());
+    }
+
+    #[test]
+    fn chunked_store_clear_can_retry_failed_stale_chunk_deletions() {
+        let backend = MapBackend::default();
+        let store = ChunkedStore::new(backend.clone());
+        backend.set(COUNT_ENTRY, b"2").unwrap();
+        for index in 0..4 {
+            backend.set(&chunk_entry(index), b"test-cookie").unwrap();
+        }
+        backend.fail_next_delete_of("session.3");
+
+        assert!(matches!(
+            store.clear(),
+            Err(StoreError::Keyring("platform failure"))
+        ));
+        assert_eq!(backend.names(), ["session.3", "session.count"]);
+        store.clear().unwrap();
+        assert!(backend.names().is_empty());
     }
 
     #[test]
