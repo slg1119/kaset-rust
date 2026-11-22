@@ -24,8 +24,21 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::sign_in,
             commands::sign_out,
             commands::get_home,
+            player::commands::play_queue,
+            player::commands::toggle_playback,
+            player::commands::next_track,
+            player::commands::previous_track,
+            player::commands::seek_to,
+            player::commands::set_repeat,
+            player::commands::set_shuffle,
+            player::commands::player_snapshot,
+            player::commands::playback_event,
         ])
-        .events(collect_events![events::AuthChanged])
+        .events(collect_events![
+            events::AuthChanged,
+            events::PlayerStateChanged,
+            events::QueueChanged
+        ])
         .disable_serde_phases()
 }
 
@@ -59,6 +72,13 @@ pub fn run() {
             app.manage(AppState::new(session));
             refresh_cookies_from_webview(app.handle().clone());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // The hidden player window would keep the app (and audio) alive
+            // after the user closes the main window.
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().exit(0);
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running Kaset");

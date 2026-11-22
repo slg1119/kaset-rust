@@ -18,6 +18,15 @@ fn main() {
                 "sign_in",
                 "sign_out",
                 "get_home",
+                "play_queue",
+                "toggle_playback",
+                "next_track",
+                "previous_track",
+                "seek_to",
+                "set_repeat",
+                "set_shuffle",
+                "player_snapshot",
+                "playback_event",
             ]))
             .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest()),
     )

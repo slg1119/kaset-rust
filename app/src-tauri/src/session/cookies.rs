@@ -13,7 +13,7 @@ fn normalize(domain: &str) -> String {
     domain.trim().trim_start_matches('.').to_ascii_lowercase()
 }
 
-fn is_under(domain: &str, root: &str) -> bool {
+pub(crate) fn is_under(domain: &str, root: &str) -> bool {
     domain == root || domain.ends_with(&format!(".{root}"))
 }
 

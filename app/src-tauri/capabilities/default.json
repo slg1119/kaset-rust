@@ -8,6 +8,14 @@
     "allow-auth-status",
     "allow-sign-in",
     "allow-sign-out",
-    "allow-get-home"
+    "allow-get-home",
+    "allow-play-queue",
+    "allow-toggle-playback",
+    "allow-next-track",
+    "allow-previous-track",
+    "allow-seek-to",
+    "allow-set-repeat",
+    "allow-set-shuffle",
+    "allow-player-snapshot"
   ]
 }

@@ -7,6 +7,8 @@ use ytm_core::YtmError;
 pub enum ErrorKind {
     AuthExpired,
     NotSignedIn,
+    /// A command argument was rejected, such as an unplayable queue position.
+    InvalidArgument,
     Network,
     Http,
     Parse,

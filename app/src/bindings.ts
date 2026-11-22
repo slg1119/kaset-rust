@@ -15,7 +15,10 @@ export const commands = {
 	authStatus: (options?: InvokeOptions) => __TAURI_INVOKE<AuthStatus>("auth_status", undefined, options),
 	/**  Opens the Google sign-in window. Completion arrives as `auth://changed`. */
 	signIn: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_in", undefined, options),
-	/**  Forgets the stored session and deletes the WebView's Google cookies. */
+	/**
+	 *  Stops playback, forgets the stored session, and deletes the WebView's
+	 *  Google cookies.
+	 */
 	signOut: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_out", undefined, options),
 	/**
 	 *  Fetches and parses the signed-in home feed. Waits for the launch cookie
@@ -23,11 +26,31 @@ export const commands = {
 	 *  session the request started with.
 	 */
 	getHome: (options?: InvokeOptions) => __TAURI_INVOKE<HomePage>("get_home", undefined, options),
+	/**  Replaces the queue with `songs` and plays `songs[start_index]`. */
+	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
+	/**  Pauses when playing or loading; otherwise plays. */
+	togglePlayback: (options?: InvokeOptions) => __TAURI_INVOKE<null>("toggle_playback", undefined, options),
+	nextTrack: (options?: InvokeOptions) => __TAURI_INVOKE<null>("next_track", undefined, options),
+	/**  Restarts the song after three seconds; otherwise plays the previous song. */
+	previousTrack: (options?: InvokeOptions) => __TAURI_INVOKE<null>("previous_track", undefined, options),
+	/**  Seeks to `position` seconds. Ignored while an ad plays. */
+	seekTo: (position: number | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("seek_to", { position }, options),
+	setRepeat: (mode: RepeatMode, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_repeat", { mode }, options),
+	setShuffle: (enabled: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_shuffle", { enabled }, options),
+	/**  The current player state and queue, for a UI that starts after playback. */
+	playerSnapshot: (options?: InvokeOptions) => __TAURI_INVOKE<PlayerSnapshot>("player_snapshot", undefined, options),
+	/**
+	 *  Called by the player window's init script. Rejects calls from any other
+	 *  window or origin, even though the capability already limits callers.
+	 */
+	playbackEvent: (event: PlaybackEvent, options?: InvokeOptions) => __TAURI_INVOKE<null>("playback_event", { event }, options),
 };
 
 /** Events */
 export const events = {
 	authChanged: makeEvent<AuthChanged, AuthChanged>("auth://changed"),
+	playerQueue: makeEvent<QueueChanged, QueueChanged>("player://queue"),
+	playerState: makeEvent<PlayerStateChanged, PlayerStateChanged>("player://state"),
 };
 
 /* Types */
@@ -67,7 +90,9 @@ export type BrowseCard = {
 };
 
 /**  What went wrong, for the UI to branch on. */
-export type ErrorKind = "auth_expired" | "not_signed_in" | "network" | "http" | "parse" | "rate_limited" | "internal";
+export type ErrorKind = "auth_expired" | "not_signed_in" | 
+/**  A command argument was rejected, such as an unplayable queue position. */
+"invalid_argument" | "network" | "http" | "parse" | "rate_limited" | "internal";
 
 export type HomePage = {
 	sections: HomeSection[],
@@ -78,6 +103,76 @@ export type HomeSection = {
 	title: string,
 	items: ShelfItem[],
 };
+
+/**
+ *  Sent by the init script in the player window through `playback_event`.
+ *  Fixed-size fields only: no free-form strings, lists, or maps.
+ */
+export type PlaybackEvent = 
+/**  Sampled on media events and about four times a second while playing. */
+{ kind: "progress"; video_id: VideoId; playing: boolean; position: number | null; duration: number | null; ad: boolean } | 
+/**  The song's media ended (never sent for an ad). */
+{ kind: "ended"; video_id: VideoId } | 
+/**  The page could not start or continue playback. */
+{ kind: "failed"; video_id: VideoId };
+
+export type PlaybackStatus = 
+/**  Nothing queued. */
+"idle" | 
+/**  The player page is loading the current song. */
+"loading" | "playing" | "paused" | 
+/**  The last song finished and nothing follows it. */
+"ended";
+
+/**  Reply to `player_snapshot`: the state the events would have sent so far. */
+export type PlayerSnapshot = {
+	state: PlayerState,
+	queue: QueueState,
+};
+
+/**  Emitted on `player://state`. */
+export type PlayerState = {
+	status: PlaybackStatus,
+	track: Song | null,
+	/**  Seconds. */
+	position: number | null,
+	/**  Seconds; 0 while unknown. */
+	duration: number | null,
+	/**  An ad is playing; position and duration belong to the ad. */
+	is_ad: boolean,
+	repeat: RepeatMode,
+	shuffle: boolean,
+	has_previous: boolean,
+	has_next: boolean,
+};
+
+/**
+ *  Emitted to the main window on `player://state`: on every status, track, or
+ *  ad change, and at most four times a second for progress.
+ */
+export type PlayerStateChanged = {
+	state: PlayerState,
+};
+
+/**
+ *  Emitted to the main window on `player://queue` when the queue or the
+ *  current position in it changes.
+ */
+export type QueueChanged = {
+	queue: QueueState,
+};
+
+/**  Emitted on `player://queue`: songs in play order and the current index. */
+export type QueueState = {
+	songs: Song[],
+	current: number | null,
+};
+
+export type RepeatMode = "off" | 
+/**  Wrap from the last song to the first. */
+"all" | 
+/**  Replay the current song when it ends. Next and previous still move. */
+"one";
 
 export type ShelfItem = {
 	kind: "song",
@@ -95,6 +190,13 @@ export type Song = {
 	artists: ArtistRef[],
 	thumbnail_url: string | null,
 };
+
+/**
+ *  A YouTube video id: exactly 11 characters from `[A-Za-z0-9_-]`. Checked
+ *  before any id reaches a URL or the player, whether it came from the UI,
+ *  the API, or the player page.
+ */
+export type VideoId = string;
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;
@@ -130,6 +232,15 @@ export type MockCommandHandlers = {
     signIn: () => null | Promise<null>,
     signOut: () => null | Promise<null>,
     getHome: () => HomePage | Promise<HomePage>,
+    playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
+    togglePlayback: () => null | Promise<null>,
+    nextTrack: () => null | Promise<null>,
+    previousTrack: () => null | Promise<null>,
+    seekTo: (args: { position: number | null }) => null | Promise<null>,
+    setRepeat: (args: { mode: RepeatMode }) => null | Promise<null>,
+    setShuffle: (args: { enabled: boolean }) => null | Promise<null>,
+    playerSnapshot: () => PlayerSnapshot | Promise<PlayerSnapshot>,
+    playbackEvent: (args: { event: PlaybackEvent }) => null | Promise<null>,
 };
 
 /**
@@ -160,6 +271,15 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "sign_in": return mockCommandHandler(mockHandlers.signIn, "sign_in", args);
             case "sign_out": return mockCommandHandler(mockHandlers.signOut, "sign_out", args);
             case "get_home": return mockCommandHandler(mockHandlers.getHome, "get_home", args);
+            case "play_queue": return mockCommandHandler(mockHandlers.playQueue, "play_queue", args);
+            case "toggle_playback": return mockCommandHandler(mockHandlers.togglePlayback, "toggle_playback", args);
+            case "next_track": return mockCommandHandler(mockHandlers.nextTrack, "next_track", args);
+            case "previous_track": return mockCommandHandler(mockHandlers.previousTrack, "previous_track", args);
+            case "seek_to": return mockCommandHandler(mockHandlers.seekTo, "seek_to", args);
+            case "set_repeat": return mockCommandHandler(mockHandlers.setRepeat, "set_repeat", args);
+            case "set_shuffle": return mockCommandHandler(mockHandlers.setShuffle, "set_shuffle", args);
+            case "player_snapshot": return mockCommandHandler(mockHandlers.playerSnapshot, "player_snapshot", args);
+            case "playback_event": return mockCommandHandler(mockHandlers.playbackEvent, "playback_event", args);
             default: throw new Error(`No mock handler registered for command '${cmd}'`);
         }
     }, { shouldMockEvents: true });

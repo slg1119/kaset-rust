@@ -6,6 +6,7 @@ use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
 
 use crate::error::AppError;
+use crate::player::service::PlayerService;
 use crate::session::Session;
 
 /// How long API commands wait for the launch cookie refresh.
@@ -47,6 +48,7 @@ impl Default for LaunchGate {
 pub struct AppState {
     pub session: Session,
     pub launch: LaunchGate,
+    pub player: PlayerService,
     client: OnceCell<Arc<InnerTubeClient>>,
 }
 
@@ -55,6 +57,7 @@ impl AppState {
         Self {
             session,
             launch: LaunchGate::new(),
+            player: PlayerService::new(),
             client: OnceCell::new(),
         }
     }

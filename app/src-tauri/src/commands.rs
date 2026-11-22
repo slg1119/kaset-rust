@@ -23,22 +23,28 @@ pub async fn sign_in(app: AppHandle) -> Result<(), AppError> {
     open_login_window(&app)
 }
 
-/// Forgets the stored session and deletes the WebView's Google cookies.
+/// Stops playback, forgets the stored session, and deletes the WebView's
+/// Google cookies.
 #[tauri::command]
 #[specta::specta]
-pub async fn sign_out(app: AppHandle) -> Result<(), AppError> {
+pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
     if let Some(window) = app.get_webview_window(LOGIN_LABEL) {
         close_login_window(&window);
     }
-    let task_app = app.clone();
-    let result = blocking(move || {
-        if let Some(window) = task_app.get_webview_window("main") {
-            clear_webview_cookies(&window, "sign-out");
-        }
-        task_app.state::<AppState>().session.sign_out()
-    })
-    .await;
-    emit_auth_changed(&app, app.state::<AppState>().session.status());
+    let result = state
+        .player
+        .stop_for_sign_out(&app, async {
+            let task_app = app.clone();
+            blocking(move || {
+                if let Some(window) = task_app.get_webview_window("main") {
+                    clear_webview_cookies(&window, "sign-out");
+                }
+                task_app.state::<AppState>().session.sign_out()
+            })
+            .await
+        })
+        .await;
+    emit_auth_changed(&app, state.session.status());
     result?
         .map(|_| ())
         .map_err(|error| AppError::internal(error.to_string()))

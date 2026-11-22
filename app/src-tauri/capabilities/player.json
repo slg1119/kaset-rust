@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "player-remote",
+  "description": "The hidden player window's https://music.youtube.com pages may report playback events and nothing else: no core or event permissions.",
+  "windows": ["player"],
+  "remote": { "urls": ["https://music.youtube.com/*"] },
+  "permissions": ["allow-playback-event"]
+}
