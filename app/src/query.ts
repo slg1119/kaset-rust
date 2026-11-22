@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import type { FeedKind } from "./bindings";
+import type { FeedKind, SearchFilter } from "./bindings";
 import { isAppError } from "./errors";
 
 /** How long fetched data counts as fresh before a remount refetches it. */
@@ -13,7 +13,7 @@ export const queryKeys = {
   feed: (kind: FeedKind) => ["feed", kind] as const,
   feedCategory: (browseId: string, params: string | null) => ["feed", "category", browseId, params] as const,
   feedChip: (params: string | null) => ["feed", "chip", params] as const,
-  search: (query: string) => ["search", query] as const,
+  search: (query: string, filter: SearchFilter | null) => ["search", query, filter] as const,
   artist: (browseId: string) => ["artist", browseId] as const,
   artistMore: (browseId: string, params: string | null) => ["artist", browseId, "more", params] as const,
   browsePage: (browseId: string) => ["browsePage", browseId] as const,

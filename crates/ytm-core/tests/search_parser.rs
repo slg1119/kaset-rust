@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 use ytm_core::models::{ArtistRef, SearchItem};
-use ytm_core::parsers::search::parse_search;
+use ytm_core::parsers::search::{parse_search, parse_search_continuation};
 
 fn fixture(name: &str) -> Value {
     let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));
@@ -218,4 +218,48 @@ fn shelf_continuation_items_carry_the_next_token() {
         results.continuation.as_deref(),
         Some("sanitized-item-token")
     );
+}
+
+#[test]
+fn filtered_single_shelf_keeps_results_and_continuation() {
+    let response = fixture("search_filtered_shelf");
+    let results = parse_search(&response);
+    assert_eq!(ids(&results.items), ["song:test-song-1"]);
+    assert_eq!(results.continuation.as_deref(), Some("test-continuation"));
+
+    let shelf = &response["contents"]["tabbedSearchResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]
+        ["sectionListRenderer"]["contents"][0];
+    let direct = parse_search(&json!({ "contents": shelf }));
+    assert_eq!(results, direct);
+}
+
+#[test]
+fn search_continuation_combines_shelf_and_actions_in_order() {
+    let results = parse_search_continuation(&fixture("search_continuation"));
+    assert_eq!(
+        ids(&results.items),
+        ["song:test-song-2", "video:test-video-3"]
+    );
+    assert_eq!(results.continuation.as_deref(), Some("test-next-token"));
+    let SearchItem::Song(song) = &results.items[0] else {
+        panic!("expected a song");
+    };
+    assert_eq!(song.title, "Second song");
+}
+
+#[test]
+fn search_continuation_accepts_reload_and_endpoint_envelopes() {
+    let fixture = fixture("search_continuation");
+    let items = &fixture["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"];
+    for envelope in ["onResponseReceivedCommands", "onResponseReceivedEndpoints"] {
+        let results = parse_search_continuation(&json!({
+            envelope: [{ "reloadContinuationItemsCommand": { "continuationItems": items } }]
+        }));
+        assert_eq!(
+            ids(&results.items),
+            ["song:test-song-2", "video:test-video-3"]
+        );
+        assert_eq!(results.continuation.as_deref(), Some("test-next-token"));
+    }
+    assert_eq!(parse_search_continuation(&json!({})).continuation, None);
 }

@@ -37,10 +37,15 @@ export const commands = {
 	/**  Resolves an artist radio or shuffle endpoint and starts its queue. */
 	playArtistMix: (playlistId: string | null, videoId: string | null, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_artist_mix", { playlistId, videoId, params }, options),
 	/**
-	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
+	 *  Searches YouTube Music with an optional filter. An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
 	 */
-	search: (query: string, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search", { query }, options),
+	search: (query: string, filter: SearchFilter | null, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search", { query, filter }, options),
+	/**
+	 *  Fetches another search page. The UI tracks the filter for its cache, and
+	 *  YouTube Music uses the filter already encoded in the continuation token.
+	 */
+	searchContinuation: (token: string, filter: SearchFilter | null, options?: InvokeOptions) => __TAURI_INVOKE<SearchResults>("search_continuation", { token, filter }, options),
 	/**
 	 *  Autocomplete suggestions for `input`. An empty input returns none
 	 *  without a request.
@@ -253,6 +258,9 @@ export type RepeatMode = "off" |
 /**  Replay the current song when it ends. Next and previous still move. */
 "one";
 
+/**  A server-side YouTube Music search filter. */
+export type SearchFilter = "songs" | "videos" | "albums" | "artists" | "profiles" | "playlists" | "featured_playlists" | "community_playlists" | "podcasts" | "episodes";
+
 /**
  *  One search result, in server order. Songs, videos, and episodes carry a
  *  video id and can be queued; the rest open detail pages (milestone 5).
@@ -283,7 +291,7 @@ export type SearchItem = {
 
 export type SearchResults = {
 	items: SearchItem[],
-	/**  Token for the next page; not requested yet. */
+	/**  Token for the next page. */
 	continuation: string | null,
 };
 
@@ -352,7 +360,8 @@ export type MockCommandHandlers = {
     getArtist: (args: { browseId: string }) => ArtistPage | Promise<ArtistPage>,
     getArtistMore: (args: { browseId: string; params: string | null }) => ShelfItem[] | Promise<ShelfItem[]>,
     playArtistMix: (args: { playlistId: string | null; videoId: string | null; params: string | null }) => null | Promise<null>,
-    search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
+    search: (args: { query: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
+    searchContinuation: (args: { token: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
     windowVibrancy: () => boolean | Promise<boolean>,
@@ -403,6 +412,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_artist_more": return mockCommandHandler(mockHandlers.getArtistMore, "get_artist_more", args);
             case "play_artist_mix": return mockCommandHandler(mockHandlers.playArtistMix, "play_artist_mix", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
+            case "search_continuation": return mockCommandHandler(mockHandlers.searchContinuation, "search_continuation", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);
             case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);

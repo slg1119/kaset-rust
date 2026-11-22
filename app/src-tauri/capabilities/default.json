@@ -17,6 +17,7 @@
     "allow-get-artist-more",
     "allow-play-artist-mix",
     "allow-search",
+    "allow-search-continuation",
     "allow-search-suggestions",
     "allow-get-account",
     "allow-window-vibrancy",

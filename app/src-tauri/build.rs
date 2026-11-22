@@ -26,6 +26,7 @@ fn main() {
                 "get_artist_more",
                 "play_artist_mix",
                 "search",
+                "search_continuation",
                 "search_suggestions",
                 "get_account",
                 "window_vibrancy",

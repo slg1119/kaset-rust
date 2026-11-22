@@ -59,11 +59,14 @@ test("opens a Home album, displays its tracks, and queues playback from the clic
 });
 
 test("returns to the filtered Search results with Escape or the Back shortcut", async () => {
-  const search = vi.fn(() => searchResults);
+  const search = vi.fn(({ filter }: { filter: string | null }) => filter === "albums"
+    ? { items: searchResults.items.filter((item) => item.kind === "album"), continuation: null }
+    : searchResults);
   renderDetailApp({ search, searchSuggestions: () => [] });
 
   await userEvent.click(await screen.findByRole("button", { name: "Search" }));
   await userEvent.type(screen.getByRole("combobox"), "test search{Enter}");
+  await screen.findByRole("region", { name: "Top result" });
   await userEvent.click(await screen.findByRole("button", { name: "Albums" }));
   for (const shortcut of [{ key: "Escape" }, { key: "[", ctrlKey: true }]) {
     await userEvent.click(await screen.findByRole("button", { name: "Open Found album" }));
@@ -73,7 +76,10 @@ test("returns to the filtered Search results with Escape or the Back shortcut", 
     expect(screen.getByRole("combobox")).toHaveValue("test search");
     expect(screen.getByRole("button", { name: "Albums" })).toHaveAttribute("aria-pressed", "true");
   }
-  expect(search).toHaveBeenCalledTimes(1);
+  expect(search.mock.calls).toEqual([
+    [{ query: "test search", filter: null }],
+    [{ query: "test search", filter: "albums" }],
+  ]);
 });
 
 test("opens a playlist from the top search result", async () => {

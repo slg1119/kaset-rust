@@ -373,3 +373,60 @@ async fn artist_mix_posts_playlist_and_optional_params_without_a_video() {
     let body = requests[0].body_json::<serde_json::Value>().unwrap();
     assert!(body.get("videoId").is_none());
 }
+
+#[tokio::test]
+async fn filtered_search_and_search_continuation_post_swift_request_shapes() {
+    use ytm_core::models::SearchFilter;
+
+    let filters = [
+        (SearchFilter::Songs, "EgWKAQIIAWoMEA4QChADEAQQCRAF"),
+        (SearchFilter::Videos, "EgWKAQIQAWoMEA4QChADEAQQCRAF"),
+        (SearchFilter::Albums, "EgWKAQIYAWoMEA4QChADEAQQCRAF"),
+        (SearchFilter::Artists, "EgWKAQIgAWoMEA4QChADEAQQCRAF"),
+        (SearchFilter::Profiles, "EgWKAQJYAWoMEA4QChADEAQQCRAF"),
+        (SearchFilter::Playlists, "EgWKAQIoAWoMEA4QChADEAQQCRAF"),
+        (
+            SearchFilter::FeaturedPlaylists,
+            "EgeKAQQoADgBagwQDhAKEAMQBBAJEAU=",
+        ),
+        (
+            SearchFilter::CommunityPlaylists,
+            "EgeKAQQoAEABagwQDhAKEAMQBBAJEAU=",
+        ),
+        (
+            SearchFilter::Podcasts,
+            "EgWKAQJQAWoQEBAQCRAEEAMQBRAKEBUQEQ%3D%3D",
+        ),
+        (SearchFilter::Episodes, "EgWKAQJIAWoMEA4QChADEAQQCRAF"),
+    ];
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/search"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(11)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    for (filter, _) in filters {
+        client.search_filtered("test query", filter).await.unwrap();
+    }
+    client.search_continuation("test-token+/%3D").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let expected = filters
+        .map(|(_, params)| json!({"query": "test query", "params": params}))
+        .into_iter()
+        .chain([json!({"continuation": "test-token+/%3D"})]);
+    for (request, expected) in requests.iter().zip(expected) {
+        let mut body = request.body_json::<serde_json::Value>().unwrap();
+        assert!(body.as_object_mut().unwrap().remove("context").is_some());
+        assert_eq!(body, expected);
+        assert!(
+            !request
+                .url
+                .query_pairs()
+                .any(|(key, _)| key == "continuation")
+        );
+    }
+}
