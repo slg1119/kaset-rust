@@ -1,0 +1,27 @@
+{
+  "contents": {"twoColumnBrowseResultsRenderer": {
+    "tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [
+      {"musicResponsiveHeaderRenderer": {
+        "title": {"runs": [{"text": "Test show"}]},
+        "subtitle": {"runs": [{"text": "Test host"}]},
+        "description": {"runs": [{"text": "About "}, {"text": "the show"}]},
+        "thumbnail": {"thumbnails": [{"url": "https://i.ytimg.com/test-show"}]}
+      }}
+    ]}}}}],
+    "secondaryContents": {"sectionListRenderer": {"contents": [{"musicShelfRenderer": {
+      "contents": [
+        {"musicMultiRowListItemRenderer": {
+          "title": {"runs": [{"text": "Test episode"}]},
+          "onTap": {"watchEndpoint": {"videoId": "test-video1"}},
+          "description": {"runs": [{"text": "About "}, {"text": "the episode"}]},
+          "publishedTimeText": {"runs": [{"text": "Nov 22, 2026"}]},
+          "durationText": {"runs": [{"text": "42 min"}]},
+          "thumbnail": {"thumbnails": [{"url": "https://i.ytimg.com/test-episode"}]},
+          "playbackProgress": {"playbackProgressPercentage": 25}
+        }},
+        {"musicMultiRowListItemRenderer": {"title": {"runs": [{"text": "Unavailable episode"}]}}}
+      ],
+      "continuations": [{"nextContinuationData": {"continuation": "test-continuation"}}]
+    }}]}}
+  }}
+}

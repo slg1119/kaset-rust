@@ -5,10 +5,14 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_browse_id};
-use ytm_core::models::FeedPage;
+use ytm_core::models::{FeedPage, PodcastEpisodesPage};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation, parse_home};
+use ytm_core::parsers::podcasts::{
+    PODCASTS_BROWSE_ID, parse_podcast_episodes_continuation, parse_podcast_show, parse_podcasts,
+    parse_podcasts_continuation,
+};
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
@@ -42,6 +46,14 @@ enum Command {
     },
     /// Probe the next feed page. Reports shape without printing tokens.
     FeedContinue { token: String },
+    /// Probe the podcasts discovery feed. Reports shape without printing tokens.
+    Podcasts,
+    /// Probe a podcast discovery continuation. Reports shape without printing tokens.
+    PodcastsContinue { token: String },
+    /// Probe a podcast show. Reports shape without printing tokens.
+    Show { id: String },
+    /// Probe an episode continuation. Reports shape without printing tokens.
+    ShowContinue { token: String },
     /// POST /browse for an album or playlist. Use --parse to print the page model.
     Page {
         browse_id: String,
@@ -133,6 +145,31 @@ async fn main() -> Result<()> {
             let raw = client.browse_continuation(&token).await?;
             (feed_summary(parse_feed_continuation(&raw)?), None)
         }
+        Command::Podcasts => {
+            let raw = client.browse(PODCASTS_BROWSE_ID).await?;
+            (feed_summary(parse_podcasts(&raw)?), None)
+        }
+        Command::PodcastsContinue { token } => {
+            let raw = client.browse_continuation(&token).await?;
+            (feed_summary(parse_podcasts_continuation(&raw)?), None)
+        }
+        Command::Show { id } => {
+            let raw = client.browse(&id).await?;
+            let show = parse_podcast_show(&raw)?;
+            let title = show.title;
+            let page = PodcastEpisodesPage {
+                episodes: show.episodes,
+                continuation: show.continuation,
+            };
+            (format!("{title}: {}", episodes_summary(page)), None)
+        }
+        Command::ShowContinue { token } => {
+            let raw = client.browse_continuation(&token).await?;
+            (
+                episodes_summary(parse_podcast_episodes_continuation(&raw)?),
+                None,
+            )
+        }
         Command::Page { browse_id, parse } => {
             let raw = client.browse(&playlist_browse_id(&browse_id)).await?;
             let text = if parse {
@@ -207,6 +244,14 @@ fn feed_summary(page: FeedPage) -> String {
         "{} sections, {items} items, {} chips, continuation present: {}",
         page.sections.len(),
         page.chips.len(),
+        page.continuation.is_some()
+    )
+}
+
+fn episodes_summary(page: PodcastEpisodesPage) -> String {
+    format!(
+        "{} episodes, continuation present: {}",
+        page.episodes.len(),
         page.continuation.is_some()
     )
 }

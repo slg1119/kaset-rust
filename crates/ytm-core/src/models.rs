@@ -43,11 +43,46 @@ pub struct BrowsePage {
     pub continuation: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct Episode {
+    pub video_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub date: Option<String>,
+    pub duration: Option<String>,
+    pub thumbnail_url: Option<String>,
+    /// Server playback progress as a fraction from 0 to 1.
+    pub progress: Option<f64>,
+    pub show_title: Option<String>,
+    pub show_browse_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct PodcastShow {
+    pub title: String,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub episodes: Vec<Episode>,
+    pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct PodcastEpisodesPage {
+    pub episodes: Vec<Episode>,
+    pub continuation: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ShelfItem {
     Song(Song),
+    Podcast(BrowseCard),
+    Episode(Episode),
     Album(BrowseCard),
     Playlist(BrowseCard),
     Artist(BrowseCard),
@@ -138,6 +173,9 @@ mod specta_tests {
         assert_type::<RadioQueue>();
         assert_type::<BrowseCard>();
         assert_type::<BrowsePage>();
+        assert_type::<Episode>();
+        assert_type::<PodcastShow>();
+        assert_type::<PodcastEpisodesPage>();
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<HomePage>();

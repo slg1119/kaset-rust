@@ -4,11 +4,12 @@ use super::helpers::{
     artists_from_flex_column, artists_from_runs, is_artist_page_type, is_navigable_artist_id,
     page_type,
 };
+use super::podcasts::parse_multi_row_episode;
 use crate::YtmError;
 use crate::json::{at, runs_text, str_at, thumbnail_url};
 use crate::models::{BrowseCard, Chip, FeedPage, HomePage, HomeSection, ShelfItem, Song};
 
-const SECTION_LIST: &[&str] = &[
+pub(super) const SECTION_LIST: &[&str] = &[
     "contents",
     "singleColumnBrowseResultsRenderer",
     "tabs",
@@ -53,7 +54,26 @@ pub fn parse_feed_continuation(response: &Value) -> Result<FeedPage, YtmError> {
             chips: Vec::new(),
         });
     }
-    parse_feed_at(response, path, "browse")
+    let carousel = at(
+        response,
+        &["continuationContents", "musicCarouselShelfContinuation"],
+    );
+    let mut page = if carousel.is_some() && at(response, path).is_none() {
+        FeedPage {
+            sections: Vec::new(),
+            continuation: None,
+            chips: Vec::new(),
+        }
+    } else {
+        parse_feed_at(response, path, "browse")?
+    };
+    if let Some(carousel) = carousel {
+        let title = carousel_title(carousel).unwrap_or_else(|| "More".into());
+        page.sections
+            .extend(shelf_section(title, carousel.get("contents")));
+        page.continuation = page.continuation.or_else(|| next_continuation(carousel));
+    }
+    Ok(page)
 }
 
 fn parse_feed_at(response: &Value, path: &[&str], endpoint: &str) -> Result<FeedPage, YtmError> {
@@ -75,7 +95,7 @@ fn parse_feed_at(response: &Value, path: &[&str], endpoint: &str) -> Result<Feed
     })
 }
 
-fn next_continuation(list: &Value) -> Option<String> {
+pub(super) fn next_continuation(list: &Value) -> Option<String> {
     str_at(
         list,
         &["continuations", "0", "nextContinuationData", "continuation"],
@@ -199,6 +219,9 @@ pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
     if let Some(renderer) = item.get("musicResponsiveListItemRenderer") {
         return parse_responsive(renderer);
     }
+    if let Some(renderer) = item.get("musicMultiRowListItemRenderer") {
+        return parse_multi_row_episode(renderer).map(ShelfItem::Episode);
+    }
     let button = item.get("musicNavigationButtonRenderer")?;
     let browse = at(button, &["clickCommand", "browseEndpoint"])?;
     Some(ShelfItem::Category {
@@ -275,6 +298,7 @@ fn flex_column(renderer: &Value, index: usize) -> Option<&Value> {
 /// pageType first, then browseId prefix — same order as the Swift HomeResponseParser.
 fn classify(page_type: Option<&str>, card: BrowseCard) -> Option<ShelfItem> {
     match page_type {
+        Some("MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE") => return Some(ShelfItem::Podcast(card)),
         Some("MUSIC_PAGE_TYPE_ALBUM") => return Some(ShelfItem::Album(card)),
         Some("MUSIC_PAGE_TYPE_PLAYLIST") => return Some(ShelfItem::Playlist(card)),
         page_type if is_artist_page_type(page_type) => {
@@ -283,7 +307,9 @@ fn classify(page_type: Option<&str>, card: BrowseCard) -> Option<ShelfItem> {
         _ => {}
     }
     let id = card.browse_id.as_str();
-    if id.starts_with("MPRE") || id.starts_with("OLAK") {
+    if id.starts_with("MPSPP") {
+        Some(ShelfItem::Podcast(card))
+    } else if id.starts_with("MPRE") || id.starts_with("OLAK") {
         Some(ShelfItem::Album(card))
     } else if ["VL", "PL", "RD"].iter().any(|p| id.starts_with(p)) {
         Some(ShelfItem::Playlist(card))
