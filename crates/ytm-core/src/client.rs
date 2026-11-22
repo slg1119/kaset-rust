@@ -142,4 +142,19 @@ impl InnerTubeClient {
         body.insert("browseId".into(), browse_id.into());
         self.post("browse", body).await
     }
+
+    /// POST `search` without filter params: the mixed first page (top result,
+    /// songs, videos, albums, artists, playlists, …).
+    pub async fn search(&self, query: &str) -> Result<Value, YtmError> {
+        let mut body = Map::new();
+        body.insert("query".into(), query.into());
+        self.post("search", body).await
+    }
+
+    /// POST `music/get_search_suggestions` for the text typed so far.
+    pub async fn search_suggestions(&self, input: &str) -> Result<Value, YtmError> {
+        let mut body = Map::new();
+        body.insert("input".into(), input.into());
+        self.post("music/get_search_suggestions", body).await
+    }
 }

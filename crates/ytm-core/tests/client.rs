@@ -172,3 +172,58 @@ async fn shared_cookies_update_reaches_client() {
     );
     assert!(client.cookies().get().is_some());
 }
+
+#[tokio::test]
+async fn search_posts_the_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/search"))
+        .and(query_param("key", "test-api-key"))
+        .and(body_partial_json(json!({
+            "query": "test query",
+            "context": { "client": { "clientName": "WEB_REMIX" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "contents": {} })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert_eq!(
+        client.search("test query").await.unwrap(),
+        json!({ "contents": {} })
+    );
+}
+
+#[tokio::test]
+async fn search_suggestions_post_the_input() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/music/get_search_suggestions"))
+        .and(body_partial_json(json!({ "input": "test inp" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "contents": [] })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert_eq!(
+        client.search_suggestions("test inp").await.unwrap(),
+        json!({ "contents": [] })
+    );
+}
+
+#[tokio::test]
+async fn search_maps_auth_errors() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/search"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert!(matches!(
+        client.search("test query").await,
+        Err(YtmError::AuthExpired)
+    ));
+}

@@ -6,6 +6,8 @@ use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
 use ytm_core::parsers::home::parse_home;
+use ytm_core::parsers::search::parse_search;
+use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
 /// Probe YouTube Music InnerTube endpoints (read-only).
 ///
@@ -24,6 +26,25 @@ enum Command {
         browse_id: String,
         #[arg(long)]
         parse: Option<ParseAs>,
+        /// Write output to a file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// POST /search and print the raw JSON, or the parsed results with --parse.
+    Search {
+        query: String,
+        #[arg(long)]
+        parse: bool,
+        /// Write output to a file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// POST /music/get_search_suggestions and print the raw JSON, or the
+    /// parsed suggestions with --parse.
+    Suggest {
+        input: String,
+        #[arg(long)]
+        parse: bool,
         /// Write output to a file instead of stdout.
         #[arg(long)]
         out: Option<PathBuf>,
@@ -50,7 +71,7 @@ async fn main() -> Result<()> {
     };
     let client = InnerTubeClient::new(ClientConfig::music(api_key), load_cookies()?)?;
 
-    match cli.command {
+    let (text, out) = match cli.command {
         Command::Browse {
             browse_id,
             parse,
@@ -61,12 +82,32 @@ async fn main() -> Result<()> {
                 Some(ParseAs::Home) => serde_json::to_string_pretty(&parse_home(&raw)?)?,
                 None => serde_json::to_string_pretty(&raw)?,
             };
-            match out {
-                Some(path) => std::fs::write(&path, text)
-                    .with_context(|| format!("writing {}", path.display()))?,
-                None => println!("{text}"),
-            }
+            (text, out)
         }
+        Command::Search { query, parse, out } => {
+            let raw = client.search(&query).await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_search(&raw))?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, out)
+        }
+        Command::Suggest { input, parse, out } => {
+            let raw = client.search_suggestions(&input).await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_search_suggestions(&raw))?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, out)
+        }
+    };
+    match out {
+        Some(path) => {
+            std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?
+        }
+        None => println!("{text}"),
     }
     Ok(())
 }
