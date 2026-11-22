@@ -80,6 +80,15 @@ export function RepeatOneIcon(props: IconProps) {
   );
 }
 
+export function LyricsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M21 6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2v4l4-4h8a2 2 0 0 0 2-2Z" />
+      <path d="M10 9H7v4h3M17 9h-3v4h3" />
+    </Icon>
+  );
+}
+
 export function QueueIcon(props: IconProps) {
   return (
     <Icon {...props}>

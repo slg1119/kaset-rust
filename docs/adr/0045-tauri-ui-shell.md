@@ -59,7 +59,11 @@ afterwards.
 - **Artwork:** `img-src` allows `*.ytimg.com`, `*.ggpht.com`, and
   `*.googleusercontent.com`; the UI loads only https URLs on those hosts and
   shows a placeholder otherwise or on load failure.
-- **Keyboard:** Space, ⌘→, ⌘←, ⌘1, ⌘F (Ctrl off macOS), handled in the WebView;
+- **Lyrics panel:** the player opens a 360 px glass panel on the right.
+  Opening it loads `get_lyrics` through TanStack Query with a ten-minute
+  cache keyed by video ID. The panel shows timed lines, plain lyrics with
+  attribution, an unavailable state, or a load error with Retry.
+- **Keyboard:** Space, ⌘→, ⌘←, ⌘1, ⌘F, ⌘⇧L (Ctrl off macOS), handled in the WebView;
   never ⌘Q/⌘W/⌘H/⌘M/⌘,. Documented in `docs/keyboard-shortcuts.md`.
 - **Layout and styling (approved mockup):** dark only, accent `#d91c48`; a
   240 px sidebar (Search, music feeds, account block), a 56 px sticky header, Home as a

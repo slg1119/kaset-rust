@@ -22,6 +22,7 @@ fn main() {
                 "get_feed_chip",
                 "get_feed_continuation",
                 "get_browse_page",
+                "get_lyrics",
                 "search",
                 "search_suggestions",
                 "get_account",

@@ -30,6 +30,8 @@ export const commands = {
 	getFeedContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_continuation", { token }, options),
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
+	/**  Fetches synced or plain lyrics for the current track. */
+	getLyrics: (videoId: string, options?: InvokeOptions) => __TAURI_INVOKE<LyricsResult>("get_lyrics", { videoId }, options),
 	/**
 	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
@@ -151,6 +153,19 @@ export type FeedPage = {
 export type HomeSection = {
 	title: string,
 	items: ShelfItem[],
+};
+
+export type LyricLine = {
+	start_ms: number,
+	end_ms: number | null,
+	text: string,
+};
+
+/**  Best available lyrics for a track. A missing text and line list means unavailable. */
+export type LyricsResult = {
+	lines: LyricLine[] | null,
+	text: string | null,
+	source: string | null,
 };
 
 /**
@@ -319,6 +334,7 @@ export type MockCommandHandlers = {
     getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
     getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
+    getLyrics: (args: { videoId: string }) => LyricsResult | Promise<LyricsResult>,
     search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
@@ -366,6 +382,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_feed_chip": return mockCommandHandler(mockHandlers.getFeedChip, "get_feed_chip", args);
             case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
+            case "get_lyrics": return mockCommandHandler(mockHandlers.getLyrics, "get_lyrics", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);

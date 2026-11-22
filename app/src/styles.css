@@ -853,3 +853,81 @@ button.top-card:hover {
 .queue-panel li[aria-current="true"] {
   background: rgb(217 28 72 / 0.2);
 }
+
+.lyrics-panel {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 3;
+  right: var(--inset);
+  bottom: calc(var(--inset) + var(--player-space, 112px) + 8px);
+  width: min(360px, calc(100% - 2 * var(--inset)));
+  max-height: min(60dvh, calc(100dvh - var(--player-space, 112px) - var(--inset) - 16px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+}
+
+.lyrics-panel p {
+  margin: 0;
+}
+
+.lyrics-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.lyrics-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lyrics-lines button {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.lyrics-lines button:not(:disabled) {
+  cursor: pointer;
+}
+
+.lyrics-lines button:not(:disabled):hover {
+  background: var(--glass-line);
+}
+
+.lyrics-lines button[aria-current="true"] {
+  color: var(--text);
+  background: var(--glass-line);
+  font-weight: 600;
+}
+
+.lyrics-gap {
+  display: block;
+  height: 1em;
+}
+
+.lyrics-panel .lyrics-source {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.lyrics-retry {
+  margin-top: 8px;
+}

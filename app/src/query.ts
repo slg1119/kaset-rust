@@ -7,6 +7,7 @@ export const FEED_STALE_MS = 5 * 60_000;
 export const SEARCH_STALE_MS = 10 * 60_000;
 export const BROWSE_PAGE_STALE_MS = 10 * 60_000;
 export const SUGGESTIONS_STALE_MS = 60_000;
+export const LYRICS_STALE_MS = 10 * 60_000;
 export const ACCOUNT_STALE_MS = 30 * 60_000;
 
 export const queryKeys = {
@@ -17,6 +18,7 @@ export const queryKeys = {
   browsePage: (browseId: string) => ["browsePage", browseId] as const,
   suggestions: (input: string) => ["suggestions", input] as const,
   account: ["account"] as const,
+  lyrics: (videoId: string) => ["lyrics", videoId] as const,
 };
 
 /**

@@ -96,6 +96,11 @@ comma-separated artist names. Stopping clears the last notified ID so the
 same track can be announced when played again. The service sends through the
 Rust notification plugin after releasing the player lock.
 
+The lyrics panel uses the current track in `player://state` to highlight
+timed lines and center the active line, respecting reduced motion. Clicking
+a line sends its timestamp in seconds through the same seek path as the
+player slider. During ads, lyric highlighting and click-to-seek pause.
+
 ## Consequences
 
 ### Positive

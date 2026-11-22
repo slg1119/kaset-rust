@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
 use ytm_core::client::{InnerTubeClient, playlist_browse_id};
-use ytm_core::models::{Account, BrowsePage, SearchResults};
+use ytm_core::models::{Account, BrowsePage, LyricsResult, SearchResults};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::search::parse_search;
@@ -73,6 +73,21 @@ pub async fn get_browse_page(
     let browse_id = playlist_browse_id(&browse_id);
     signed_in_request(&app, &state, |client| async move {
         Ok(parse_browse_page(&client.browse(&browse_id).await?)?)
+    })
+    .await
+}
+
+/// Fetches synced or plain lyrics for the current track.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_lyrics(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    video_id: String,
+) -> Result<LyricsResult, AppError> {
+    checked_browse_value(&video_id, 1..=256, b"", "Invalid video ID.")?;
+    signed_in_request(&app, &state, |client| async move {
+        Ok(client.get_timed_lyrics(&video_id).await?)
     })
     .await
 }
