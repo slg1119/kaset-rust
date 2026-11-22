@@ -107,11 +107,28 @@ pub enum SearchItem {
     Podcast(BrowseCard),
 }
 
+/// A server-side YouTube Music search filter.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "snake_case")]
+pub enum SearchFilter {
+    Songs,
+    Videos,
+    Albums,
+    Artists,
+    Profiles,
+    Playlists,
+    FeaturedPlaylists,
+    CommunityPlaylists,
+    Podcasts,
+    Episodes,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SearchResults {
     pub items: Vec<SearchItem>,
-    /// Token for the next page; not requested yet.
+    /// Token for the next page.
     pub continuation: Option<String>,
 }
 
@@ -144,6 +161,7 @@ mod specta_tests {
         assert_type::<Chip>();
         assert_type::<FeedPage>();
         assert_type::<SearchItem>();
+        assert_type::<SearchFilter>();
         assert_type::<SearchResults>();
         assert_type::<Account>();
     }

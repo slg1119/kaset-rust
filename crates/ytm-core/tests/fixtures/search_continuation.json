@@ -1,0 +1,32 @@
+{
+  "continuationContents": {
+    "musicShelfContinuation": {
+      "contents": [{
+        "musicResponsiveListItemRenderer": {
+          "playlistItemData": { "videoId": "test-song-2" },
+          "title": { "runs": [{ "text": "Second song" }] }
+        }
+      }]
+    }
+  },
+  "onResponseReceivedActions": [{
+    "appendContinuationItemsAction": {
+      "continuationItems": [{
+        "musicResponsiveListItemRenderer": {
+          "playlistItemData": { "videoId": "test-song-2" },
+          "title": { "runs": [{ "text": "Duplicate song" }] }
+        }
+      }, {
+        "musicTwoRowItemRenderer": {
+          "navigationEndpoint": { "watchEndpoint": { "videoId": "test-video-3" } },
+          "title": { "runs": [{ "text": "Third item" }] },
+          "subtitle": { "runs": [{ "text": "Video" }] }
+        }
+      }, {
+        "continuationItemRenderer": {
+          "continuationEndpoint": { "continuationCommand": { "token": "test-next-token" } }
+        }
+      }]
+    }
+  }]
+}

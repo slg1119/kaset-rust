@@ -20,6 +20,10 @@ use crate::models::{ArtistRef, BrowseCard, SearchItem, SearchResults, Song};
 /// with no matches).
 pub fn parse_search(response: &Value) -> SearchResults {
     let mut results = Accumulator::default();
+    if let Some(shelf) = at(response, &["contents", "musicShelfRenderer"]) {
+        parse_shelf(shelf, &mut results);
+        return results.finish();
+    }
     let lists = first_page_section_lists(response);
     if lists.is_empty() {
         tracing::debug!("search response has no section list");
@@ -30,10 +34,35 @@ pub fn parse_search(response: &Value) -> SearchResults {
         }
         results.capture(continuation_token(list));
     }
-    SearchResults {
-        items: results.items,
-        continuation: results.continuation,
+    results.finish()
+}
+
+/// Parses a search continuation from a legacy shelf or a response action.
+pub fn parse_search_continuation(response: &Value) -> SearchResults {
+    let mut results = Accumulator::default();
+    if let Some(shelf) = at(
+        response,
+        &["continuationContents", "musicShelfContinuation"],
+    ) {
+        parse_shelf(shelf, &mut results);
     }
+    for envelope in [
+        "onResponseReceivedCommands",
+        "onResponseReceivedActions",
+        "onResponseReceivedEndpoints",
+    ] {
+        for action in array(response.get(envelope)) {
+            for command in [
+                "appendContinuationItemsAction",
+                "reloadContinuationItemsCommand",
+            ] {
+                for item in array(at(action, &[command, "continuationItems"])) {
+                    parse_container(item, &mut results);
+                }
+            }
+        }
+    }
+    results.finish()
 }
 
 #[derive(Default)]
@@ -44,6 +73,13 @@ struct Accumulator {
 }
 
 impl Accumulator {
+    fn finish(self) -> SearchResults {
+        SearchResults {
+            items: self.items,
+            continuation: self.continuation,
+        }
+    }
+
     fn push(&mut self, item: SearchItem) {
         if self.seen.insert(identity(&item)) {
             self.items.push(item);
@@ -108,10 +144,7 @@ fn parse_container(container: &Value, results: &mut Accumulator) {
         return;
     }
     if let Some(shelf) = container.get("musicShelfRenderer") {
-        results.capture(continuation_token(shelf));
-        for content in array(shelf.get("contents")) {
-            parse_container(content, results);
-        }
+        parse_shelf(shelf, results);
         return;
     }
     if let Some(section) = container.get("itemSectionRenderer") {
@@ -133,6 +166,13 @@ fn parse_container(container: &Value, results: &mut Accumulator) {
     match item {
         Some(item) => results.push(item),
         None => tracing::debug!("skipping unparsed search result"),
+    }
+}
+
+fn parse_shelf(shelf: &Value, results: &mut Accumulator) {
+    results.capture(continuation_token(shelf));
+    for content in array(shelf.get("contents")) {
+        parse_container(content, results);
     }
 }
 

@@ -5,12 +5,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 use ytm_core::api_key::{API_KEY_ENV, fetch_api_key};
 use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_browse_id};
-use ytm_core::models::FeedPage;
+use ytm_core::models::{FeedPage, SearchFilter, SearchResults};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation, parse_home};
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
-use ytm_core::parsers::search::parse_search;
+use ytm_core::parsers::search::{parse_search, parse_search_continuation};
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
 /// Probe YouTube Music InnerTube endpoints (read-only).
@@ -57,6 +57,19 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Probe a filtered search and report result counts without printing tokens.
+    SearchFiltered {
+        query: String,
+        /// songs, videos, albums, artists, profiles, playlists, featured-playlists,
+        /// community-playlists, podcasts, or episodes.
+        #[arg(value_parser = search_filter)]
+        filter: SearchFilter,
+        /// Follow the first continuation when present.
+        #[arg(long)]
+        next_page: bool,
+    },
+    /// Probe the next search page without printing tokens.
+    SearchContinue { token: String },
     /// POST /music/get_search_suggestions and print the raw JSON, or the
     /// parsed suggestions with --parse.
     Suggest {
@@ -151,6 +164,23 @@ async fn main() -> Result<()> {
             };
             (text, out)
         }
+        Command::SearchFiltered {
+            query,
+            filter,
+            next_page,
+        } => {
+            let first = parse_search(&client.search_filtered(&query, filter).await?);
+            let mut text = search_summary(&first);
+            if let Some(token) = first.continuation.filter(|_| next_page) {
+                let next = parse_search_continuation(&client.search_continuation(&token).await?);
+                text.push_str(&format!("\nNext page: {}", search_summary(&next)));
+            }
+            (text, None)
+        }
+        Command::SearchContinue { token } => {
+            let page = parse_search_continuation(&client.search_continuation(&token).await?);
+            (search_summary(&page), None)
+        }
         Command::Suggest { input, parse, out } => {
             let raw = client.search_suggestions(&input).await?;
             let text = if parse {
@@ -195,6 +225,19 @@ async fn main() -> Result<()> {
         None => println!("{text}"),
     }
     Ok(())
+}
+
+fn search_filter(value: &str) -> Result<SearchFilter, &'static str> {
+    serde_json::from_value(serde_json::Value::String(value.replace('-', "_")))
+        .map_err(|_| "unknown search filter")
+}
+
+fn search_summary(page: &SearchResults) -> String {
+    format!(
+        "{} items, continuation present: {}",
+        page.items.len(),
+        page.continuation.is_some()
+    )
 }
 
 fn feed_summary(page: FeedPage) -> String {

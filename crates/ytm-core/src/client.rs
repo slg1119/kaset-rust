@@ -4,6 +4,7 @@ use serde_json::{Map, Value, json};
 
 use crate::YtmError;
 use crate::auth::{CookieJar, SharedCookies, sapisid_hash};
+use crate::models::SearchFilter;
 
 pub const MUSIC_ORIGIN: &str = "https://music.youtube.com";
 pub const CLIENT_VERSION: &str = "1.20231204.01.00";
@@ -178,9 +179,45 @@ impl InnerTubeClient {
     /// POST `search` without filter params: the mixed first page (top result,
     /// songs, videos, albums, artists, playlists, …).
     pub async fn search(&self, query: &str) -> Result<Value, YtmError> {
-        let mut body = Map::new();
-        body.insert("query".into(), query.into());
-        self.post("search", body).await
+        self.post("search", Map::from_iter([("query".into(), query.into())]))
+            .await
+    }
+
+    /// POST `search` with the corresponding Swift client's filter params.
+    pub async fn search_filtered(
+        &self,
+        query: &str,
+        filter: SearchFilter,
+    ) -> Result<Value, YtmError> {
+        let params = match filter {
+            SearchFilter::Songs => "EgWKAQIIAWoMEA4QChADEAQQCRAF",
+            SearchFilter::Videos => "EgWKAQIQAWoMEA4QChADEAQQCRAF",
+            SearchFilter::Albums => "EgWKAQIYAWoMEA4QChADEAQQCRAF",
+            SearchFilter::Artists => "EgWKAQIgAWoMEA4QChADEAQQCRAF",
+            SearchFilter::Profiles => "EgWKAQJYAWoMEA4QChADEAQQCRAF",
+            SearchFilter::Playlists => "EgWKAQIoAWoMEA4QChADEAQQCRAF",
+            SearchFilter::FeaturedPlaylists => "EgeKAQQoADgBagwQDhAKEAMQBBAJEAU=",
+            SearchFilter::CommunityPlaylists => "EgeKAQQoAEABagwQDhAKEAMQBBAJEAU=",
+            SearchFilter::Podcasts => "EgWKAQJQAWoQEBAQCRAEEAMQBRAKEBUQEQ%3D%3D",
+            SearchFilter::Episodes => "EgWKAQJIAWoMEA4QChADEAQQCRAF",
+        };
+        self.post(
+            "search",
+            Map::from_iter([
+                ("query".into(), query.into()),
+                ("params".into(), params.into()),
+            ]),
+        )
+        .await
+    }
+
+    /// POST `search` with only the opaque continuation, which carries the filter.
+    pub async fn search_continuation(&self, token: &str) -> Result<Value, YtmError> {
+        self.post(
+            "search",
+            Map::from_iter([("continuation".into(), token.into())]),
+        )
+        .await
     }
 
     /// POST `music/get_search_suggestions` for the text typed so far.

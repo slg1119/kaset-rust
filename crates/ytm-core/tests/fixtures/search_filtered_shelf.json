@@ -1,0 +1,25 @@
+{
+  "contents": {
+    "tabbedSearchResultsRenderer": {
+      "tabs": [{
+        "tabRenderer": {
+          "content": {
+            "sectionListRenderer": {
+              "contents": [{
+                "musicShelfRenderer": {
+                  "contents": [{
+                    "musicResponsiveListItemRenderer": {
+                      "playlistItemData": { "videoId": "test-song-1" },
+                      "title": { "runs": [{ "text": "First song" }] }
+                    }
+                  }],
+                  "continuations": [{ "nextContinuationData": { "continuation": "test-continuation" } }]
+                }
+              }]
+            }
+          }
+        }
+      }]
+    }
+  }
+}
