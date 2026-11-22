@@ -2,9 +2,10 @@ use std::future::Future;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
-use ytm_core::client::InnerTubeClient;
-use ytm_core::models::{Account, HomePage, SearchResults};
+use ytm_core::client::{InnerTubeClient, playlist_browse_id};
+use ytm_core::models::{Account, BrowsePage, HomePage, SearchResults};
 use ytm_core::parsers::account::parse_account;
+use ytm_core::parsers::browse_page::parse_browse_page;
 use ytm_core::parsers::home::parse_home;
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
@@ -67,6 +68,37 @@ pub async fn get_home(app: AppHandle, state: State<'_, AppState>) -> Result<Home
         Ok(parse_home(&client.browse("FEmusic_home").await?)?)
     })
     .await
+}
+
+/// Fetches the first page of an album or playlist for the signed-in session.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_browse_page(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    browse_id: String,
+) -> Result<BrowsePage, AppError> {
+    checked_browse_id(&browse_id)?;
+    let browse_id = playlist_browse_id(&browse_id);
+    signed_in_request(&app, &state, |client| async move {
+        Ok(parse_browse_page(&client.browse(&browse_id).await?)?)
+    })
+    .await
+}
+
+fn checked_browse_id(id: &str) -> Result<(), AppError> {
+    if (2..=128).contains(&id.len())
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            ErrorKind::InvalidArgument,
+            "Invalid browse ID.",
+        ))
+    }
 }
 
 /// The signed-in account's name, handle, and photo for the sidebar; `None`
@@ -196,6 +228,24 @@ pub(crate) async fn on_error(app: &AppHandle, epoch: u64, error: AppError) -> Ap
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_browse_id_enforces_ascii_and_length() {
+        let max = "a".repeat(128);
+        for id in ["LL", "MPREb_test-id", &max] {
+            assert!(checked_browse_id(id).is_ok());
+        }
+
+        let over = "a".repeat(129);
+        for id in [
+            "", "A", " VLtest", "VLtest\n", "a.b", "a/b", "a?b", "가a", &over,
+        ] {
+            assert_eq!(
+                checked_browse_id(id).unwrap_err().kind,
+                ErrorKind::InvalidArgument
+            );
+        }
+    }
 
     #[test]
     fn checked_query_trims_and_skips_empty_text() {

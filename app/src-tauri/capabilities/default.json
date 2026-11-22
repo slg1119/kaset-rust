@@ -9,6 +9,7 @@
     "allow-sign-in",
     "allow-sign-out",
     "allow-get-home",
+    "allow-get-browse-page",
     "allow-search",
     "allow-search-suggestions",
     "allow-get-account",

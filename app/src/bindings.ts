@@ -22,6 +22,8 @@ export const commands = {
 	signOut: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_out", undefined, options),
 	/**  Fetches and parses the signed-in home feed. */
 	getHome: (options?: InvokeOptions) => __TAURI_INVOKE<HomePage>("get_home", undefined, options),
+	/**  Fetches the first page of an album or playlist for the signed-in session. */
+	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
 	/**
 	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
@@ -111,6 +113,15 @@ export type BrowseCard = {
 	title: string,
 	subtitle: string | null,
 	thumbnail_url: string | null,
+};
+
+export type BrowsePage = {
+	title: string,
+	subtitle: string | null,
+	second_subtitle: string | null,
+	thumbnail_url: string | null,
+	songs: Song[],
+	continuation: string | null,
 };
 
 /**  What went wrong, for the UI to branch on. */
@@ -290,6 +301,7 @@ export type MockCommandHandlers = {
     signIn: () => null | Promise<null>,
     signOut: () => null | Promise<null>,
     getHome: () => HomePage | Promise<HomePage>,
+    getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
     search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
@@ -333,6 +345,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "sign_in": return mockCommandHandler(mockHandlers.signIn, "sign_in", args);
             case "sign_out": return mockCommandHandler(mockHandlers.signOut, "sign_out", args);
             case "get_home": return mockCommandHandler(mockHandlers.getHome, "get_home", args);
+            case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);

@@ -26,6 +26,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::sign_in,
             commands::sign_out,
             commands::get_home,
+            commands::get_browse_page,
             commands::search,
             commands::search_suggestions,
             commands::get_account,

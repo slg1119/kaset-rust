@@ -18,6 +18,7 @@ fn main() {
                 "sign_in",
                 "sign_out",
                 "get_home",
+                "get_browse_page",
                 "search",
                 "search_suggestions",
                 "get_account",
