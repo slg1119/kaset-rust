@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — accepted once the M0 spike findings (linked below) show all four risks pass.
+Accepted — macOS verified by the M0 spike on 2026-11-22 (all four risks pass, findings linked below). Windows (WebView2) verification is pending hardware; revisit this ADR if it fails there.
 
 ## Context
 

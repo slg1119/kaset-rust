@@ -18,11 +18,13 @@ const INIT_SCRIPT: &str = r#"
         audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
       }]);
       return true;
-    } catch (e) { return String((e && e.name) || e); }
+    } catch (e) { return String((e && e.name) || e) + ': ' + String((e && e.message) || ''); }
   };
   window.addEventListener('load', async () => {
     send({
       event: 'eme',
+      hasRequestMediaKeySystemAccess: typeof navigator.requestMediaKeySystemAccess,
+      hasWebKitMediaKeys: typeof window.WebKitMediaKeys,
       widevine: await probe('com.widevine.alpha'),
       fairplay: await probe('com.apple.fps'),
       playready: await probe('com.microsoft.playready'),
@@ -39,6 +41,17 @@ const INIT_SCRIPT: &str = r#"
       const now = Date.now();
       if (now - last > 1000) { last = now; send({ event: 'timeupdate', t: v.currentTime, d: v.duration }); }
     });
+    // Like the Swift app's autoplay recovery: YouTube Music's page does not start
+    // playback on load, so the host calls video.play() and reports whether the
+    // WebView's autoplay policy allowed it without a user gesture.
+    const tryPlay = () => {
+      if (!v.paused) return;
+      Promise.resolve(v.play())
+        .then(() => send({ event: 'autoplay', ok: true }))
+        .catch((e) => send({ event: 'autoplay', ok: false, error: String((e && e.name) || e) }));
+    };
+    v.addEventListener('loadedmetadata', tryPlay);
+    if (v.readyState >= 1) tryPlay();
     send({ event: 'hooked', paused: v.paused });
   }, 500);
 })();
@@ -95,15 +108,21 @@ async fn open_player(app: AppHandle, video_id: String, visible: bool) -> Result<
 /// Prints cookie names and flags only. Never returns or logs values.
 #[tauri::command]
 async fn dump_cookies(app: AppHandle) -> Result<Vec<CookieInfo>, String> {
-    let url = "https://music.youtube.com/"
-        .parse::<tauri::Url>()
-        .map_err(|e| e.to_string())?;
+    // wry's cookies_for_url compares the cookie domain to the URL host exactly, so
+    // `.youtube.com` cookies never match music.youtube.com. Read the whole store
+    // and filter by domain suffix instead.
     let mut out = Vec::new();
-    for label in ["login", "player"] {
+    for label in ["login", "player", "main"] {
         let Some(w) = app.get_webview_window(label) else {
             continue;
         };
-        for c in w.cookies_for_url(url.clone()).map_err(|e| e.to_string())? {
+        let cookies = w.cookies().map_err(|e| e.to_string())?;
+        let relevant = cookies.into_iter().filter(|c| {
+            c.domain()
+                .map(|d| d.trim_start_matches('.'))
+                .is_some_and(|d| d == "youtube.com" || d.ends_with(".youtube.com"))
+        });
+        for c in relevant {
             out.push(CookieInfo {
                 window: label.into(),
                 name: c.name().into(),
