@@ -12,8 +12,13 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.10"
+specta = { version = "=2.0.0-rc.28", features = ["derive"], optional = true }
 thiserror = "2"
 tracing = "0.1"
+
+[features]
+# Derives `specta::Type` on the models so the Tauri app can export them to TypeScript.
+specta = ["dep:specta"]
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }

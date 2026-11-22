@@ -1,12 +1,14 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct ArtistRef {
     pub name: String,
     pub browse_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Song {
     pub video_id: String,
     pub title: String,
@@ -15,6 +17,7 @@ pub struct Song {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BrowseCard {
     pub browse_id: String,
     pub title: String,
@@ -23,6 +26,7 @@ pub struct BrowseCard {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ShelfItem {
     Song(Song),
@@ -32,13 +36,32 @@ pub enum ShelfItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HomeSection {
     pub title: String,
     pub items: Vec<ShelfItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HomePage {
     pub sections: Vec<HomeSection>,
     pub continuation: Option<String>,
+}
+
+#[cfg(all(test, feature = "specta"))]
+mod specta_tests {
+    use super::*;
+
+    fn assert_type<T: specta::Type>() {}
+
+    #[test]
+    fn models_implement_specta_type() {
+        assert_type::<ArtistRef>();
+        assert_type::<Song>();
+        assert_type::<BrowseCard>();
+        assert_type::<ShelfItem>();
+        assert_type::<HomeSection>();
+        assert_type::<HomePage>();
+    }
 }
