@@ -196,6 +196,62 @@ async fn search_posts_the_query() {
 }
 
 #[tokio::test]
+async fn radio_posts_the_seed_and_mix_settings() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({
+            "videoId": "test-vid001",
+            "playlistId": "RDAMVMtest-vid001",
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "contents": {} })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert_eq!(
+        client.radio("test-vid001").await.unwrap(),
+        json!({ "contents": {} })
+    );
+}
+
+#[tokio::test]
+async fn radio_continuation_posts_the_token_and_panel_settings() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({
+            "continuation": "test-continuation",
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true
+        })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "continuationContents": {} })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert_eq!(
+        client
+            .radio_continuation("test-continuation")
+            .await
+            .unwrap(),
+        json!({ "continuationContents": {} })
+    );
+    let requests = server.received_requests().await.unwrap();
+    let body = requests[0].body_json::<serde_json::Value>().unwrap();
+    for key in ["videoId", "playlistId", "tunerSettingValue"] {
+        assert!(body.get(key).is_none(), "unexpected key {key}");
+    }
+}
+
+#[tokio::test]
 async fn search_suggestions_post_the_input() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

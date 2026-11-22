@@ -1,0 +1,24 @@
+{
+  "continuationContents": {
+    "playlistPanelContinuation": {
+      "contents": [
+        {
+          "playlistPanelVideoRenderer": {
+            "videoId": "test-vid004",
+            "title": {"runs": [{"text": "More music"}]},
+            "longBylineText": {
+              "runs": [
+                {"text": "Another artist"},
+                {"text": " · "},
+                {"text": "Another album"}
+              ]
+            }
+          }
+        }
+      ],
+      "continuations": [
+        {"nextRadioContinuationData": {"continuation": "test-continuation"}}
+      ]
+    }
+  }
+}

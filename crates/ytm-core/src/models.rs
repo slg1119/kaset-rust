@@ -18,6 +18,13 @@ pub struct Song {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct RadioQueue {
+    pub songs: Vec<Song>,
+    pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BrowseCard {
     pub browse_id: String,
     pub title: String,
@@ -96,6 +103,7 @@ mod specta_tests {
     fn models_implement_specta_type() {
         assert_type::<ArtistRef>();
         assert_type::<Song>();
+        assert_type::<RadioQueue>();
         assert_type::<BrowseCard>();
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();

@@ -7,6 +7,7 @@ use ytm_core::auth::CookieJar;
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::home::parse_home;
+use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
@@ -58,6 +59,18 @@ enum Command {
         /// Write output to a file instead of stdout.
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// POST /next to start a radio mix. Use --parse to print the queue model.
+    Radio {
+        video_id: String,
+        #[arg(long)]
+        parse: bool,
+    },
+    /// POST /next to continue a radio mix. Use --parse to print the queue model.
+    RadioContinue {
+        token: String,
+        #[arg(long)]
+        parse: bool,
     },
 }
 
@@ -120,6 +133,24 @@ async fn main() -> Result<()> {
                 serde_json::to_string_pretty(&raw)?
             };
             (text, out)
+        }
+        Command::Radio { video_id, parse } => {
+            let raw = client.radio(&video_id).await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_radio(&raw)?)?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, None)
+        }
+        Command::RadioContinue { token, parse } => {
+            let raw = client.radio_continuation(&token).await?;
+            let text = if parse {
+                serde_json::to_string_pretty(&parse_radio_continuation(&raw)?)?
+            } else {
+                serde_json::to_string_pretty(&raw)?
+            };
+            (text, None)
         }
     };
     match out {

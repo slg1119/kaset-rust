@@ -1,0 +1,73 @@
+{
+  "contents": {
+    "singleColumnMusicWatchNextResultsRenderer": {
+      "tabbedRenderer": {
+        "watchNextTabbedResultsRenderer": {
+          "tabs": [
+            {
+              "tabRenderer": {
+                "content": {
+                  "musicQueueRenderer": {
+                    "content": {
+                      "playlistPanelRenderer": {
+                        "contents": [
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "videoId": "test-vid001",
+                              "title": {"runs": [{"text": "Seed song"}]},
+                              "longBylineText": {
+                                "runs": [
+                                  {
+                                    "text": "First artist",
+                                    "navigationEndpoint": {"browseEndpoint": {"browseId": "test-artist"}}
+                                  },
+                                  {"text": " & "},
+                                  {"text": "Second artist"},
+                                  {"text": ", "},
+                                  {"text": "Third artist"},
+                                  {"text": " • "},
+                                  {"text": "Test album"}
+                                ]
+                              },
+                              "thumbnail": {
+                                "thumbnails": [
+                                  {"url": "https://example.com/test-small.jpg"},
+                                  {"url": "//example.com/test-large.jpg"}
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoWrapperRenderer": {
+                              "primaryRenderer": {
+                                "playlistPanelVideoRenderer": {
+                                  "videoId": "test-vid002",
+                                  "title": {"runs": [{"text": "Wrapped song"}, {"text": " ignored"}]}
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {
+                              "title": {"runs": [{"text": "Missing ID"}]}
+                            }
+                          },
+                          {
+                            "playlistPanelVideoRenderer": {"videoId": "test-vid003"}
+                          }
+                        ],
+                        "continuations": [
+                          {"nextRadioContinuationData": {"continuation": "test-continuation"}}
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -162,4 +162,26 @@ impl InnerTubeClient {
     pub async fn accounts_list(&self) -> Result<Value, YtmError> {
         self.post("account/accounts_list", Map::new()).await
     }
+
+    /// Starts a radio mix from the given track.
+    pub async fn radio(&self, video_id: &str) -> Result<Value, YtmError> {
+        let body = Map::from_iter([
+            ("videoId".into(), video_id.into()),
+            ("playlistId".into(), format!("RDAMVM{video_id}").into()),
+            ("enablePersistentPlaylistPanel".into(), true.into()),
+            ("isAudioOnly".into(), true.into()),
+            ("tunerSettingValue".into(), "AUTOMIX_SETTING_NORMAL".into()),
+        ]);
+        self.post("next", body).await
+    }
+
+    /// Fetches the next page of a radio mix.
+    pub async fn radio_continuation(&self, token: &str) -> Result<Value, YtmError> {
+        let body = Map::from_iter([
+            ("continuation".into(), token.into()),
+            ("enablePersistentPlaylistPanel".into(), true.into()),
+            ("isAudioOnly".into(), true.into()),
+        ]);
+        self.post("next", body).await
+    }
 }
