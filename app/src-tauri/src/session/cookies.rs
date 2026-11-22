@@ -12,19 +12,35 @@ fn normalize(domain: &str) -> String {
 }
 
 fn is_under(domain: &str, root: &str) -> bool {
-    let domain = normalize(domain);
     domain == root || domain.ends_with(&format!(".{root}"))
 }
 
 /// `youtube.com` or any subdomain, with or without a leading dot.
 pub fn is_youtube_domain(domain: &str) -> bool {
-    is_under(domain, "youtube.com")
+    is_under(&normalize(domain), "youtube.com")
 }
 
-/// Domains whose cookies make up a Google sign-in: youtube.com and google.com.
-/// Sign-out deletes every cookie under these.
+/// Matches normalized country Google domains such as `accounts.google.co.kr`
+/// or `google.com.au`, which the sign-in flow can visit to set cookies.
+pub(crate) fn is_country_google(host: &str) -> bool {
+    let labels: Vec<&str> = host.split('.').collect();
+    let Some(google) = labels.iter().rposition(|label| *label == "google") else {
+        return false;
+    };
+    let is_country_code = |tld: &str| tld.len() == 2 && tld.chars().all(|c| c.is_ascii_lowercase());
+    match &labels[google + 1..] {
+        [tld] => is_country_code(tld),
+        [second, tld] => matches!(*second, "co" | "com") && is_country_code(tld),
+        _ => false,
+    }
+}
+
+/// Sign-out deletes cookies under youtube.com, google.com, and country Google domains.
 pub fn is_session_domain(domain: &str) -> bool {
-    is_under(domain, "youtube.com") || is_under(domain, "google.com")
+    let domain = normalize(domain);
+    is_under(&domain, "youtube.com")
+        || is_under(&domain, "google.com")
+        || is_country_google(&domain)
 }
 
 /// Builds the API cookie jar from the youtube.com cookies in `cookies`.
@@ -70,8 +86,14 @@ mod tests {
     fn session_domain_matching() {
         assert!(is_session_domain(".google.com"));
         assert!(is_session_domain("accounts.google.com"));
+        assert!(is_session_domain(".google.co.kr"));
+        assert!(is_session_domain("google.de"));
+        assert!(is_session_domain("accounts.google.com.au"));
         assert!(is_session_domain(".youtube.com"));
         assert!(!is_session_domain("google.com.evil.example"));
+        assert!(!is_session_domain("google.evil.example"));
+        assert!(!is_session_domain("notgoogle.co.kr"));
+        assert!(!is_session_domain("google.co.kr.evil.example"));
         assert!(!is_session_domain("example.com"));
     }
 
@@ -81,6 +103,7 @@ mod tests {
             cookie("SAPISID", "test-sapisid", ".youtube.com"),
             cookie("HSID", "test-cookie", "music.youtube.com"),
             cookie("SID", "test-google-cookie", ".google.com"),
+            cookie("SAPISID", "test-country-cookie", ".google.co.kr"),
             cookie("OTHER", "test-cookie", "example.com"),
             Cookie::new("NODOMAIN", "test-cookie"),
         ];
@@ -114,12 +137,13 @@ mod tests {
         let cookies = vec![
             cookie("SAPISID", "test-sapisid", ".youtube.com"),
             cookie("SID", "test-google-cookie", ".google.com"),
+            cookie("HSID", "test-country-cookie", ".google.co.kr"),
             cookie("OTHER", "test-cookie", "example.com"),
         ];
         let names: Vec<_> = session_cookies(cookies)
             .iter()
             .map(|cookie| cookie.name().to_owned())
             .collect();
-        assert_eq!(names, ["SAPISID", "SID"]);
+        assert_eq!(names, ["SAPISID", "SID", "HSID"]);
     }
 }

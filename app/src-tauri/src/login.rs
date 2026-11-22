@@ -11,7 +11,7 @@ use tauri_specta::Event;
 use crate::error::AppError;
 use crate::events::AuthChanged;
 use crate::session::AuthStatus;
-use crate::session::cookies::youtube_cookie_jar;
+use crate::session::cookies::{is_country_google, youtube_cookie_jar};
 use crate::state::AppState;
 
 pub const LOGIN_LABEL: &str = "login";
@@ -36,21 +36,6 @@ const ALLOWED_ROOTS: [&str; 6] = [
 
 fn is_under(host: &str, root: &str) -> bool {
     host == root || host.ends_with(&format!(".{root}"))
-}
-
-/// Country Google domains such as `accounts.google.co.kr` or `google.com.au`,
-/// which the sign-in flow can visit to set cookies.
-fn is_country_google(host: &str) -> bool {
-    let labels: Vec<&str> = host.split('.').collect();
-    let Some(google) = labels.iter().rposition(|label| *label == "google") else {
-        return false;
-    };
-    let is_country_code = |tld: &str| tld.len() == 2 && tld.chars().all(|c| c.is_ascii_lowercase());
-    match &labels[google + 1..] {
-        [tld] => is_country_code(tld),
-        [second, tld] => matches!(*second, "co" | "com") && is_country_code(tld),
-        _ => false,
-    }
 }
 
 /// Navigation policy for the login window. On macOS wry asks for every frame,
@@ -138,7 +123,7 @@ async fn complete_sign_in(app: AppHandle) {
     }
 }
 
-fn close_login_window(window: &WebviewWindow) {
+pub(crate) fn close_login_window(window: &WebviewWindow) {
     if let Err(error) = window.close() {
         tracing::warn!(%error, "could not close the login window");
     }
