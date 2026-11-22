@@ -1,7 +1,11 @@
 //! The play queue. Pure Rust: no Tauri types, deterministic for a given seed.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use ytm_core::models::Song;
+
+pub const MAX_QUEUE_LEN: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -87,6 +91,64 @@ impl Queue {
         self.songs.clear();
         self.order.clear();
         self.position = None;
+    }
+
+    /// Adds new tracks at the end of play order. Only tracks before the
+    /// current position can be dropped to make room.
+    pub fn append(&mut self, songs: Vec<Song>) -> usize {
+        let Some(position) = self.position else {
+            return 0;
+        };
+        let capacity = MAX_QUEUE_LEN.saturating_sub(self.songs.len() - position);
+        let mut known: HashSet<_> = self
+            .songs
+            .iter()
+            .map(|song| song.video_id.clone())
+            .collect();
+        let added: Vec<_> = songs
+            .into_iter()
+            .filter(|song| known.insert(song.video_id.clone()))
+            .take(capacity)
+            .collect();
+        let count = added.len();
+        if count == 0 {
+            return 0;
+        }
+        let overflow = (self.songs.len() + count).saturating_sub(MAX_QUEUE_LEN);
+        if overflow > 0 {
+            // Evict from play order, but keep the retained songs in their
+            // original order so turning shuffle off still restores it.
+            let dropped: HashSet<_> = self.order.drain(..overflow).collect();
+            let mut remap = vec![0; self.songs.len()];
+            let mut next = 0;
+            let mut old = 0;
+            self.songs.retain(|_| {
+                let keep = !dropped.contains(&old);
+                if keep {
+                    remap[old] = next;
+                    next += 1;
+                }
+                old += 1;
+                keep
+            });
+            for index in &mut self.order {
+                *index = remap[*index];
+            }
+            self.position = Some(position - overflow);
+        }
+        self.order
+            .extend(self.songs.len()..self.songs.len() + count);
+        self.songs.extend(added);
+        count
+    }
+
+    pub fn remaining(&self) -> Option<usize> {
+        self.position
+            .map(|position| self.order.len() - position - 1)
+    }
+
+    pub fn last(&self) -> Option<&Song> {
+        self.order.last().map(|&index| &self.songs[index])
     }
 
     pub fn current(&self) -> Option<&Song> {
@@ -218,6 +280,63 @@ mod tests {
 
     fn current_id(queue: &Queue) -> Option<&str> {
         queue.current().map(|song| song.video_id.as_str())
+    }
+
+    #[test]
+    fn autoplay_append_deduplicates_in_input_order() {
+        let mut queue = Queue::new(1);
+        queue.replace(songs(2), 1);
+        assert_eq!(
+            queue.append(songs(4).into_iter().chain(songs(4)).collect()),
+            2
+        );
+        assert_eq!(queue.ordered(), songs(4));
+        assert_eq!(queue.position(), Some(1));
+    }
+
+    #[test]
+    fn autoplay_append_preserves_the_shuffled_prefix() {
+        let mut queue = Queue::new(42);
+        queue.replace(songs(6), 2);
+        queue.set_shuffle(true);
+        queue.advance(Advance::User);
+        let current = queue.current().cloned();
+        let mut expected = queue.ordered();
+        expected.extend(songs(9).into_iter().skip(6));
+        assert_eq!(queue.append(songs(9)), 3);
+        assert_eq!(queue.ordered(), expected);
+        assert_eq!(queue.current().cloned(), current);
+        assert_eq!(queue.position(), Some(1));
+    }
+
+    #[test]
+    fn autoplay_append_caps_at_500_without_dropping_current_or_upcoming() {
+        for shuffle in [false, true] {
+            let mut queue = Queue::new(42);
+            queue.replace(songs(500), 0);
+            queue.set_shuffle(shuffle);
+            for _ in 0..3 {
+                queue.advance(Advance::User);
+            }
+            let mut expected = queue.ordered().split_off(3);
+            expected.extend(songs(503).into_iter().skip(500));
+            assert_eq!(queue.append(songs(510)), 3);
+            assert_eq!(queue.ordered(), expected);
+            assert_eq!(queue.position(), Some(0));
+            assert_eq!(queue.current(), expected.first());
+            assert_eq!(queue.append(vec![song("extra")]), 0);
+            queue.set_shuffle(false);
+            assert_eq!(queue.current(), expected.first());
+            let mut retained = expected;
+            retained.sort_by_key(|song| {
+                song.video_id
+                    .strip_prefix("test-vid-")
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap()
+            });
+            assert_eq!(queue.ordered(), retained);
+        }
     }
 
     #[test]

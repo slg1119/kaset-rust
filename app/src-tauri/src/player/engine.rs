@@ -111,6 +111,12 @@ pub enum PlayerError {
     NothingToPlay,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Seed {
+    Video(VideoId),
+    Continuation(String),
+}
+
 fn seconds(value: f64) -> f64 {
     if value.is_finite() {
         value.clamp(0.0, MAX_MEDIA_SECONDS)
@@ -130,6 +136,8 @@ fn position_seconds(position: f64, duration: f64) -> f64 {
 
 pub struct Player {
     queue: Queue,
+    queue_generation: u64,
+    radio_continuation: Option<String>,
     status: PlaybackStatus,
     position: f64,
     duration: f64,
@@ -141,6 +149,8 @@ impl Player {
     pub fn new(seed: u64) -> Self {
         Self {
             queue: Queue::new(seed),
+            queue_generation: 0,
+            radio_continuation: None,
             status: PlaybackStatus::Idle,
             position: 0.0,
             duration: 0.0,
@@ -171,6 +181,39 @@ impl Player {
                 .position()
                 .and_then(|position| u32::try_from(position).ok()),
         }
+    }
+
+    pub fn queue_position(&self) -> (u64, Option<usize>) {
+        (self.queue_generation, self.queue.position())
+    }
+
+    pub fn needs_more(&self) -> Option<Seed> {
+        if self.queue.repeat() != RepeatMode::Off || self.queue.remaining()? >= 3 {
+            return None;
+        }
+        match &self.radio_continuation {
+            Some(token) => Some(Seed::Continuation(token.clone())),
+            None => VideoId::parse(&self.queue.last()?.video_id).map(Seed::Video),
+        }
+    }
+
+    pub fn set_radio_continuation(&mut self, continuation: Option<String>) {
+        self.radio_continuation = continuation;
+    }
+
+    pub fn append(&mut self, songs: Vec<Song>, now: Instant) -> Outcome {
+        if self.queue.append(songs) == 0 {
+            return Outcome::default();
+        }
+        Outcome {
+            command: None,
+            state: self.emit(now, true),
+            queue: Some(self.queue_state()),
+        }
+    }
+
+    pub fn is_ended(&self) -> bool {
+        self.status == PlaybackStatus::Ended
     }
 
     /// The song the player page should be playing.
@@ -230,6 +273,8 @@ impl Player {
             .filter(|song| VideoId::parse(&song.video_id).is_some())
             .collect();
         self.queue.replace(playable, start - skipped_before);
+        self.queue_generation += 1;
+        self.radio_continuation = None;
         Ok(self.load_current(now))
     }
 
@@ -315,7 +360,17 @@ impl Player {
     }
 
     pub fn set_shuffle(&mut self, shuffle: bool, now: Instant) -> Outcome {
+        let radio_tail = self
+            .radio_continuation
+            .as_ref()
+            .and_then(|_| self.queue.last().map(|song| song.video_id.clone()));
         self.queue.set_shuffle(shuffle);
+        if radio_tail
+            .as_ref()
+            .is_some_and(|tail| Some(tail) != self.queue.last().map(|song| &song.video_id))
+        {
+            self.radio_continuation = None;
+        }
         Outcome {
             command: None,
             state: self.emit(now, true),
@@ -326,6 +381,8 @@ impl Player {
     /// Empties the queue and closes the player window.
     pub fn stop(&mut self, now: Instant) -> Outcome {
         self.queue.clear();
+        self.queue_generation += 1;
+        self.radio_continuation = None;
         self.status = PlaybackStatus::Idle;
         self.position = 0.0;
         self.duration = 0.0;
@@ -450,6 +507,49 @@ mod tests {
             .unwrap();
         player.handle_event(progress(ids[start], true, 0.0), now);
         (player, now + STATE_INTERVAL)
+    }
+
+    #[test]
+    fn autoplay_needs_fewer_than_three_upcoming_songs_and_repeat_off() {
+        let d = "test-vid-0D";
+        let (mut player, now) = playing(&[A, B, C, d], 0);
+        assert_eq!(player.needs_more(), None);
+        player.next(now);
+        assert_eq!(player.needs_more(), Some(Seed::Video(id(d))));
+        for repeat in [RepeatMode::One, RepeatMode::All] {
+            player.set_repeat(repeat, now);
+            assert_eq!(player.needs_more(), None);
+        }
+        player.stop(now);
+        assert_eq!(player.needs_more(), None);
+    }
+
+    #[test]
+    fn autoplay_uses_the_play_order_tail_and_resets_continuation_on_replace() {
+        let (mut player, now) = playing(&[A, B, C], 2);
+        player.set_shuffle(true, now);
+        let tail = player.queue_state().songs.pop().unwrap();
+        assert_ne!(tail.video_id, C);
+        assert_eq!(player.needs_more(), Some(Seed::Video(id(&tail.video_id))));
+        player.set_radio_continuation(Some("mock-continuation".into()));
+        assert_eq!(
+            player.needs_more(),
+            Some(Seed::Continuation("mock-continuation".into()))
+        );
+        player.play_songs(vec![song(B)], 0, now).unwrap();
+        assert_eq!(player.needs_more(), Some(Seed::Video(id(B))));
+    }
+
+    #[test]
+    fn autoplay_append_publishes_queue_and_state_without_a_web_command() {
+        let (mut player, now) = playing(&[A], 0);
+        assert!(!player.state().has_next);
+        let outcome = player.append(vec![song(A), song(B)], now);
+        assert_eq!(outcome.command, None);
+        assert_eq!(outcome.state.unwrap(), player.state());
+        assert!(player.state().has_next);
+        assert_eq!(outcome.queue.unwrap().songs, vec![song(A), song(B)]);
+        assert_eq!(player.append(vec![song(B)], now), Outcome::default());
     }
 
     #[test]

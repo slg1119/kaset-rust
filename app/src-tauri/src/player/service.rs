@@ -3,15 +3,21 @@
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 use tokio::sync::{Mutex, MutexGuard};
+use ytm_core::models::RadioQueue;
+use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 
-use super::engine::{Outcome, Player, PlayerState, QueueState, WebCommand};
+use super::engine::{Outcome, Player, PlayerState, QueueState, Seed, WebCommand};
 use super::media::{self, MediaPublisher};
+use super::video_id::VideoId;
 use super::window;
+use crate::commands::on_error;
 use crate::error::AppError;
 use crate::events::{PlayerStateChanged, QueueChanged};
+use crate::session::AuthStatus;
+use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
 
 /// Player events go to the main window. The player window's capability has
 /// no event permissions, so its pages cannot listen to them either.
@@ -20,6 +26,19 @@ const UI_WINDOW: &str = "main";
 struct Inner {
     player: Player,
     media: MediaPublisher,
+    autoplay_in_flight: bool,
+    // A position change while a request is in flight may need another page.
+    autoplay_pending: bool,
+}
+
+impl Inner {
+    fn apply(&mut self, app: &AppHandle, outcome: Outcome, now: Instant) -> Result<(), AppError> {
+        if let Some(state) = &outcome.state {
+            let update = self.media.update(state, now);
+            media::publish(app, update);
+        }
+        apply(app, outcome)
+    }
 }
 
 pub struct PlayerService {
@@ -36,11 +55,8 @@ impl SessionPlayerGuard<'_> {
     pub(crate) fn stop(&mut self, app: &AppHandle) {
         let now = Instant::now();
         let outcome = self.inner.player.stop(now);
-        if let Some(state) = &outcome.state {
-            let update = self.inner.media.update(state, now);
-            media::publish(app, update);
-        }
-        if let Err(error) = apply(app, outcome) {
+        self.inner.autoplay_pending = false;
+        if let Err(error) = self.inner.apply(app, outcome, now) {
             tracing::warn!(%error, "could not stop the player during a session change");
         }
     }
@@ -56,6 +72,8 @@ impl PlayerService {
             inner: Mutex::new(Inner {
                 player: Player::new(seed),
                 media: MediaPublisher::default(),
+                autoplay_in_flight: false,
+                autoplay_pending: false,
             }),
         }
     }
@@ -67,12 +85,14 @@ impl PlayerService {
     {
         let mut inner = self.inner.lock().await;
         let now = Instant::now();
+        let previous = inner.player.queue_position();
         let outcome = change(&mut inner.player, now)?;
-        if let Some(state) = &outcome.state {
-            let update = inner.media.update(state, now);
-            media::publish(app, update);
+        let result = inner.apply(app, outcome, now);
+        if result.is_ok() && previous != inner.player.queue_position() {
+            inner.autoplay_pending = true;
+            start_autoplay(app, &mut inner);
         }
-        apply(app, outcome)
+        result
     }
 
     pub async fn snapshot(&self) -> (PlayerState, QueueState) {
@@ -98,6 +118,77 @@ impl PlayerService {
         player.stop(app);
         sign_out.await
     }
+}
+
+fn start_autoplay(app: &AppHandle, inner: &mut Inner) {
+    if inner.autoplay_in_flight || !std::mem::take(&mut inner.autoplay_pending) {
+        return;
+    }
+    let Some(seed) = inner.player.needs_more() else {
+        return;
+    };
+    let state = app.state::<AppState>();
+    let epoch = state.session.epoch();
+    if state.session.status() != AuthStatus::SignedIn {
+        return;
+    }
+    let (generation, _) = inner.player.queue_position();
+    inner.autoplay_in_flight = true;
+    tauri::async_runtime::spawn(fetch_autoplay(app.clone(), seed, generation, epoch));
+}
+
+async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64) {
+    let state = app.state::<AppState>();
+    let result = fetch_radio(&state, seed, epoch).await;
+    if let Err(error) = &result {
+        tracing::warn!(%error, "autoplay fetch failed");
+        on_error(&app, epoch, error.clone()).await;
+    }
+
+    let mut inner = state.player.inner.lock().await;
+    inner.autoplay_in_flight = false;
+    if let Ok(mut radio) = result
+        && inner.player.queue_position().0 == generation
+        && state.session.epoch() == epoch
+    {
+        radio
+            .songs
+            .retain(|song| VideoId::parse(&song.video_id).is_some());
+        let now = Instant::now();
+        let outcome = inner.player.append(radio.songs, now);
+        let appended = outcome.queue.is_some();
+        inner.player.set_radio_continuation(radio.continuation);
+        // A slow response may arrive after the current track already ended.
+        // Publish the append first, then advance using the normal load path.
+        let applied = inner.apply(&app, outcome, now).and_then(|()| {
+            if appended && inner.player.is_ended() {
+                let next = inner.player.next(now);
+                inner.autoplay_pending |= next.queue.is_some();
+                inner.apply(&app, next, now)?;
+            }
+            Ok(())
+        });
+        if let Err(error) = applied {
+            tracing::warn!(%error, "could not apply autoplay queue");
+        }
+    }
+    start_autoplay(&app, &mut inner);
+}
+
+async fn fetch_radio(state: &AppState, seed: Seed, epoch: u64) -> Result<RadioQueue, AppError> {
+    if !state.launch.wait(LAUNCH_REFRESH_TIMEOUT).await {
+        tracing::warn!("launch cookie refresh did not finish in time");
+    }
+    let client = state.client().await?;
+    if state.session.epoch() != epoch || state.session.status() != AuthStatus::SignedIn {
+        return Err(AppError::not_signed_in());
+    }
+    Ok(match seed {
+        Seed::Video(id) => parse_radio(&client.radio(id.as_str()).await?)?,
+        Seed::Continuation(token) => {
+            parse_radio_continuation(&client.radio_continuation(&token).await?)?
+        }
+    })
 }
 
 impl Default for PlayerService {

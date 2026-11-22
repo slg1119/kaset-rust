@@ -176,7 +176,7 @@ pub async fn window_vibrancy(effects: State<'_, WindowEffects>) -> Result<bool, 
 
 /// Moves the session to `Expired` on an auth error for a request that started
 /// at `epoch`, and passes the error on.
-async fn on_error(app: &AppHandle, epoch: u64, error: AppError) -> AppError {
+pub(crate) async fn on_error(app: &AppHandle, epoch: u64, error: AppError) -> AppError {
     if error.kind == ErrorKind::AuthExpired {
         let state = app.state::<AppState>();
         let mut player = state.player.lock_for_session_change().await;

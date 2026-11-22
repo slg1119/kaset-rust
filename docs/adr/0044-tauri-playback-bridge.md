@@ -79,6 +79,17 @@ the queue owned by Rust.
   `SameAsExpired`. A second rejection closes the login window and keeps the
   session expired.
 
+## Autoplay and notifications
+
+With repeat off, a queue position change that leaves fewer than three upcoming
+tracks triggers a signed-in radio request. The player seeds radio from the
+last track in play order and uses the returned continuation for subsequent
+pages. New tracks are appended in response order, including during shuffle.
+The queue caps at 500 tracks by evicting earlier play history as needed.
+One request runs at a time, and queue generation and session epoch checks
+discard stale responses. If the current track ends while its radio request is
+in flight, playback advances when the response supplies a playable track.
+
 ## Consequences
 
 ### Positive

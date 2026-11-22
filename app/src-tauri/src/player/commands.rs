@@ -6,14 +6,12 @@ use tauri::{AppHandle, State, Webview};
 use ytm_core::models::Song;
 
 use super::engine::{PlaybackEvent, PlayerState, QueueState};
-use super::queue::RepeatMode;
+use super::queue::{MAX_QUEUE_LEN, RepeatMode};
 use super::window::{PLAYER_LABEL, is_music_page};
 use crate::error::{AppError, ErrorKind};
 use crate::session::AuthStatus;
 use crate::state::AppState;
 
-/// Longest queue `play_queue` accepts.
-pub const MAX_QUEUE_LEN: usize = 500;
 const MAX_SONG_STRING_BYTES: usize = 2048;
 
 /// Reply to `player_snapshot`: the state the events would have sent so far.
