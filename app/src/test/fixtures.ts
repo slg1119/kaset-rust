@@ -1,6 +1,7 @@
-import type { Account, HomePage, SearchResults } from "../bindings";
+import type { Account, FeedPage, SearchResults } from "../bindings";
 
-export const home: HomePage = {
+export const home: FeedPage = {
+  chips: [],
   sections: [
     {
       title: "Quick picks",

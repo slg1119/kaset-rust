@@ -1,15 +1,18 @@
 import { QueryClient } from "@tanstack/react-query";
+import type { FeedKind } from "./bindings";
 import { isAppError } from "./errors";
 
 /** How long fetched data counts as fresh before a remount refetches it. */
-export const HOME_STALE_MS = 5 * 60_000;
+export const FEED_STALE_MS = 5 * 60_000;
 export const SEARCH_STALE_MS = 10 * 60_000;
 export const BROWSE_PAGE_STALE_MS = 10 * 60_000;
 export const SUGGESTIONS_STALE_MS = 60_000;
 export const ACCOUNT_STALE_MS = 30 * 60_000;
 
 export const queryKeys = {
-  home: ["home"] as const,
+  feed: (kind: FeedKind) => ["feed", kind] as const,
+  feedCategory: (browseId: string, params: string | null) => ["feed", "category", browseId, params] as const,
+  feedChip: (params: string | null) => ["feed", "chip", params] as const,
   search: (query: string) => ["search", query] as const,
   browsePage: (browseId: string) => ["browsePage", browseId] as const,
   suggestions: (input: string) => ["suggestions", input] as const,

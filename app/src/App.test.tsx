@@ -15,7 +15,7 @@ test("signed out shows the sign-in screen", async () => {
 test("signed in shows the shell with the home feed and the account", async () => {
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
   });
@@ -25,6 +25,11 @@ test("signed in shows the shell with the home feed and the account", async () =>
   expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual([
     "Search",
     "Home",
+    "Explore",
+    "Charts",
+    "Moods & Genres",
+    "New releases",
+    "History",
     "Sign out",
   ]);
   expect(within(nav).getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page");
@@ -36,7 +41,7 @@ test("signed in shows the shell with the home feed and the account", async () =>
 test("an account failure falls back to a generic label", async () => {
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => {
       throw { kind: "parse", message: "could not parse" };
     },
@@ -52,7 +57,7 @@ test("an account failure falls back to a generic label", async () => {
 test("auth://changed switches screens", async () => {
   mockCommands({
     authStatus: () => "signed_out",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
   });
@@ -72,7 +77,7 @@ test("an auth_expired home error routes to sign-in and a new sign-in refetches",
     authStatus: () => "signed_in",
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
-    getHome: () => {
+    getFeed: () => {
       calls += 1;
       if (calls === 1) throw { kind: "auth_expired", message: "authentication expired" };
       return home;
@@ -108,7 +113,7 @@ test("sign out calls the command", async () => {
   const signOut = vi.fn(() => null);
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
     signOut,
@@ -121,7 +126,7 @@ test("sign out calls the command", async () => {
 test("a sign-out failure is a notice and the feed stays", async () => {
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
     signOut: () => {
@@ -137,7 +142,7 @@ test("a sign-out failure is a notice and the feed stays", async () => {
 test("the sidebar switches between Home and Search", async () => {
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
   });
@@ -156,7 +161,7 @@ test("keyboard shortcuts control playback and navigation", async () => {
   const nextTrack = vi.fn(() => null);
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     playerSnapshot: () => idleSnapshot,
     togglePlayback,

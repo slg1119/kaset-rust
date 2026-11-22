@@ -21,7 +21,7 @@ const page: BrowsePage = {
 function renderDetailApp(handlers: Parameters<typeof mockCommands>[0] = {}) {
   mockCommands({
     authStatus: () => "signed_in",
-    getHome: () => home,
+    getFeed: () => home,
     getAccount: () => account,
     getBrowsePage: () => page,
     playerSnapshot: () => idleSnapshot,

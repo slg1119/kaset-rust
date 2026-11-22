@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { commands, type BrowseCard } from "../bindings";
 import { BrowsePageScreen } from "../detail/BrowsePageScreen";
 import { errorMessage } from "../errors";
-import { HomeScreen } from "../home/HomeScreen";
+import { FeedScreen, type CategoryItem } from "../home/FeedScreen";
 import { NoticeBanner, NoticeProvider, useNotice } from "../notices/NoticeProvider";
 import { PlayerBar } from "../player/PlayerBar";
 import type { Filter } from "../search/groups";
 import { SearchScreen } from "../search/SearchScreen";
 import type { Shortcut } from "./shortcuts";
-import { Sidebar, type Route } from "./Sidebar";
+import { FEED_TABS, Sidebar, type Route } from "./Sidebar";
 import { useShortcuts } from "./useShortcuts";
 
 /** The signed-in app: sidebar, the current screen, notices, and the floating player bar. */
@@ -31,7 +31,12 @@ function ShellLayout() {
 
   function openPage(card: BrowseCard) {
     if (route.kind === "page") return;
-    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route.kind });
+    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route });
+  }
+
+  function openCategory(item: CategoryItem) {
+    if (route.kind === "page" || route.kind === "search") return;
+    setRoute({ kind: "category", browseId: item.browse_id, params: item.params, title: item.title, from: route });
   }
 
   const actions = useMemo<Partial<Record<Shortcut, () => void>>>(() => {
@@ -48,7 +53,7 @@ function ShellLayout() {
         setRoute({ kind: "search" });
         setSearchFocus((count) => count + 1);
       },
-      back: route.kind === "page" ? () => setRoute({ kind: route.from }) : undefined,
+      back: route.kind === "page" || route.kind === "category" ? () => setRoute(route.from) : undefined,
     };
   }, [report, dismiss, route]);
   useShortcuts(actions);
@@ -57,8 +62,16 @@ function ShellLayout() {
     <div className="shell">
       <Sidebar route={route} onNavigate={setRoute} />
       <div className="content-column">
-        <main key={route.kind} className="content">
-          {route.kind === "home" && <HomeScreen onOpenPage={openPage} />}
+        <main key={route.kind === "category" ? JSON.stringify([route.kind, route.browseId, route.params]) : route.kind} className="content">
+          {route.kind !== "page" && route.kind !== "search" && (
+            <FeedScreen
+              source={route}
+              title={route.kind === "category" ? route.title : FEED_TABS[route.kind].label}
+              onOpenPage={openPage}
+              onOpenCategory={openCategory}
+              onBack={route.kind === "category" ? () => setRoute(route.from) : undefined}
+            />
+          )}
           {route.kind === "search" && (
             <SearchScreen
               query={query}
@@ -74,7 +87,7 @@ function ShellLayout() {
               key={route.browseId}
               browseId={route.browseId}
               title={route.title}
-              onBack={() => setRoute({ kind: route.from })}
+              onBack={() => setRoute(route.from)}
             />
           )}
         </main>

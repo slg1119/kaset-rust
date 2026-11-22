@@ -147,3 +147,46 @@ export function MusicNoteIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function CompassIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m15.5 8.5-2 5-5 2 2-5Z" />
+    </Icon>
+  );
+}
+
+export function ChartBarsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20h16M7 16v-4m5 4V8m5 8V4" />
+    </Icon>
+  );
+}
+
+export function PaletteIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3a9 9 0 0 0 0 18h1a1.5 1.5 0 0 0 1.1-2.5 2 2 0 0 1 1.5-3.5H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z" />
+      <path d="M7.5 11h.01M10 7.5h.01m4.5 0h.01M17.5 11h.01" />
+    </Icon>
+  );
+}
+
+export function SparkleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 2.5 14.6 9.4 21.5 12l-6.9 2.6L12 21.5l-2.6-6.9L2.5 12l6.9-2.6Z" />
+    </Icon>
+  );
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}

@@ -1,20 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { commands } from "../bindings";
+import { commands, type FeedKind } from "../bindings";
 import { errorMessage } from "../errors";
-import { HomeIcon, SearchIcon } from "../icons";
+import { ChartBarsIcon, ClockIcon, CompassIcon, HomeIcon, PaletteIcon, SearchIcon, SparkleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { useNotice } from "../notices/NoticeProvider";
 import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
-export type Route =
-  | { kind: "home" }
-  | { kind: "search" }
-  | { kind: "page"; browseId: string; title: string; from: "home" | "search" };
+type FeedRoute = { kind: FeedKind };
+type SearchRoute = { kind: "search" };
+type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: FeedRoute | CategoryRoute };
+type PageRoute = { kind: "page"; browseId: string; title: string; from: FeedRoute | SearchRoute | CategoryRoute };
+export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute;
 
-const ROUTES = [
-  { route: "search", label: "Search", Icon: SearchIcon },
-  { route: "home", label: "Home", Icon: HomeIcon },
-] as const;
+const SEARCH = { route: "search", label: "Search", Icon: SearchIcon } as const;
+
+export const FEED_TABS = {
+  home: { label: "Home", Icon: HomeIcon },
+  explore: { label: "Explore", Icon: CompassIcon },
+  charts: { label: "Charts", Icon: ChartBarsIcon },
+  moods_and_genres: { label: "Moods & Genres", Icon: PaletteIcon },
+  new_releases: { label: "New releases", Icon: SparkleIcon },
+  history: { label: "History", Icon: ClockIcon },
+} satisfies Record<FeedKind, { label: string; Icon: typeof HomeIcon }>;
+
+const FEED_ORDER: FeedKind[] = ["home", "explore", "charts", "moods_and_genres", "new_releases", "history"];
+const ROUTES = [SEARCH, ...FEED_ORDER.map((route) => ({ route, ...FEED_TABS[route] }))];
 
 type Props = {
   route: Route;
@@ -39,7 +49,8 @@ export function Sidebar({ route, onNavigate }: Props) {
     }
   }
 
-  const selected = route.kind === "page" ? route.from : route.kind;
+  let selected = route;
+  while (selected.kind === "page" || selected.kind === "category") selected = selected.from;
   const name = account.data?.name ?? "Signed in";
   return (
     <nav className="sidebar" aria-label="Main">
@@ -49,7 +60,7 @@ export function Sidebar({ route, onNavigate }: Props) {
           <li key={destination}>
             <button
               type="button"
-              aria-current={selected === destination ? "page" : undefined}
+              aria-current={selected.kind === destination ? "page" : undefined}
               onClick={() => onNavigate({ kind: destination })}
             >
               <Icon size={18} />

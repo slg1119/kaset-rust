@@ -1,12 +1,13 @@
+pub mod feed;
+
 use std::future::Future;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager, State};
 use ytm_core::client::{InnerTubeClient, playlist_browse_id};
-use ytm_core::models::{Account, BrowsePage, HomePage, SearchResults};
+use ytm_core::models::{Account, BrowsePage, SearchResults};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page;
-use ytm_core::parsers::home::parse_home;
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
@@ -60,16 +61,6 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         .map_err(|error| AppError::internal(error.to_string()))
 }
 
-/// Fetches and parses the signed-in home feed.
-#[tauri::command]
-#[specta::specta]
-pub async fn get_home(app: AppHandle, state: State<'_, AppState>) -> Result<HomePage, AppError> {
-    signed_in_request(&app, &state, |client| async move {
-        Ok(parse_home(&client.browse("FEmusic_home").await?)?)
-    })
-    .await
-}
-
 /// Fetches the first page of an album or playlist for the signed-in session.
 #[tauri::command]
 #[specta::specta]
@@ -87,17 +78,23 @@ pub async fn get_browse_page(
 }
 
 fn checked_browse_id(id: &str) -> Result<(), AppError> {
-    if (2..=128).contains(&id.len())
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    checked_browse_value(id, 2..=128, b"", "Invalid browse ID.")
+}
+
+fn checked_browse_value(
+    value: &str,
+    length: std::ops::RangeInclusive<usize>,
+    extra: &[u8],
+    message: &'static str,
+) -> Result<(), AppError> {
+    if length.contains(&value.len())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-') || extra.contains(&byte)
+        })
     {
         Ok(())
     } else {
-        Err(AppError::new(
-            ErrorKind::InvalidArgument,
-            "Invalid browse ID.",
-        ))
+        Err(AppError::new(ErrorKind::InvalidArgument, message))
     }
 }
 

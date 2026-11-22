@@ -4,11 +4,11 @@ import { expect, test, vi } from "vitest";
 import { mockCommands } from "../bindings";
 import { home } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
-import { HomeScreen } from "./HomeScreen";
+import { FeedScreen } from "./FeedScreen";
 
 test("the first all-song shelf is a song grid and the rest are carousels", async () => {
-  mockCommands({ getHome: () => home });
-  const { container } = renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  mockCommands({ getFeed: () => home });
+  const { container } = renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
 
   const quickPicks = await screen.findByRole("region", { name: "Quick picks" });
   expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
@@ -44,8 +44,8 @@ test.each([{ matches: false, behavior: "smooth" }, { matches: true, behavior: "a
     HTMLElement.prototype.scrollBy = scrollBy;
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(600);
     try {
-      mockCommands({ getHome: () => home });
-      renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+      mockCommands({ getFeed: () => home });
+      renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
       await userEvent.click(await screen.findByRole("button", { name: "Next in Mixed for you" }));
       await userEvent.click(screen.getByRole("button", { name: "Previous in Mixed for you" }));
       expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
@@ -63,8 +63,8 @@ test.each([{ matches: false, behavior: "smooth" }, { matches: true, behavior: "a
 
 test("clicking a song plays its shelf's songs from that song", async () => {
   const playQueue = vi.fn(() => null);
-  mockCommands({ getHome: () => home, playQueue });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  mockCommands({ getFeed: () => home, playQueue });
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Play Second song" }));
   expect(playQueue).toHaveBeenLastCalledWith({
@@ -89,12 +89,12 @@ test("clicking a song plays its shelf's songs from that song", async () => {
 
 test("a failed play shows one notice", async () => {
   mockCommands({
-    getHome: () => home,
+    getFeed: () => home,
     playQueue: () => {
       throw { kind: "not_signed_in", message: "Sign in to continue." };
     },
   });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
   await userEvent.click(await screen.findByRole("button", { name: "Play Second song" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Sign in to continue.");
   expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -103,13 +103,13 @@ test("a failed play shows one notice", async () => {
 test("load errors offer a retry", async () => {
   let calls = 0;
   mockCommands({
-    getHome: () => {
+    getFeed: () => {
       calls += 1;
       if (calls === 1) throw { kind: "network", message: "network error" };
       return home;
     },
   });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
 
   expect(await screen.findByRole("alert")).toHaveTextContent("network error");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -118,32 +118,32 @@ test("load errors offer a retry", async () => {
 });
 
 test("refresh refetches the feed", async () => {
-  const getHome = vi.fn(() => home);
-  mockCommands({ getHome });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  const getFeed = vi.fn(() => home);
+  mockCommands({ getFeed });
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
   await screen.findByRole("region", { name: "Quick picks" });
   await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  await vi.waitFor(() => expect(getHome).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(getFeed).toHaveBeenCalledTimes(2));
 });
 
 test("an empty feed says so", async () => {
-  mockCommands({ getHome: () => ({ sections: [], continuation: null }) });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  mockCommands({ getFeed: () => ({ sections: [], continuation: null, chips: [] }) });
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
   expect(await screen.findByText("Nothing to show yet.")).toBeInTheDocument();
 });
 
 test("empty shelves are skipped and do not take the Quick picks grid", async () => {
   mockCommands({
-    getHome: () => ({ ...home, sections: [{ title: "Empty shelf", items: [] }, ...home.sections] }),
+    getFeed: () => ({ ...home, sections: [{ title: "Empty shelf", items: [] }, ...home.sections] }),
   });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
   const quickPicks = await screen.findByRole("region", { name: "Quick picks" });
   expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
   expect(screen.queryByRole("region", { name: "Empty shelf" })).not.toBeInTheDocument();
 });
 
 test("loading the home feed is announced", () => {
-  mockCommands({ getHome: () => new Promise(() => {}) });
-  renderWithProviders(<HomeScreen onOpenPage={() => {}} />);
+  mockCommands({ getFeed: () => new Promise(() => {}) });
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
   expect(screen.getByRole("status")).toHaveTextContent("Loading…");
 });

@@ -1,4 +1,4 @@
-import type { ArtistRef, BrowseCard, SearchItem, ShelfItem, Song } from "../bindings";
+import type { ArtistRef, SearchItem, ShelfItem, Song } from "../bindings";
 
 /** A home or search item: a song-like item or a browse card, tagged by `kind`. */
 export type MusicItem = ShelfItem | SearchItem;
@@ -30,7 +30,7 @@ export function artistNames(artists: ArtistRef[]): string {
 /** The second line under an item's title. */
 export function subtitleOf(item: MusicItem): string | null {
   if (isPlayable(item)) return artistNames(item.artists) || null;
-  return (item as BrowseCard).subtitle;
+  return item.kind === "category" ? null : item.subtitle;
 }
 
 /** A stable React key for an item within its list. */

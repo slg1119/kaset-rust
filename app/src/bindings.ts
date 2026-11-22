@@ -20,8 +20,14 @@ export const commands = {
 	 *  Google cookies.
 	 */
 	signOut: (options?: InvokeOptions) => __TAURI_INVOKE<null>("sign_out", undefined, options),
-	/**  Fetches and parses the signed-in home feed. */
-	getHome: (options?: InvokeOptions) => __TAURI_INVOKE<HomePage>("get_home", undefined, options),
+	/**  Fetches the first page of a signed-in music feed. */
+	getFeed: (kind: FeedKind, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed", { kind }, options),
+	/**  Fetches the first page of a mood or genre category. */
+	getFeedCategory: (browseId: string, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_category", { browseId, params }, options),
+	/**  Fetches Home filtered by a Music chip. */
+	getFeedChip: (params: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_chip", { params }, options),
+	/**  Fetches the next page of any music feed. */
+	getFeedContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_continuation", { token }, options),
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
 	/**
@@ -124,14 +130,22 @@ export type BrowsePage = {
 	continuation: string | null,
 };
 
+export type Chip = {
+	title: string,
+	params: string,
+};
+
 /**  What went wrong, for the UI to branch on. */
 export type ErrorKind = "auth_expired" | "not_signed_in" | 
 /**  A command argument was rejected, such as an unplayable queue position. */
 "invalid_argument" | "network" | "http" | "parse" | "rate_limited" | "internal";
 
-export type HomePage = {
+export type FeedKind = "home" | "explore" | "charts" | "moods_and_genres" | "new_releases" | "history";
+
+export type FeedPage = {
 	sections: HomeSection[],
 	continuation: string | null,
+	chips: Chip[],
 };
 
 export type HomeSection = {
@@ -251,7 +265,7 @@ export type ShelfItem = {
 	kind: "playlist",
 } & BrowseCard | {
 	kind: "artist",
-} & BrowseCard;
+} & BrowseCard | { kind: "category"; title: string; browse_id: string; params: string | null; color: string | null };
 
 export type Song = {
 	video_id: string,
@@ -300,7 +314,10 @@ export type MockCommandHandlers = {
     authStatus: () => AuthStatus | Promise<AuthStatus>,
     signIn: () => null | Promise<null>,
     signOut: () => null | Promise<null>,
-    getHome: () => HomePage | Promise<HomePage>,
+    getFeed: (args: { kind: FeedKind }) => FeedPage | Promise<FeedPage>,
+    getFeedCategory: (args: { browseId: string; params: string | null }) => FeedPage | Promise<FeedPage>,
+    getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
+    getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
     search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
@@ -344,7 +361,10 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "auth_status": return mockCommandHandler(mockHandlers.authStatus, "auth_status", args);
             case "sign_in": return mockCommandHandler(mockHandlers.signIn, "sign_in", args);
             case "sign_out": return mockCommandHandler(mockHandlers.signOut, "sign_out", args);
-            case "get_home": return mockCommandHandler(mockHandlers.getHome, "get_home", args);
+            case "get_feed": return mockCommandHandler(mockHandlers.getFeed, "get_feed", args);
+            case "get_feed_category": return mockCommandHandler(mockHandlers.getFeedCategory, "get_feed_category", args);
+            case "get_feed_chip": return mockCommandHandler(mockHandlers.getFeedChip, "get_feed_chip", args);
+            case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);

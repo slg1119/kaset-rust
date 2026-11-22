@@ -28,19 +28,22 @@ afterwards.
   searches and continuation pages are later work. `parse_search_suggestions`
   returns text and history suggestions, deduplicated. `ytm-explorer` gains
   `search` and `suggest`.
-- **Home shelves:** the home parser reads carousel, music shelf, card shelf,
-  immersive carousel, grid, and item-section shelves, like the Swift parser;
-  mood/genre buttons are skipped.
+- **Shared music feeds** in M5b include Home, Explore, Charts, Moods & Genres,
+  New releases, History, and category pages. Mood and genre
+  buttons open a feed keyed by browse ID and params. Home queries each topic
+  by its own params. Infinite queries append continuation shelves and stop
+  when a token is missing or repeats. History is stale immediately so it
+  refreshes on entry.
 - **Commands:** `search` and `search_suggestions` share `signed_in_request`
-  with `get_home` (launch gate, signed-in check, epoch-guarded expiry). Queries
+  with `get_feed` (launch gate, signed-in check, epoch-guarded expiry). Queries
   are trimmed. Empty search and empty suggestion input return no results
   without a request. Input over 200 characters returns `invalid_argument`.
-- **Navigation** in `Shell` uses state-based routes for Home, Search, and detail
-  pages. Detail routes store their originating tab for Back.
+- **Navigation** in `Shell` uses state-based routes for feeds, Search, categories, and
+  detail pages. Category and detail routes store their originating route for Back.
 - **Detail pages** for albums and playlists open from Home and Search and
   use the signed-in `get_browse_page` command. The page
   cache is keyed by browse ID and stays fresh for 10 minutes. Back restores
-  the originating tab and Search retains its query and filter. Play, Shuffle,
+  the originating route and Search retains its query and filter. Play, Shuffle,
   and track rows queue up to 500 songs from the loaded page.
 - **Server data:** TanStack Query 5 (`@tanstack/react-query` 5.107.1).
   The app uses one client. Stale times are home 5 min, search 10 min,
@@ -59,7 +62,7 @@ afterwards.
 - **Keyboard:** Space, ⌘→, ⌘←, ⌘1, ⌘F (Ctrl off macOS), handled in the WebView;
   never ⌘Q/⌘W/⌘H/⌘M/⌘,. Documented in `docs/keyboard-shortcuts.md`.
 - **Layout and styling (approved mockup):** dark only, accent `#d91c48`; a
-  240 px sidebar (Search, Home, account block), a 56 px sticky header, Home as a
+  240 px sidebar (Search, music feeds, account block), a 56 px sticky header, Home as a
   three-column Quick picks grid plus six-column carousels (round artist cards),
   Search with the field in the header, filter chips (All, Songs, Albums,
   Artists, Playlists; English until localization), and a top-result card; a
