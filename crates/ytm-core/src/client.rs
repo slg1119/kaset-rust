@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Map, Value, json};
 
 use crate::YtmError;
-use crate::auth::{CookieJar, sapisid_hash};
+use crate::auth::{CookieJar, SharedCookies, sapisid_hash};
 
 pub const MUSIC_ORIGIN: &str = "https://music.youtube.com";
 pub const CLIENT_VERSION: &str = "1.20231204.01.00";
@@ -34,11 +34,20 @@ impl ClientConfig {
 pub struct InnerTubeClient {
     http: reqwest::Client,
     config: ClientConfig,
-    cookies: Option<CookieJar>,
+    cookies: SharedCookies,
 }
 
 impl InnerTubeClient {
     pub fn new(config: ClientConfig, cookies: Option<CookieJar>) -> Result<Self, YtmError> {
+        Self::with_shared_cookies(config, SharedCookies::new(cookies))
+    }
+
+    /// Builds a client that reads its cookies from `cookies` on every request,
+    /// so sign-in, sign-out, and cookie rotation need no new client.
+    pub fn with_shared_cookies(
+        config: ClientConfig,
+        cookies: SharedCookies,
+    ) -> Result<Self, YtmError> {
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .connect_timeout(CONNECT_TIMEOUT)
@@ -49,6 +58,16 @@ impl InnerTubeClient {
             config,
             cookies,
         })
+    }
+
+    /// The handle this client reads cookies from.
+    pub fn cookies(&self) -> &SharedCookies {
+        &self.cookies
+    }
+
+    /// Replaces the cookies used by later requests. `None` sends unauthenticated requests.
+    pub fn set_cookies(&self, cookies: Option<CookieJar>) {
+        self.cookies.set(cookies);
     }
 
     fn context(&self) -> Value {
@@ -84,7 +103,7 @@ impl InnerTubeClient {
             .header("Referer", MUSIC_ORIGIN)
             .json(&body);
 
-        if let Some(jar) = &self.cookies {
+        if let Some(jar) = self.cookies.get() {
             let sapisid = jar.sapisid().ok_or(YtmError::AuthExpired)?;
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)

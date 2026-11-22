@@ -4,7 +4,7 @@ use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, header_regex, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use ytm_core::YtmError;
-use ytm_core::auth::CookieJar;
+use ytm_core::auth::{CookieJar, SharedCookies};
 use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN};
 
 fn config_for(server: &MockServer) -> ClientConfig {
@@ -124,4 +124,51 @@ async fn malformed_success_body_returns_parse_error() {
         error,
         YtmError::Parse { endpoint, path } if endpoint == "browse" && path == "<body>"
     ));
+}
+
+#[tokio::test]
+async fn set_cookies_switches_auth_without_rebuilding_client() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&server)
+        .await;
+
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    client.browse("FEmusic_home").await.unwrap();
+    client.set_cookies(Some(CookieJar::from_header("SAPISID=test-sapisid")));
+    client.browse("FEmusic_home").await.unwrap();
+    client.set_cookies(None);
+    client.browse("FEmusic_home").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    assert!(requests[0].headers.get("cookie").is_none());
+    assert_eq!(
+        requests[1].headers.get("cookie").unwrap(),
+        "SAPISID=test-sapisid"
+    );
+    assert!(requests[1].headers.get("authorization").is_some());
+    assert!(requests[2].headers.get("cookie").is_none());
+}
+
+#[tokio::test]
+async fn shared_cookies_update_reaches_client() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&server)
+        .await;
+
+    let shared = SharedCookies::default();
+    let client = InnerTubeClient::with_shared_cookies(config_for(&server), shared.clone()).unwrap();
+    shared.set(Some(CookieJar::from_pairs([("SAPISID", "test-sapisid")])));
+    client.browse("FEmusic_home").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        requests[0].headers.get("cookie").unwrap(),
+        "SAPISID=test-sapisid"
+    );
+    assert!(client.cookies().get().is_some());
 }
