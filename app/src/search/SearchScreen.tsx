@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useId } from "react";
-import { commands, type BrowseCard, type SearchItem } from "../bindings";
+import { commands, type SearchItem } from "../bindings";
 import { errorMessage } from "../errors";
 import { Artwork } from "../music/Artwork";
 import { ItemCard } from "../music/ItemCard";
-import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type OpenableItem } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { queryKeys, SEARCH_STALE_MS } from "../query";
 import { FILTERS, groupResults, KIND_LABEL, type Filter, type ResultGroup } from "./groups";
@@ -17,7 +17,7 @@ type Props = {
   focusRequest: number;
   filter: Filter;
   onFilterChange: (filter: Filter) => void;
-  onOpenPage: (card: BrowseCard) => void;
+  onOpenPage: (card: OpenableItem) => void;
 };
 
 export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterChange, onOpenPage }: Props) {

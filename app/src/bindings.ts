@@ -30,6 +30,12 @@ export const commands = {
 	getFeedContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_continuation", { token }, options),
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
+	/**  Fetches the podcast discovery feed. Further shelves use get_feed_continuation. */
+	getPodcasts: (options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_podcasts", undefined, options),
+	/**  Fetches a podcast show and its first page of episodes. */
+	getPodcastShow: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<PodcastShow>("get_podcast_show", { browseId }, options),
+	/**  Fetches the next page of episodes for a podcast show. */
+	getPodcastEpisodesContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<PodcastEpisodesPage>("get_podcast_episodes_continuation", { token }, options),
 	/**
 	 *  Searches YouTube Music (the unfiltered first page). An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
@@ -135,6 +141,19 @@ export type Chip = {
 	params: string,
 };
 
+export type Episode = {
+	video_id: string,
+	title: string,
+	description: string | null,
+	date: string | null,
+	duration: string | null,
+	thumbnail_url: string | null,
+	/**  Server playback progress as a fraction from 0 to 1. */
+	progress: number | null,
+	show_title: string | null,
+	show_browse_id: string | null,
+};
+
 /**  What went wrong, for the UI to branch on. */
 export type ErrorKind = "auth_expired" | "not_signed_in" | 
 /**  A command argument was rejected, such as an unplayable queue position. */
@@ -203,6 +222,20 @@ export type PlayerStateChanged = {
 	state: PlayerState,
 };
 
+export type PodcastEpisodesPage = {
+	episodes: Episode[],
+	continuation: string | null,
+};
+
+export type PodcastShow = {
+	title: string,
+	author: string | null,
+	description: string | null,
+	thumbnail_url: string | null,
+	episodes: Episode[],
+	continuation: string | null,
+};
+
 /**
  *  Emitted to the main window on `player://queue` when the queue or the
  *  current position in it changes.
@@ -260,6 +293,10 @@ export type SearchResults = {
 export type ShelfItem = {
 	kind: "song",
 } & Song | {
+	kind: "podcast",
+} & BrowseCard | {
+	kind: "episode",
+} & Episode | {
 	kind: "album",
 } & BrowseCard | {
 	kind: "playlist",
@@ -319,6 +356,9 @@ export type MockCommandHandlers = {
     getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
     getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
+    getPodcasts: () => FeedPage | Promise<FeedPage>,
+    getPodcastShow: (args: { browseId: string }) => PodcastShow | Promise<PodcastShow>,
+    getPodcastEpisodesContinuation: (args: { token: string }) => PodcastEpisodesPage | Promise<PodcastEpisodesPage>,
     search: (args: { query: string }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
@@ -366,6 +406,9 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_feed_chip": return mockCommandHandler(mockHandlers.getFeedChip, "get_feed_chip", args);
             case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
+            case "get_podcasts": return mockCommandHandler(mockHandlers.getPodcasts, "get_podcasts", args);
+            case "get_podcast_show": return mockCommandHandler(mockHandlers.getPodcastShow, "get_podcast_show", args);
+            case "get_podcast_episodes_continuation": return mockCommandHandler(mockHandlers.getPodcastEpisodesContinuation, "get_podcast_episodes_continuation", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);

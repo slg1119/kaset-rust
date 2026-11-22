@@ -29,6 +29,7 @@ test("signed in shows the shell with the home feed and the account", async () =>
     "Charts",
     "Moods & Genres",
     "New releases",
+    "Podcasts",
     "History",
     "Sign out",
   ]);

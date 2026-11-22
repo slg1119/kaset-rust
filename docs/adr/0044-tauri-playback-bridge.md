@@ -96,6 +96,10 @@ comma-separated artist names. Stopping clears the last notified ID so the
 same track can be announced when played again. The service sends through the
 Rust notification plugin after releasing the player lock.
 
+Podcast show rows use the same video-ID queue as music tracks. The UI maps
+loaded episodes to songs with the show title as the artist and starts at the
+selected episode, within the existing 500-track limit.
+
 ## Consequences
 
 ### Positive

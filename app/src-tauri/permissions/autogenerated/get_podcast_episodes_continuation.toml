@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-podcast-episodes-continuation"
+description = "Enables the get_podcast_episodes_continuation command without any pre-configured scope."
+commands.allow = ["get_podcast_episodes_continuation"]
+
+[[permission]]
+identifier = "deny-get-podcast-episodes-continuation"
+description = "Denies the get_podcast_episodes_continuation command without any pre-configured scope."
+commands.deny = ["get_podcast_episodes_continuation"]

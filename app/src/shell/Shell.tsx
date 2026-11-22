@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { commands, type BrowseCard } from "../bindings";
+import { commands } from "../bindings";
 import { BrowsePageScreen } from "../detail/BrowsePageScreen";
 import { errorMessage } from "../errors";
 import { FeedScreen, type CategoryItem } from "../home/FeedScreen";
+import type { OpenableItem } from "../music/items";
 import { NoticeBanner, NoticeProvider, useNotice } from "../notices/NoticeProvider";
 import { PlayerBar } from "../player/PlayerBar";
+import { PodcastShowScreen } from "../podcasts/PodcastShowScreen";
 import type { Filter } from "../search/groups";
 import { SearchScreen } from "../search/SearchScreen";
 import type { Shortcut } from "./shortcuts";
@@ -29,13 +31,13 @@ function ShellLayout() {
   const [searchFocus, setSearchFocus] = useState(0);
   const { report, dismiss } = useNotice();
 
-  function openPage(card: BrowseCard) {
-    if (route.kind === "page") return;
-    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route });
+  function openPage(card: OpenableItem) {
+    if (route.kind === "page" || route.kind === "podcast_show") return;
+    setRoute({ kind: card.kind === "podcast" ? "podcast_show" : "page", browseId: card.browse_id, title: card.title, from: route });
   }
 
   function openCategory(item: CategoryItem) {
-    if (route.kind === "page" || route.kind === "search") return;
+    if (route.kind === "page" || route.kind === "podcast_show" || route.kind === "search") return;
     setRoute({ kind: "category", browseId: item.browse_id, params: item.params, title: item.title, from: route });
   }
 
@@ -53,7 +55,7 @@ function ShellLayout() {
         setRoute({ kind: "search" });
         setSearchFocus((count) => count + 1);
       },
-      back: route.kind === "page" || route.kind === "category" ? () => setRoute(route.from) : undefined,
+      back: route.kind === "page" || route.kind === "podcast_show" || route.kind === "category" ? () => setRoute(route.from) : undefined,
     };
   }, [report, dismiss, route]);
   useShortcuts(actions);
@@ -63,7 +65,7 @@ function ShellLayout() {
       <Sidebar route={route} onNavigate={setRoute} />
       <div className="content-column">
         <main key={route.kind === "category" ? JSON.stringify([route.kind, route.browseId, route.params]) : route.kind} className="content">
-          {route.kind !== "page" && route.kind !== "search" && (
+          {route.kind !== "page" && route.kind !== "podcast_show" && route.kind !== "search" && (
             <FeedScreen
               source={route}
               title={route.kind === "category" ? route.title : FEED_TABS[route.kind].label}
@@ -80,6 +82,14 @@ function ShellLayout() {
               filter={searchFilter}
               onFilterChange={setSearchFilter}
               onOpenPage={openPage}
+            />
+          )}
+          {route.kind === "podcast_show" && (
+            <PodcastShowScreen
+              key={route.browseId}
+              browseId={route.browseId}
+              title={route.title}
+              onBack={() => setRoute(route.from)}
             />
           )}
           {route.kind === "page" && (

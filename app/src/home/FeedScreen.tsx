@@ -1,22 +1,22 @@
 import { skipToken, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { commands, type BrowseCard, type FeedKind, type FeedPage, type HomeSection, type ShelfItem, type Song } from "../bindings";
+import { commands, type FeedKind, type HomeSection, type ShelfItem, type Song } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from "../icons";
 import { ItemCard } from "../music/ItemCard";
-import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong } from "../music/items";
+import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type OpenableItem } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
-import { FEED_STALE_MS, queryKeys } from "../query";
+import { FEED_STALE_MS, nextPageParam, queryKeys } from "../query";
 
 type PlayFn = (songs: Song[], index: number) => Promise<void>;
 
 export type CategoryItem = Extract<ShelfItem, { kind: "category" }>;
-export type FeedSource = { kind: FeedKind } | { kind: "category"; browseId: string; params: string | null };
+export type FeedSource = { kind: FeedKind | "podcasts" } | { kind: "category"; browseId: string; params: string | null };
 
 type Props = {
   source: FeedSource;
   title: string;
-  onOpenPage: (card: BrowseCard) => void;
+  onOpenPage: (card: OpenableItem) => void;
   onOpenCategory: (item: CategoryItem) => void;
   onBack?: () => void;
 };
@@ -28,7 +28,8 @@ function useFeed(source: FeedSource, chip: string | null) {
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       if (pageParam !== null) return commands.getFeedContinuation(pageParam);
-      return isCategory ? commands.getFeedCategory(source.browseId, source.params) : commands.getFeed(source.kind);
+      if (isCategory) return commands.getFeedCategory(source.browseId, source.params);
+      return source.kind === "podcasts" ? commands.getPodcasts() : commands.getFeed(source.kind);
     },
     getNextPageParam: nextPageParam,
     staleTime: source.kind === "history" ? 0 : FEED_STALE_MS,
@@ -44,11 +45,6 @@ function useFeed(source: FeedSource, chip: string | null) {
     staleTime: FEED_STALE_MS,
   });
   return { feed: chip === null ? base : filtered, chips: base.data?.pages[0].chips ?? [] };
-}
-
-function nextPageParam(page: FeedPage, _pages: FeedPage[], _pageParam: string | null, used: (string | null)[]) {
-  const token = page.continuation;
-  return token && !used.includes(token) ? token : undefined;
 }
 
 export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onBack }: Props) {

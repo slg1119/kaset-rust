@@ -10,14 +10,27 @@ export const SUGGESTIONS_STALE_MS = 60_000;
 export const ACCOUNT_STALE_MS = 30 * 60_000;
 
 export const queryKeys = {
-  feed: (kind: FeedKind) => ["feed", kind] as const,
+  feed: (kind: FeedKind | "podcasts") => ["feed", kind] as const,
   feedCategory: (browseId: string, params: string | null) => ["feed", "category", browseId, params] as const,
   feedChip: (params: string | null) => ["feed", "chip", params] as const,
   search: (query: string) => ["search", query] as const,
   browsePage: (browseId: string) => ["browsePage", browseId] as const,
+  podcastShow: (browseId: string) => ["podcastShow", browseId] as const,
   suggestions: (input: string) => ["suggestions", input] as const,
   account: ["account"] as const,
 };
+
+type ContinuablePage = { continuation: string | null };
+
+export function nextPageParam<Page extends ContinuablePage>(
+  page: Page,
+  _pages: Page[],
+  _pageParam: string | null,
+  used: (string | null)[],
+) {
+  const token = page.continuation;
+  return token && !used.includes(token) ? token : undefined;
+}
 
 /**
  * Retries once after a network failure or an unexpected HTTP status. Auth,
