@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-clear-upcoming"
+description = "Enables the clear_upcoming command without any pre-configured scope."
+commands.allow = ["clear_upcoming"]
+
+[[permission]]
+identifier = "deny-clear-upcoming"
+description = "Denies the clear_upcoming command without any pre-configured scope."
+commands.deny = ["clear_upcoming"]

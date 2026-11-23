@@ -116,30 +116,114 @@ impl Queue {
         }
         let overflow = (self.songs.len() + count).saturating_sub(MAX_QUEUE_LEN);
         if overflow > 0 {
-            // Evict from play order, but keep the retained songs in their
-            // original order so turning shuffle off still restores it.
-            let dropped: HashSet<_> = self.order.drain(..overflow).collect();
-            let mut remap = vec![0; self.songs.len()];
-            let mut next = 0;
-            let mut old = 0;
-            self.songs.retain(|_| {
-                let keep = !dropped.contains(&old);
-                if keep {
-                    remap[old] = next;
-                    next += 1;
-                }
-                old += 1;
-                keep
-            });
-            for index in &mut self.order {
-                *index = remap[*index];
-            }
+            self.drop_range(..overflow);
             self.position = Some(position - overflow);
         }
         self.order
             .extend(self.songs.len()..self.songs.len() + count);
         self.songs.extend(added);
         count
+    }
+
+    /// New songs share append's deduplication and capacity rules. A song
+    /// already upcoming moves into the requested block with its metadata intact.
+    pub fn insert_next(&mut self, songs: Vec<Song>) -> bool {
+        let mut seen = HashSet::new();
+        let songs: Vec<_> = songs
+            .into_iter()
+            .filter(|song| seen.insert(song.video_id.clone()))
+            .collect();
+        let ids: Vec<_> = songs.iter().map(|song| song.video_id.clone()).collect();
+        let mut changed = self.append(songs) > 0;
+        let Some(position) = self.position else {
+            return false;
+        };
+        let mut destination = position + 1;
+        for id in ids {
+            if let Some(offset) = self.order[destination..]
+                .iter()
+                .position(|&index| self.songs[index].video_id == id)
+            {
+                let entry = self.order.remove(destination + offset);
+                self.order.insert(destination, entry);
+                destination += 1;
+                changed |= offset != 0;
+            }
+        }
+        if changed {
+            self.commit_unshuffled_order();
+        }
+        changed
+    }
+
+    fn len(&self) -> usize {
+        self.order.len()
+    }
+
+    pub fn remove(&mut self, index: usize) -> bool {
+        let Some(current) = self.position.filter(|_| index < self.len()) else {
+            return false;
+        };
+        self.drop_range(index..=index);
+        self.position = self
+            .len()
+            .checked_sub(1)
+            .map(|last| (current - usize::from(index < current)).min(last));
+        true
+    }
+
+    /// The destination is the final index in play order.
+    pub fn move_item(&mut self, from: usize, to: usize) -> bool {
+        let Some(current) = self.position.filter(|&current| {
+            from != current && from != to && from < self.len() && to < self.len()
+        }) else {
+            return false;
+        };
+        let active = self.order[current];
+        let entry = self.order.remove(from);
+        self.order.insert(to, entry);
+        self.position = self.order.iter().position(|&index| index == active);
+        self.commit_unshuffled_order();
+        true
+    }
+
+    pub fn jump_to(&mut self, index: usize) -> bool {
+        if index >= self.len() {
+            return false;
+        }
+        self.position = Some(index);
+        true
+    }
+
+    pub fn clear_upcoming(&mut self) -> bool {
+        let Some(position) = self.position.filter(|&index| index + 1 < self.len()) else {
+            return false;
+        };
+        self.drop_range(position + 1..);
+        true
+    }
+
+    fn drop_range(&mut self, range: impl std::ops::RangeBounds<usize>) {
+        let dropped: HashSet<_> = self.order.drain(range).collect();
+        let mut retained = Vec::with_capacity(self.order.len());
+        let mut remap = vec![0; self.songs.len()];
+        for (old, song) in self.songs.drain(..).enumerate() {
+            if !dropped.contains(&old) {
+                remap[old] = retained.len();
+                retained.push(song);
+            }
+        }
+        self.songs = retained;
+        for index in &mut self.order {
+            *index = remap[*index];
+        }
+    }
+
+    fn commit_unshuffled_order(&mut self) {
+        if !self.shuffle {
+            self.songs = self.ordered();
+            self.order = (0..self.songs.len()).collect();
+        }
     }
 
     pub fn remaining(&self) -> Option<usize> {
@@ -280,6 +364,44 @@ mod tests {
 
     fn current_id(queue: &Queue) -> Option<&str> {
         queue.current().map(|song| song.video_id.as_str())
+    }
+
+    #[test]
+    fn edits_use_play_order_and_keep_the_current_song() {
+        let mut queue = Queue::new(42);
+        queue.replace(songs(6), 2);
+        queue.set_shuffle(true);
+        let before = queue.ordered();
+        assert!(queue.insert_next(vec![before[4].clone(), song("new"), song("new")]));
+        assert_eq!(
+            &queue.ordered()[..3],
+            &[before[0].clone(), before[4].clone(), song("new")]
+        );
+        assert!(queue.move_item(2, 4));
+        assert_eq!(queue.ordered()[4], song("new"));
+        assert!(queue.remove(4));
+        assert!(queue.jump_to(1));
+        assert!(queue.clear_upcoming());
+        assert_eq!(queue.ordered(), vec![before[0].clone(), before[4].clone()]);
+        queue.set_shuffle(false);
+        assert_eq!(queue.current(), Some(&before[4]));
+        assert_eq!(queue.ordered().len(), 2);
+    }
+
+    #[test]
+    fn insert_next_at_capacity_reorders_upcoming_and_only_evicts_history() {
+        let mut queue = Queue::new(1);
+        let original = songs(MAX_QUEUE_LEN);
+        queue.replace(original.clone(), 1);
+        let later = original[MAX_QUEUE_LEN - 1].clone();
+        assert!(queue.insert_next(vec![later.clone(), song("new"), song("overflow")]));
+        let order = queue.ordered();
+        assert_eq!(order.len(), MAX_QUEUE_LEN);
+        assert_eq!(queue.position(), Some(0));
+        assert_eq!(&order[..3], &[original[1].clone(), later, song("new")]);
+        assert!(!order.contains(&song("overflow")));
+        assert!(!queue.remove(MAX_QUEUE_LEN));
+        assert!(!queue.jump_to(MAX_QUEUE_LEN));
     }
 
     #[test]

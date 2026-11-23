@@ -1,11 +1,13 @@
 //! Player commands. The UI calls all but `playback_event`, which only the
 //! player window's music.youtube.com pages may call (capability `player-remote`).
 
+use std::time::Instant;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Webview};
 use ytm_core::models::Song;
 
-use super::engine::{PlaybackEvent, PlayerState, QueueState};
+use super::engine::{Outcome, PlaybackEvent, Player, PlayerState, QueueState};
 use super::queue::{MAX_QUEUE_LEN, RepeatMode};
 use super::window::{PLAYER_LABEL, is_music_page};
 use crate::error::{AppError, ErrorKind};
@@ -67,6 +69,109 @@ pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
         ));
     }
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn insert_next(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    songs: Vec<Song>,
+) -> Result<(), AppError> {
+    validate_queue(&songs)?;
+    edit_queue(&app, &state, |player, now| {
+        Ok(player.insert_next(songs, now))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn enqueue(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    songs: Vec<Song>,
+) -> Result<(), AppError> {
+    validate_queue(&songs)?;
+    edit_queue(&app, &state, |player, now| Ok(player.enqueue(songs, now))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    index: u32,
+) -> Result<(), AppError> {
+    edit_queue(&app, &state, |player, now| {
+        Ok(player.remove(index as usize, now))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn move_queue_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    from: u32,
+    to: u32,
+) -> Result<(), AppError> {
+    edit_queue(&app, &state, |player, now| {
+        Ok(player.move_item(from as usize, to as usize, now))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn jump_to(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    index: u32,
+) -> Result<(), AppError> {
+    edit_queue(&app, &state, |player, now| {
+        Ok(player.jump_to(index as usize, now))
+    })
+    .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_upcoming(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
+    edit_queue(&app, &state, |player, now| Ok(player.clear_upcoming(now))).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn start_radio(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    song: Song,
+) -> Result<(), AppError> {
+    validate_queue(std::slice::from_ref(&song))?;
+    edit_queue(&app, &state, |player, now| {
+        player
+            .start_radio(song, now)
+            .map_err(|error| AppError::new(ErrorKind::InvalidArgument, error.to_string()))
+    })
+    .await
+}
+
+async fn edit_queue(
+    app: &AppHandle,
+    state: &AppState,
+    edit: impl FnOnce(&mut Player, Instant) -> Result<Outcome, AppError>,
+) -> Result<(), AppError> {
+    state
+        .player
+        .update(app, |player, now| {
+            if state.session.status() != AuthStatus::SignedIn {
+                return Err(AppError::not_signed_in());
+            }
+            edit(player, now)
+        })
+        .await
 }
 
 /// Pauses when playing or loading; otherwise plays.

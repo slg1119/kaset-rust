@@ -128,3 +128,18 @@ starts the returned tracks through the existing queue engine. The engine keeps
 the continuation for autoplay. A changed session or replaced queue prevents a
 late response from starting playback. When there is no mix endpoint, the hero
 queues the page’s top songs.
+
+## M5b queue editing and song radio
+
+Queue commands address indices in the displayed play order. Play Next moves
+existing upcoming songs into the requested block. New songs share autoplay’s
+video-ID deduplication and 500-song cap, which can evict played history to make
+room. Turning shuffle off restores the underlying order of the retained songs.
+An empty queue can hold staged songs until the user starts playback.
+
+Start Radio replaces the queue with its seed song and requests the first radio
+page through the existing InnerTube client. Autoplay schedules one request at
+a time and discards results from an obsolete queue generation or session. Clear
+upcoming invalidates pending radio results. Changing shuffle, switching repeat
+off, and pressing Play or Next after the queue ends let the engine recheck
+whether to request more songs.
