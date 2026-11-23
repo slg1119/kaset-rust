@@ -30,6 +30,16 @@ body,
   margin: 0;
 }
 
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#root {
+  overflow: clip;
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -152,6 +162,7 @@ button {
 .shell {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -164,6 +175,7 @@ button {
   background: var(--sidebar-solid);
   border-right: 1px solid var(--line);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 :root[data-vibrancy="native"] .sidebar {
@@ -305,6 +317,7 @@ button {
   height: 100%;
   padding: 0 32px calc(var(--player-space, 0px) + 2 * var(--inset));
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .content-frame {
@@ -474,6 +487,7 @@ button {
   scroll-padding-inline: var(--focus-padding);
   list-style: none;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
 }
@@ -917,6 +931,7 @@ button.top-card:hover {
   width: min(320px, 100%);
   max-height: 360px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--glass-strong);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
@@ -995,6 +1010,7 @@ button.top-card:hover {
   min-width: 160px;
   max-height: calc(100vh - 16px);
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 5px;
   background: var(--sidebar-solid);
   border: 1px solid var(--glass-line);
@@ -1125,6 +1141,7 @@ button.top-card:hover {
   max-width: 65ch;
   max-height: 8em;
   overflow: auto;
+  overscroll-behavior: contain;
   white-space: pre-line;
 }
 
@@ -1252,6 +1269,8 @@ button.top-card:hover {
 .account-dialog {
   width: min(440px, calc(100% - 32px));
   max-height: calc(100% - 32px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   color: var(--text);
   background: var(--sidebar-solid);
