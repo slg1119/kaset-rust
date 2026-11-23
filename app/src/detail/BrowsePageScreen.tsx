@@ -7,6 +7,7 @@ import { ChevronLeftIcon, PlayIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { artistNames } from "../music/items";
+import { SongMenu } from "../music/SongMenu";
 import { useNotice } from "../notices/NoticeProvider";
 import { usePlayerQueue } from "../player/usePlayer";
 import { MAX_QUEUE_LENGTH } from "../player/usePlayQueue";
@@ -18,6 +19,7 @@ type Props = {
   onBack?: () => void;
   active?: boolean;
   onOpenArtist?: OpenArtist;
+  isAlbum?: boolean;
 };
 
 type TrackPage = { header?: BrowsePage; tracks: BrowsePageContinuation };
@@ -44,7 +46,7 @@ function playlistSongs(pages: TrackPage[]) {
   ));
 }
 
-export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, active = true }: Props) {
+export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbum, active = true }: Props) {
   const page = useInfiniteQuery({
     queryKey: queryKeys.browsePage(browseId),
     initialPageParam: null as string | null,
@@ -65,6 +67,7 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, active
     page.data?.pages.length ?? 0,
     page.fetchNextPage,
   );
+  const albumTitle = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     backButton.current?.focus();
@@ -139,7 +142,7 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, active
           <section className="browse-hero" aria-labelledby={headingId}>
             <Artwork url={data.thumbnail_url} size={200} />
             <div className="browse-summary">
-              <h1 id={headingId}>{pageTitle}</h1>
+              <h1 id={headingId} ref={albumTitle} tabIndex={isAlbum ? -1 : undefined}>{pageTitle}</h1>
               {data.subtitle && <p>{data.subtitle}</p>}
               {data.second_subtitle && <p>{data.second_subtitle}</p>}
               <div className="browse-actions">
@@ -166,7 +169,12 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, active
             <ol className="rows" aria-label="Tracks">
               {songs.map((song, index) => (
                 <li key={`${index}-${song.video_id}`}>
-                  <div className="item item-row browse-track item-with-links" data-current={index === current || undefined}>
+                  <SongMenu
+                    className={`item item-row browse-track item-with-links${index === current ? " is-current" : ""}`}
+                    song={song}
+                    onOpenArtist={onOpenArtist}
+                    onOpenAlbum={isAlbum ? () => albumTitle.current?.focus() : undefined}
+                  >
                     <button
                       type="button"
                       className="item-action"
@@ -182,7 +190,7 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, active
                         <span className="item-subtitle"><ArtistNames artists={song.artists} onOpenArtist={onOpenArtist} /></span>
                       )}
                     </span>
-                  </div>
+                  </SongMenu>
                 </li>
               ))}
             </ol>

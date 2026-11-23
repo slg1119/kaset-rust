@@ -5,6 +5,7 @@ import { errorMessage } from "../errors";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { Artwork } from "../music/Artwork";
 import { ItemCard, itemActionLabel } from "../music/ItemCard";
+import { SongMenu } from "../music/SongMenu";
 import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { queryKeys, SEARCH_STALE_MS } from "../query";
@@ -138,6 +139,19 @@ function TopResult({ item, onPlay, onOpenPage, onOpenArtist }: { item: SearchIte
       {subtitle && <> • {isPlayable(item) ? <ArtistNames artists={item.artists} onOpenArtist={onOpenArtist} /> : subtitle}</>}
     </span>
   );
+  const song = isPlayable(item) ? toSong(item) : undefined;
+  const body = (
+    <>
+      {artwork}
+      <div className="top-text">
+        {title}
+        {metadata}
+        {song && (
+          <button type="button" className="primary" onClick={() => void onPlay([song], 0)}>Play</button>
+        )}
+      </div>
+    </>
+  );
   return (
     <section className="top-result" aria-labelledby={headingId}>
       <h2 id={headingId}>Top result</h2>
@@ -146,20 +160,9 @@ function TopResult({ item, onPlay, onOpenPage, onOpenArtist }: { item: SearchIte
           {artwork}
           <span className="top-text">{title}{metadata}</span>
         </button>
-      ) : (
-        <div className="top-card">
-          {artwork}
-          <div className="top-text">
-            {title}
-            {metadata}
-            {isPlayable(item) && (
-              <button type="button" className="primary" onClick={() => void onPlay([toSong(item)], 0)}>
-                Play
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      ) : song ? (
+        <SongMenu className="top-card" song={song} onOpenArtist={onOpenArtist}>{body}</SongMenu>
+      ) : <div className="top-card">{body}</div>}
     </section>
   );
 }
@@ -189,6 +192,8 @@ function Group({ group, onPlay, onOpenPage, onOpenArtist }: { group: ResultGroup
                 title={item.title}
                 subtitle={subtitleOf(item)}
                 thumbnailUrl={item.thumbnail_url}
+                song={isPlayable(item) ? songs[songIndex] : undefined}
+                onOpenArtist={onOpenArtist}
                 artistCredits={isPlayable(item) && onOpenArtist && item.artists.some(({ browse_id }) => browse_id) ?
                   <ArtistNames artists={item.artists} onOpenArtist={onOpenArtist} /> : undefined}
                 onOpen={hasBrowsePage(item) ? () => onOpenPage(item) : undefined}

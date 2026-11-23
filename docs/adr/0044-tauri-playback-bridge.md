@@ -152,3 +152,18 @@ through the signed-in shell. Detail playback associates each queued song with
 its original browse row. Queue events identify that row through shuffle and
 when a track occurs more than once. Starting a detail shuffle sets shuffle
 and replaces the queue under the same player lock.
+
+## M5b queue editing and song radio
+
+Queue commands address indices in the displayed play order. Play Next moves
+existing upcoming songs into the requested block. New songs share autoplay’s
+video-ID deduplication and 500-song cap, which can evict played history to make
+room. Turning shuffle off restores the underlying order of the retained songs.
+An empty queue can hold staged songs until the user starts playback.
+
+Start Radio replaces the queue with its seed song and requests the first radio
+page through the existing InnerTube client. Autoplay schedules one request at
+a time and discards results from an obsolete queue generation or session. Clear
+upcoming invalidates pending radio results. Changing shuffle, switching repeat
+off, and pressing Play or Next after the queue ends let the engine recheck
+whether to request more songs.

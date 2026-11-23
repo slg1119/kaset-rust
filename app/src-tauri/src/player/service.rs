@@ -10,6 +10,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use ytm_core::models::RadioQueue;
 use ytm_core::parsers::radio::{parse_radio, parse_radio_continuation};
 
+use super::autoplay::{Autoplay, Ticket};
 use super::engine::{Outcome, PlaybackStatus, Player, PlayerState, QueueState, Seed, WebCommand};
 use super::media::{self, MediaPublisher};
 use super::video_id::VideoId;
@@ -28,9 +29,7 @@ struct Inner {
     player: Player,
     media: MediaPublisher,
     last_notified_id: Option<String>,
-    autoplay_in_flight: bool,
-    // A position change while a request is in flight may need another page.
-    autoplay_pending: bool,
+    autoplay: Autoplay,
 }
 
 impl Inner {
@@ -63,7 +62,7 @@ impl SessionPlayerGuard<'_> {
     pub(crate) fn stop(&mut self, app: &AppHandle) {
         let now = Instant::now();
         let outcome = self.inner.player.stop(now);
-        self.inner.autoplay_pending = false;
+        self.inner.autoplay.cancel_pending();
         let (result, _) = self.inner.apply(app, outcome, now);
         if let Err(error) = result {
             tracing::warn!(%error, "could not stop the player during a session change");
@@ -82,8 +81,7 @@ impl PlayerService {
                 player: Player::new(seed),
                 media: MediaPublisher::default(),
                 last_notified_id: None,
-                autoplay_in_flight: false,
-                autoplay_pending: false,
+                autoplay: Autoplay::default(),
             }),
         }
     }
@@ -95,11 +93,11 @@ impl PlayerService {
     {
         let mut inner = self.inner.lock().await;
         let now = Instant::now();
-        let previous = inner.player.queue_position();
+        let previous = inner.player.autoplay_trigger();
         let outcome = change(&mut inner.player, now)?;
         let (result, notification) = inner.apply(app, outcome, now);
-        if result.is_ok() && previous != inner.player.queue_position() {
-            inner.autoplay_pending = true;
+        if previous != inner.player.autoplay_trigger() {
+            inner.autoplay.request();
             start_autoplay(app, &mut inner);
         }
         drop(inner);
@@ -137,36 +135,42 @@ impl PlayerService {
 }
 
 fn start_autoplay(app: &AppHandle, inner: &mut Inner) {
-    if inner.autoplay_in_flight || !std::mem::take(&mut inner.autoplay_pending) {
-        return;
-    }
-    let Some(seed) = inner.player.needs_more() else {
-        return;
-    };
     let state = app.state::<AppState>();
     let epoch = state.session.epoch();
-    if state.session.status() != AuthStatus::SignedIn {
+    let Some(seed) = inner.autoplay.start(|| {
+        if state.session.status() == AuthStatus::SignedIn {
+            inner.player.needs_more()
+        } else {
+            None
+        }
+    }) else {
         return;
-    }
-    let (generation, _) = inner.player.queue_position();
-    inner.autoplay_in_flight = true;
-    tauri::async_runtime::spawn(fetch_autoplay(app.clone(), seed, generation, epoch));
+    };
+    let ticket = Ticket {
+        generation: inner.player.queue_position().0,
+        epoch,
+    };
+    tauri::async_runtime::spawn(fetch_autoplay(app.clone(), seed, ticket));
 }
 
-async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64) {
+async fn fetch_autoplay(app: AppHandle, seed: Seed, ticket: Ticket) {
     let state = app.state::<AppState>();
-    let result = fetch_radio(&state, seed, epoch).await;
-    if let Err(error) = &result {
+    let result = fetch_radio(&state, seed, ticket.epoch).await;
+    if state.session.epoch() != ticket.epoch {
+        tracing::debug!("discarding autoplay fetch after session change");
+    } else if let Err(error) = &result {
         tracing::warn!(%error, "autoplay fetch failed");
-        on_error(&app, epoch, error.clone()).await;
+        on_error(&app, ticket.epoch, error.clone()).await;
     }
 
     let mut inner = state.player.inner.lock().await;
-    inner.autoplay_in_flight = false;
+    let current = Ticket {
+        generation: inner.player.queue_position().0,
+        epoch: state.session.epoch(),
+    };
     let mut notification = None;
-    if let Ok(mut radio) = result
-        && inner.player.queue_position().0 == generation
-        && state.session.epoch() == epoch
+    if inner.autoplay.finish(ticket, current)
+        && let Ok(mut radio) = result
     {
         radio
             .songs
@@ -182,7 +186,9 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, generation: u64, epoch: u64)
         let applied = applied.and_then(|()| {
             if appended && inner.player.is_ended() {
                 let next = inner.player.next(now);
-                inner.autoplay_pending |= next.queue.is_some();
+                if next.queue.is_some() {
+                    inner.autoplay.request();
+                }
                 let (result, _) = inner.apply(&app, next, now);
                 result?;
             }

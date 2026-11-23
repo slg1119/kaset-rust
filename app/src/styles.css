@@ -702,7 +702,7 @@ button.top-card:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.browse-track[data-current] :is(.browse-index, .item-title) {
+.browse-track.is-current :is(.browse-index, .item-title) {
   color: var(--accent-icon);
 }
 
@@ -842,7 +842,7 @@ button.top-card:hover {
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  width: 320px;
+  width: min(320px, 100%);
   max-height: 360px;
   overflow-y: auto;
   background: var(--glass-strong);
@@ -859,14 +859,98 @@ button.top-card:hover {
 }
 
 .queue-panel li {
-  display: flex;
-  flex-direction: column;
-  padding: 6px 10px;
   border-radius: 8px;
 }
 
 .queue-panel li[aria-current="true"] {
   background: rgb(217 28 72 / 0.2);
+}
+
+.queue-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px 0;
+}
+
+.queue-header button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.queue-track {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: inherit;
+}
+
+.queue-track .item-text {
+  flex: 1;
+}
+
+.queue-remove {
+  position: relative;
+  z-index: 2;
+}
+
+.song-menu-host {
+  position: relative;
+}
+
+.song-menu-trigger {
+  position: relative;
+  z-index: 2;
+  margin-inline-start: auto;
+}
+
+.item-card .song-menu-trigger {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--sidebar-solid);
+}
+
+.item-card .song-menu-trigger:hover {
+  background: var(--surface-hover);
+}
+
+.song-menu {
+  position: fixed;
+  z-index: 10;
+  display: grid;
+  min-width: 160px;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 5px;
+  background: var(--sidebar-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+.song-menu button {
+  padding: 7px 10px;
+  text-align: start;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.song-menu button:is(:hover, :focus) {
+  background: var(--surface-hover);
+  outline-offset: -2px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .content-header,
+  .suggestions,
+  .player-bar,
+  .queue-panel {
+    background: var(--sidebar-solid);
+  }
 }
 
 /* Keep the row action and its artist credits independently focusable. */

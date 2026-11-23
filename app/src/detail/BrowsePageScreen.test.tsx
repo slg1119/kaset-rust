@@ -57,8 +57,12 @@ test("opens a Home album, displays its tracks, and queues playback from the clic
   expect(screen.getByText("2 songs")).toBeInTheDocument();
   const tracks = screen.getByRole("list", { name: "Tracks" });
   expect(playerSnapshot).toHaveBeenCalledTimes(1);
-  await userEvent.click(within(tracks).getByRole("button", { name: /Final track/ }));
+  await userEvent.click(within(tracks).getByRole("button", { name: "Final track" }));
   expect(playBrowseQueue).toHaveBeenCalledWith({ songs: page.songs, startIndex: 1, playback: { browse_id: "test-album", offset: 0, shuffle: false } });
+
+  await userEvent.click(within(tracks).getByRole("button", { name: "More actions for Final track" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Go to album" }));
+  expect(screen.getByRole("heading", { name: page.title, level: 1 })).toHaveFocus();
 
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
   expect(await screen.findByRole("heading", { name: "Home", level: 1 })).toBeInTheDocument();
@@ -148,7 +152,7 @@ test("caps Play and Shuffle at 500 and can start at a later row", async () => {
   expect(playBrowseQueue).toHaveBeenLastCalledWith({
     songs: songs.slice(0, 500), startIndex: expect.any(Number), playback: { browse_id: "test-album", offset: 0, shuffle: true },
   });
-  await userEvent.click(main.getByRole("button", { name: /Track 501/ }));
+  await userEvent.click(main.getByRole("button", { name: "Track 501, Track artist" }));
   expect(playBrowseQueue).toHaveBeenLastCalledWith({
     songs: songs.slice(500), startIndex: 0, playback: { browse_id: "test-album", offset: 500, shuffle: false },
   });
@@ -201,7 +205,7 @@ test("scroll observation loads the next page and a failure can be retried", asyn
     act(() => notify?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load more tracks.");
     await userEvent.click(screen.getByRole("button", { name: "Retry loading more" }));
-    expect(await screen.findByRole("button", { name: /From the next page/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "From the next page, Track artist" })).toBeInTheDocument();
     expect(getBrowsePageContinuation).toHaveBeenCalledTimes(2);
   } finally {
     vi.unstubAllGlobals();
@@ -217,7 +221,7 @@ test("marks only the playing occurrence of a repeated track", async () => {
   await act(() => events.playerQueue.emit({
     queue: { songs, current: 0, browse_track: { browse_id: "test-album", index: 1 } },
   }));
-  const rows = within(tracks).getAllByRole("button");
+  const rows = within(tracks).getAllByRole("button", { name: "Opening track, Track artist" });
   expect(rows[0]).not.toHaveAttribute("aria-current");
   expect(rows[1]).toHaveAttribute("aria-current", "true");
 });

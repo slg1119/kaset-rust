@@ -47,7 +47,9 @@ test("submitting shows the top result, then results grouped by type", async () =
   const songs = screen.getByRole("region", { name: "Songs" });
   expect(within(songs).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
     "Play Found song, Test artist",
+    "More actions for Found song",
     "Play Another song",
+    "More actions for Another song",
   ]);
   const albums = screen.getByRole("region", { name: "Albums" });
   expect(within(albums).getByRole("button", { name: "Open Found album, Test artist • 2024" })).toBeInTheDocument();

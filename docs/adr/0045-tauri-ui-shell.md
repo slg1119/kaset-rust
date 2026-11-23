@@ -127,3 +127,11 @@ Routes covered by a detail stay mounted with their own scroll containers.
 The covered screen is inert and hidden from assistive technology. Back
 reuses its scroll container and returns focus to the control that opened
 the detail.
+
+## M5b track menus and queue editing
+
+Track rows and cards share an ellipsis menu that also opens on right-click.
+The queue panel supports jumping to a track, removing and reordering upcoming
+tracks, and clearing upcoming tracks. The queue button exposes its position as
+an accessible description. Surfaces that use backdrop blur have a solid
+background fallback.

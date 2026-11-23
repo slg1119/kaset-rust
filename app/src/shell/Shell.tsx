@@ -45,7 +45,11 @@ function ShellLayout() {
       openArtist(card.browse_id, card.title);
       return;
     }
-    setRoute({ kind: card.kind === "podcast" ? "podcast_show" : "page", browseId: card.browse_id, title: card.title, from: route });
+    if (card.kind === "podcast") {
+      setRoute({ kind: "podcast_show", browseId: card.browse_id, title: card.title, from: route });
+      return;
+    }
+    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, isAlbum: card.kind === "album", from: route });
   }
 
   function openCategory(item: CategoryItem) {
@@ -122,7 +126,7 @@ function ShellLayout() {
               )}
               {entry.kind === "page" && (
                 <BrowsePageScreen browseId={entry.browseId} title={entry.title}
-                  onOpenArtist={openArtist} onBack={onBack} active={active} />
+                  isAlbum={entry.isAlbum} onOpenArtist={openArtist} onBack={onBack} active={active} />
               )}
               {entry.kind === "artist" && (
                 <ArtistScreen browseId={entry.browseId} name={entry.name} {...artistActions}

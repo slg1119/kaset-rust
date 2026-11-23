@@ -14,13 +14,16 @@ test("the first all-song shelf is a song grid and the rest are carousels", async
   expect(quickPicks.querySelector(".song-grid")).not.toBeNull();
   expect(within(quickPicks).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
     "Play First song, Test artist",
+    "More actions for First song",
     "Play Second song",
+    "More actions for Second song",
   ]);
 
   const mixed = screen.getByRole("region", { name: "Mixed for you" });
   expect(mixed.querySelector(".carousel")).not.toBeNull();
   expect(within(mixed).getByText("Album • 2024")).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Play Mixed song" })).toBeInTheDocument();
+  expect(within(mixed).getByRole("button", { name: "More actions for Mixed song" })).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Open Test album, Album • 2024" })).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Open Round artist, 1.2M subscribers" })).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Next in Mixed for you" })).toBeInTheDocument();

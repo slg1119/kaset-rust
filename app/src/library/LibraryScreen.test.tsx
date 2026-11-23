@@ -60,5 +60,5 @@ test("opens Liked songs through the shared detail screen and pages its tracks", 
   expect(getLibrary).toHaveBeenCalledWith({ kind: "songs" });
   await userEvent.click(screen.getByRole("button", { name: "Load more" }));
   expect(getBrowsePageContinuation).toHaveBeenCalledWith({ token: "test-liked-next" });
-  expect(await screen.findByRole("button", { name: /Another liked song/ })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Another liked song, Test artist" })).toBeInTheDocument();
 });

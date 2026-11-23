@@ -73,10 +73,16 @@ test("transport buttons call the player commands", async () => {
   expect(handlers.previousTrack).toHaveBeenCalledTimes(1);
 });
 
-test("next is disabled at the end of the queue", async () => {
+test("next is disabled while paused with no upcoming songs", async () => {
   renderPlaying({ has_next: false, status: "paused" });
   expect(await screen.findByRole("button", { name: "Next" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+});
+
+test("next remains available for an autoplay retry once the queue has ended", async () => {
+  const { nextTrack } = renderPlaying({ has_next: false, status: "ended" });
+  await userEvent.click(await screen.findByRole("button", { name: "Next" }));
+  expect(nextTrack).toHaveBeenCalledTimes(1);
 });
 
 test("repeat cycles off, all, one and shuffle toggles", async () => {
@@ -311,4 +317,43 @@ test("a pointer press outside the player dismisses the queue", async () => {
   expect(panel).toBeInTheDocument();
   fireEvent.pointerDown(document.body);
   expect(panel).not.toBeInTheDocument();
+});
+
+test("queue exposes its position and lets the user edit upcoming songs", async () => {
+  const jumpTo = vi.fn(() => null);
+  const removeQueueItem = vi.fn(() => null);
+  const moveQueueItem = vi.fn(() => null);
+  const clearUpcoming = vi.fn(() => null);
+  mockCommands({
+    playerSnapshot: () => ({
+      state: playingState(),
+      queue: { songs: [testSong, { ...testSong, title: "Second" }, { ...testSong, title: "Third" }], current: 0, browse_track: null },
+    }),
+    jumpTo, removeQueueItem, moveQueueItem, clearUpcoming,
+  });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  const queue = await screen.findByRole("button", { name: "Queue", description: "1 of 3" });
+  await userEvent.click(queue);
+  const panel = within(screen.getByRole("region", { name: "Queue" }));
+  const third = panel.getByRole("button", { name: "Third" });
+  await userEvent.click(third);
+  expect(jumpTo).toHaveBeenCalledWith({ index: 2 });
+  await userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}");
+  expect(moveQueueItem).toHaveBeenCalledWith({ from: 2, to: 1 });
+  const [, secondRow, thirdRow] = panel.getAllByRole("listitem");
+  const dataTransfer = { setData: vi.fn(), dropEffect: "none" };
+  fireEvent.dragStart(secondRow, { dataTransfer });
+  fireEvent.dragOver(thirdRow, { dataTransfer });
+  fireEvent.drop(thirdRow, { dataTransfer });
+  expect(dataTransfer.dropEffect).toBe("move");
+  expect(moveQueueItem).toHaveBeenLastCalledWith({ from: 1, to: 2 });
+  await userEvent.click(panel.getByRole("button", { name: "Remove Second" }));
+  expect(removeQueueItem).toHaveBeenCalledWith({ index: 1 });
+  await userEvent.click(panel.getByRole("button", { name: "Clear upcoming" }));
+  expect(clearUpcoming).toHaveBeenCalledTimes(1);
+
+  await userEvent.click(panel.getByRole("button", { name: "More actions for Third" }));
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Queue" })).toBeInTheDocument();
 });

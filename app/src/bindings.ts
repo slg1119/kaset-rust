@@ -75,6 +75,13 @@ export const commands = {
 	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
 	/**  Plays tracks from a detail page, retaining the original row through shuffle. */
 	playBrowseQueue: (songs: Song[], startIndex: number, playback: BrowsePlayback, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_browse_queue", { songs, startIndex, playback }, options),
+	insertNext: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<null>("insert_next", { songs }, options),
+	enqueue: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<null>("enqueue", { songs }, options),
+	removeQueueItem: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_queue_item", { index }, options),
+	moveQueueItem: (from: number, to: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("move_queue_item", { from, to }, options),
+	jumpTo: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("jump_to", { index }, options),
+	clearUpcoming: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_upcoming", undefined, options),
+	startRadio: (song: Song, options?: InvokeOptions) => __TAURI_INVOKE<null>("start_radio", { song }, options),
 	/**  Pauses when playing or loading; otherwise plays. */
 	togglePlayback: (options?: InvokeOptions) => __TAURI_INVOKE<null>("toggle_playback", undefined, options),
 	nextTrack: (options?: InvokeOptions) => __TAURI_INVOKE<null>("next_track", undefined, options),
@@ -450,6 +457,13 @@ export type MockCommandHandlers = {
     windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
     playBrowseQueue: (args: { songs: Song[]; startIndex: number; playback: BrowsePlayback }) => null | Promise<null>,
+    insertNext: (args: { songs: Song[] }) => null | Promise<null>,
+    enqueue: (args: { songs: Song[] }) => null | Promise<null>,
+    removeQueueItem: (args: { index: number }) => null | Promise<null>,
+    moveQueueItem: (args: { from: number; to: number }) => null | Promise<null>,
+    jumpTo: (args: { index: number }) => null | Promise<null>,
+    clearUpcoming: () => null | Promise<null>,
+    startRadio: (args: { song: Song }) => null | Promise<null>,
     togglePlayback: () => null | Promise<null>,
     nextTrack: () => null | Promise<null>,
     previousTrack: () => null | Promise<null>,
@@ -508,6 +522,13 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);
             case "play_queue": return mockCommandHandler(mockHandlers.playQueue, "play_queue", args);
             case "play_browse_queue": return mockCommandHandler(mockHandlers.playBrowseQueue, "play_browse_queue", args);
+            case "insert_next": return mockCommandHandler(mockHandlers.insertNext, "insert_next", args);
+            case "enqueue": return mockCommandHandler(mockHandlers.enqueue, "enqueue", args);
+            case "remove_queue_item": return mockCommandHandler(mockHandlers.removeQueueItem, "remove_queue_item", args);
+            case "move_queue_item": return mockCommandHandler(mockHandlers.moveQueueItem, "move_queue_item", args);
+            case "jump_to": return mockCommandHandler(mockHandlers.jumpTo, "jump_to", args);
+            case "clear_upcoming": return mockCommandHandler(mockHandlers.clearUpcoming, "clear_upcoming", args);
+            case "start_radio": return mockCommandHandler(mockHandlers.startRadio, "start_radio", args);
             case "toggle_playback": return mockCommandHandler(mockHandlers.togglePlayback, "toggle_playback", args);
             case "next_track": return mockCommandHandler(mockHandlers.nextTrack, "next_track", args);
             case "previous_track": return mockCommandHandler(mockHandlers.previousTrack, "previous_track", args);
