@@ -203,7 +203,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
         </div>
       </div>
       <div className="player-extras">
-        {!state.is_ad && <TrackRating key={track.video_id} videoId={track.video_id} />}
+        {!state.is_ad && !track.is_podcast_episode && <TrackRating key={track.video_id} videoId={track.video_id} />}
         <button
           type="button"
           className="icon-button"

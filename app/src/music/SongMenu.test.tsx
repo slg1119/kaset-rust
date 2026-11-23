@@ -131,3 +131,23 @@ test("lists playlist targets, rolls back an unsuccessful add, and seeds a new pl
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(trigger).toHaveFocus();
 });
+
+test("validates the trimmed playlist title at the 150-character limit", async () => {
+  const createPlaylist = vi.fn(() => "PLcreated");
+  mockCommands({
+    addToPlaylistOptions: () => ({ title: "Add to playlist", options: [], can_create_playlist: true }),
+    createPlaylist,
+  });
+  renderWithProviders(<SongMenu song={testSong}>Track</SongMenu>);
+  await userEvent.click(screen.getByRole("button", { name: "More actions for Test song" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Add to playlist…" }));
+  await userEvent.click(await screen.findByRole("button", { name: "New playlist" }));
+  const title = "가".repeat(150);
+  fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: `  ${title}  ` } });
+  const submit = screen.getByRole("button", { name: "Create playlist" });
+  expect(submit).toBeEnabled();
+  await userEvent.click(submit);
+  expect(createPlaylist).toHaveBeenCalledWith({
+    title, description: "", privacy: "PRIVATE", videoIds: [testSong.video_id],
+  });
+});

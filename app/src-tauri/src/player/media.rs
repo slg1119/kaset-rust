@@ -327,6 +327,7 @@ mod tests {
         PlayerState {
             status,
             track: Some(Song {
+                is_podcast_episode: None,
                 video_id: "test-vid-0A".into(),
                 title: "Test song".into(),
                 artists: vec![
@@ -464,6 +465,7 @@ mod tests {
         player
             .play_songs(
                 vec![Song {
+                    is_podcast_episode: None,
                     video_id: "test-vid-0A".into(),
                     title: "Test song".into(),
                     artists: Vec::new(),

@@ -439,6 +439,8 @@ export type ShelfItem = {
 } & BrowseCard | { kind: "category"; title: string; browse_id: string; params: string | null; color: string | null };
 
 export type Song = {
+	/**  Known podcast episodes skip track-rating controls. */
+	is_podcast_episode?: boolean | null,
 	video_id: string,
 	title: string,
 	artists: ArtistRef[],

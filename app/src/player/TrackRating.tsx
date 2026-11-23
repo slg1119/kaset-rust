@@ -17,6 +17,7 @@ export function TrackRating({ videoId }: { videoId: string }) {
   });
   const rating = metadata.data?.like_status;
   const disabled = !metadata.data || updating;
+  if (rating === null) return null;
   if (metadata.isError && !metadata.data) {
     return (
       <button type="button" className="icon-button" aria-label="Retry loading rating" title="Retry loading rating"

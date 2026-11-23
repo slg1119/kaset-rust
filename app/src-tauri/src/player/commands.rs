@@ -363,6 +363,7 @@ mod tests {
 
     fn song() -> Song {
         Song {
+            is_podcast_episode: None,
             video_id: "abc-DEF_123".into(),
             title: "Test song".into(),
             artists: vec![ArtistRef {

@@ -294,6 +294,7 @@ mod tests {
 
     fn track(video_id: &str, artists: &[&str]) -> Song {
         Song {
+            is_podcast_episode: None,
             video_id: video_id.into(),
             title: "Test song".into(),
             artists: artists

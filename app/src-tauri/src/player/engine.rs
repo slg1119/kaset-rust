@@ -706,6 +706,7 @@ mod tests {
 
     fn song(id: &str) -> Song {
         Song {
+            is_podcast_episode: None,
             video_id: id.into(),
             title: format!("Song {id}"),
             artists: Vec::new(),

@@ -29,14 +29,15 @@ export function AddToPlaylistDialog({ song, onClose }: { song: Song; onClose: ()
     },
     invalidate: (id) => [key, ...playlistQueries(id), queryKeys.library("playlists")],
   });
+  const trimmedTitle = title.trim();
   const create = useAccountMutation({
-    request: () => commands.createPlaylist(title.trim(), description, privacy, [song.video_id]),
+    request: () => commands.createPlaylist(trimmedTitle, description, privacy, [song.video_id]),
     invalidate: () => [queryKeys.playlistOptionsAll, queryKeys.library("playlists")],
   });
   const busy = add.isPending || create.isPending;
-  const titleTooLong = Array.from(title).length > 150;
+  const titleTooLong = Array.from(trimmedTitle).length > 150;
   const descriptionTooLong = Array.from(description).length > 5000;
-  const canCreate = !busy && !!title.trim() && !titleTooLong && !descriptionTooLong;
+  const canCreate = !busy && !!trimmedTitle && !titleTooLong && !descriptionTooLong;
 
   return (
     <ActionDialog title={creating ? "New playlist" : options.data?.title || "Add to playlist"} onClose={onClose} busy={busy}>

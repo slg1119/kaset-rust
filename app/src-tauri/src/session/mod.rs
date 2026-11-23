@@ -96,6 +96,11 @@ impl Session {
         self.lock_state().epoch
     }
 
+    pub(crate) fn is_signed_in_at(&self, epoch: u64) -> bool {
+        let state = self.lock_state();
+        state.epoch == epoch && state.status == AuthStatus::SignedIn
+    }
+
     /// Snapshot the signed-in cookies and their identity together. Use the
     /// blocking pool because a session transition may be writing the store.
     pub(crate) fn cookies_for_epoch(&self, epoch: u64) -> Option<CookieJar> {

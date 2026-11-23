@@ -72,6 +72,7 @@ fn parse_song(item: &Value) -> Option<Song> {
             )
         })?;
     Some(Song {
+        is_podcast_episode: None,
         video_id: str_at(renderer, &["videoId"])?.into(),
         title: str_at(renderer, &["title", "runs", "0", "text"])?.into(),
         artists: parse_artists(renderer),
@@ -113,6 +114,7 @@ mod tests {
             queue.songs,
             [
                 Song {
+                    is_podcast_episode: None,
                     video_id: "test-vid001".into(),
                     title: "Seed song".into(),
                     artists: vec![
@@ -132,6 +134,7 @@ mod tests {
                     thumbnail_url: Some("https://example.com/test-large.jpg".into()),
                 },
                 Song {
+                    is_podcast_episode: None,
                     video_id: "test-vid002".into(),
                     title: "Wrapped song".into(),
                     artists: vec![],
@@ -151,6 +154,7 @@ mod tests {
         assert_eq!(
             queue.songs,
             [Song {
+                is_podcast_episode: None,
                 video_id: "test-vid004".into(),
                 title: "More music".into(),
                 artists: vec![ArtistRef {

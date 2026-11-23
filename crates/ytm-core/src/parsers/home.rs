@@ -245,6 +245,7 @@ fn parse_watch_item(renderer: &Value, endpoint_key: &str) -> Option<Song> {
     let video_id = str_at(renderer, &[endpoint_key, "watchEndpoint", "videoId"])
         .filter(|id| !id.is_empty())?;
     Some(Song {
+        is_podcast_episode: None,
         video_id: video_id.into(),
         title: renderer.get("title").and_then(runs_text)?,
         artists: artists_from_runs(renderer.get("subtitle")),
@@ -293,6 +294,7 @@ pub(super) fn parse_responsive_song(renderer: &Value) -> Option<Song> {
         })
         .or_else(|| str_at(renderer, PLAY_BUTTON_VIDEO_ID))?;
     Some(Song {
+        is_podcast_episode: None,
         video_id: video_id.into(),
         title: flex_column(renderer, 0).and_then(runs_text)?,
         artists: artists_from_flex_column(flex_column(renderer, 1)),

@@ -86,7 +86,7 @@ test("opens the podcast feed and show, loads more episodes, and queues from the 
   expect(getPodcastEpisodesContinuation).toHaveBeenCalledWith({ token: "test-continuation" });
   expect(playQueue).toHaveBeenCalledWith({
     songs: [episode, secondEpisode].map(({ video_id, title }) => ({
-      video_id, title, thumbnail_url: show.thumbnail_url,
+      video_id, title, thumbnail_url: show.thumbnail_url, is_podcast_episode: true,
       artists: [{ name: show.title, browse_id: null }],
     })),
     startIndex: 1,

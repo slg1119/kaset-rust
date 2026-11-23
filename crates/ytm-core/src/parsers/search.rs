@@ -361,6 +361,7 @@ fn parse_renderer(renderer: &Value, endpoints: &[&Value]) -> Option<SearchItem> 
 
     let (video_id, video_type) = playable(renderer, endpoints)?;
     let song = Song {
+        is_podcast_episode: None,
         video_id: video_id.to_owned(),
         title,
         artists: Vec::new(),
@@ -371,6 +372,7 @@ fn parse_renderer(renderer: &Value, endpoints: &[&Value]) -> Option<SearchItem> 
         || video_type == Some("MUSIC_VIDEO_TYPE_PODCAST_EPISODE")
     {
         return Some(SearchItem::Episode(Song {
+            is_podcast_episode: Some(true),
             artists: episode_show(renderer).into_iter().collect(),
             ..song
         }));

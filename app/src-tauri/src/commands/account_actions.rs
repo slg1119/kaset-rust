@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -36,11 +37,12 @@ pub struct SongActionStatus {
     can_remove: bool,
 }
 
-/// Accessed under one async lock by metadata reads and feedback writes. This
-/// prevents an older metadata response from reintroducing consumed tokens.
+/// Serializes feedback writes and token storage. Metadata requests run outside
+/// the lock and cannot restore tokens fetched before a successful edit.
 #[derive(Default)]
 pub(crate) struct FeedbackCache {
     epoch: u64,
+    last_edit: Option<Instant>,
     entries: VecDeque<(String, SongMetadata)>,
 }
 
@@ -50,10 +52,20 @@ impl FeedbackCache {
             return false;
         }
         if epoch != self.epoch {
-            self.entries.clear();
+            self.clear();
             self.epoch = epoch;
         }
         true
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.entries.clear();
+        self.last_edit = None;
+    }
+
+    fn edited(&mut self, video_id: &str) {
+        self.remove(video_id);
+        self.last_edit = Some(Instant::now());
     }
 
     fn insert(
@@ -168,17 +180,27 @@ pub async fn song_metadata(
 ) -> Result<SongActionStatus, AppError> {
     checked_id(&video_id, "Invalid video ID.")?;
     account_request(&app, &state, async |client, epoch| {
-        let mut cache = state.feedback.lock().await;
-        if state.session.epoch() != epoch || state.session.status() != AuthStatus::SignedIn {
-            return Err(AppError::not_signed_in());
-        }
-        let metadata = client.song_metadata(&video_id).await?;
-        if state.session.epoch() != epoch || state.session.status() != AuthStatus::SignedIn {
-            return Err(AppError::not_signed_in());
-        }
-        Ok(cache.insert(epoch, &video_id, metadata))
+        load_song_metadata(&state, epoch, &video_id, client.song_metadata(&video_id)).await
     })
     .await
+}
+
+async fn load_song_metadata(
+    state: &AppState,
+    epoch: u64,
+    video_id: &str,
+    fetch: impl Future<Output = Result<SongMetadata, ytm_core::error::YtmError>>,
+) -> Result<SongActionStatus, AppError> {
+    let started = Instant::now();
+    let metadata = fetch.await?;
+    let mut cache = state.feedback.lock().await;
+    if !state.session.is_signed_in_at(epoch) || !cache.select_epoch(epoch) {
+        return Err(AppError::not_signed_in());
+    }
+    if cache.last_edit.is_some_and(|edited| edited >= started) {
+        return Err(invalid("Reload the song’s library status and try again."));
+    }
+    Ok(cache.insert(epoch, video_id, metadata))
 }
 
 #[tauri::command]
@@ -196,7 +218,7 @@ pub async fn edit_library(
         }
         let token = cache.token(epoch, &edit.video_id, edit.action)?;
         client.edit_library(token).await?;
-        cache.remove(&edit.video_id);
+        cache.edited(&edit.video_id);
         Ok(())
     })
     .await

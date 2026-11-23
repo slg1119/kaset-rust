@@ -389,6 +389,7 @@ mod tests {
 
     fn song(id: &str) -> Song {
         Song {
+            is_podcast_episode: None,
             video_id: id.into(),
             title: format!("Song {id}"),
             artists: Vec::new(),
@@ -456,7 +457,10 @@ mod tests {
             let mut queue = Queue::new(1);
             let tracks = songs(MAX_QUEUE_LEN);
             queue.replace(tracks.clone(), 0);
-            assert_eq!(add(&mut queue, vec![tracks[1].clone()]), QueueAddResult::AlreadyQueued);
+            assert_eq!(
+                add(&mut queue, vec![tracks[1].clone()]),
+                QueueAddResult::AlreadyQueued
+            );
             assert_eq!(add(&mut queue, vec![song("new")]), QueueAddResult::Full);
             assert_eq!(queue.ordered(), tracks);
         }

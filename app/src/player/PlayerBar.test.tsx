@@ -421,3 +421,28 @@ test("rolls back a rejected rating after optimistically pressing Like", async ()
   expect(like).toHaveAttribute("aria-pressed", "false");
   expect(await screen.findByRole("alert")).toHaveTextContent("Rating failed");
 });
+
+test("does not request rating metadata or show Retry for a podcast episode", async () => {
+  const songMetadata = vi.fn().mockRejectedValue(new Error("Episode cannot be rated"));
+  mockCommands({
+    playerSnapshot: () => ({
+      state: playingState({ track: { ...testSong, is_podcast_episode: true } }),
+      queue: idleSnapshot.queue,
+    }),
+    songMetadata,
+  });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  await screen.findByRole("button", { name: "Pause" });
+  expect(songMetadata).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Retry loading rating" })).not.toBeInTheDocument();
+});
+
+test("does not offer rating controls when metadata has no rating support", async () => {
+  mockCommands({
+    playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }),
+    songMetadata: () => ({ like_status: null, in_library: false, can_add: false, can_remove: false }),
+  });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  const like = await screen.findByRole("button", { name: "Like" });
+  await waitFor(() => expect(like).not.toBeInTheDocument());
+});

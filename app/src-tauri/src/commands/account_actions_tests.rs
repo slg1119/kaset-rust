@@ -75,3 +75,75 @@ fn successful_edit_consumes_the_cached_tokens_for_only_that_video() {
     assert!(cache.token(5, "one", LibraryAction::Remove).is_err());
     assert!(cache.token(5, "two", LibraryAction::Remove).is_ok());
 }
+
+fn signed_in_state() -> crate::state::AppState {
+    use crate::session::{Session, store::MemoryStore};
+    use ytm_core::auth::CookieJar;
+
+    let session = Session::new(Box::new(MemoryStore::default()));
+    session
+        .sign_in(CookieJar::from_header("SAPISID=test-cookie"))
+        .unwrap();
+    crate::state::AppState::new(session)
+}
+
+fn feedback_metadata() -> SongMetadata {
+    SongMetadata {
+        like_status: None,
+        in_library: false,
+        add_token: Some(Secret::new("test-add")),
+        remove_token: None,
+    }
+}
+
+#[tokio::test]
+async fn task12_next_request_does_not_hold_feedback_lock() {
+    let state = signed_in_state();
+    let epoch = state.session.epoch();
+    let result = super::load_song_metadata(&state, epoch, "song-id", async {
+        assert!(state.feedback.try_lock().is_ok());
+        Ok(feedback_metadata())
+    })
+    .await
+    .unwrap();
+    assert!(result.can_add);
+}
+
+#[tokio::test]
+async fn task12_sign_out_immediately_clears_feedback_tokens() {
+    let state = signed_in_state();
+    let epoch = state.session.epoch();
+    state
+        .feedback
+        .lock()
+        .await
+        .insert(epoch, "song-id", feedback_metadata());
+    crate::commands::finish_sign_out(&state, async { state.session.sign_out() })
+        .await
+        .unwrap();
+    // Inspect entries before a lookup on the new epoch can clear them lazily.
+    assert!(state.feedback.lock().await.entries.is_empty());
+}
+
+#[tokio::test]
+async fn stale_next_response_cannot_restore_tokens_after_sign_out_or_an_edit() {
+    for sign_out in [false, true] {
+        let state = signed_in_state();
+        let epoch = state.session.epoch();
+        let result = super::load_song_metadata(&state, epoch, "song-id", async {
+            if sign_out {
+                crate::commands::finish_sign_out(&state, async { state.session.sign_out() })
+                    .await
+                    .unwrap();
+            } else {
+                let mut cache = state.feedback.lock().await;
+                cache.select_epoch(epoch);
+                cache.edited("song-id");
+            }
+            Ok(feedback_metadata())
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(state.feedback.lock().await.entries.is_empty());
+    }
+}

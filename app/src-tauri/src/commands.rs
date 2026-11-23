@@ -49,12 +49,15 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
         .player
         .stop_for_sign_out(&app, async {
             let task_app = app.clone();
-            let result = blocking(move || {
-                if let Some(window) = task_app.get_webview_window("main") {
-                    clear_webview_cookies(&window, "sign-out");
-                }
-                task_app.state::<AppState>().session.sign_out()
-            })
+            let result = finish_sign_out(
+                &state,
+                blocking(move || {
+                    if let Some(window) = task_app.get_webview_window("main") {
+                        clear_webview_cookies(&window, "sign-out");
+                    }
+                    task_app.state::<AppState>().session.sign_out()
+                }),
+            )
             .await;
             emit_auth_changed(&app, state.session.status());
             result
@@ -63,6 +66,12 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
     result?
         .map(|_| ())
         .map_err(|error| AppError::internal(error.to_string()))
+}
+
+async fn finish_sign_out<T>(state: &AppState, sign_out: impl Future<Output = T>) -> T {
+    let result = sign_out.await;
+    state.feedback.lock().await.clear();
+    result
 }
 
 /// Fetches the first page of an album or playlist for the signed-in session.

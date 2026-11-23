@@ -23,11 +23,13 @@ export function toSong(item: Song | Episode): Song {
     title: item.title,
     artists: item.artists,
     thumbnail_url: item.thumbnail_url,
+    ...((item.is_podcast_episode || ("kind" in item && item.kind === "episode")) && { is_podcast_episode: true }),
   };
 }
 
 export function episodeToSong(episode: Episode, showTitle = episode.show_title, artwork: string | null = null): Song {
   return {
+    is_podcast_episode: true,
     video_id: episode.video_id,
     title: episode.title,
     artists: showTitle ? [{ name: showTitle, browse_id: null }] : [],
