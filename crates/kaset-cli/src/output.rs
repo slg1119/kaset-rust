@@ -63,6 +63,13 @@ impl Output {
                             ShelfItem::Album(card) => text.card("  Album  ", card)?,
                             ShelfItem::Playlist(card) => text.card("  Playlist  ", card)?,
                             ShelfItem::Artist(card) => text.card("  Artist  ", card)?,
+                            ShelfItem::Podcast(card) => text.card("  Podcast  ", card)?,
+                            ShelfItem::Episode(episode) => text.item(
+                                "  Episode  ",
+                                &episode.title,
+                                episode.date.as_deref(),
+                                &episode.video_id,
+                            )?,
                             ShelfItem::Category {
                                 title, browse_id, ..
                             } => {
