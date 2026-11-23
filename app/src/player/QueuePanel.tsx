@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { commands, type QueueState } from "../bindings";
+import { commands, type QueueState, type Song } from "../bindings";
 import { RemoveIcon } from "../icons";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { SongMenu } from "../music/SongMenu";
@@ -14,7 +14,12 @@ type Props = {
 export function QueuePanel({ id, queue, onOpenArtist, run }: Props) {
   const drag = useRef<{ queue: QueueState | null; index: number } | null>(null);
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
-  const pendingFocus = useRef<{ key: string; source: HTMLButtonElement } | null>(null);
+  const pendingFocus = useRef<{
+    key: string;
+    source: HTMLButtonElement;
+    current: number;
+    songs: Song[];
+  } | null>(null);
   const current = queue?.current ?? null;
   const songs = queue?.songs ?? [];
   const occurrences = new Map<string, number>();
@@ -23,19 +28,33 @@ export function QueuePanel({ id, queue, onOpenArtist, run }: Props) {
     const focus = pendingFocus.current;
     if (!focus) return;
     pendingFocus.current = null;
-    if (document.activeElement === focus.source || document.activeElement === document.body) {
+    const matches = queue?.current === focus.current && queue.songs.length === focus.songs.length
+      && queue.songs.every((song, index) => song.video_id === focus.songs[index].video_id
+        && song.title === focus.songs[index].title);
+    if (matches && (document.activeElement === focus.source || document.activeElement === document.body)) {
       rowButtons.current.get(focus.key)?.focus();
     }
   }, [queue]);
 
   function move(from: number, to: number, focus?: { key: string; source: HTMLButtonElement }) {
     if (current === null || from <= current || to <= current || to >= songs.length || from === to) return;
-    if (focus) pendingFocus.current = focus;
+    const expected = [...songs];
+    const [moved] = expected.splice(from, 1);
+    expected.splice(to, 0, moved);
+    const pending = focus ? { ...focus, current, songs: expected } : null;
+    pendingFocus.current = pending;
+    function clearFocus() {
+      if (pendingFocus.current === pending) pendingFocus.current = null;
+    }
     run(async () => {
       try {
-        await commands.moveQueueItem(from, to);
+        if (await commands.moveQueueItem(from, to)) {
+          if (pending && pendingFocus.current === pending) setTimeout(clearFocus, 0);
+        } else {
+          clearFocus();
+        }
       } catch (error) {
-        if (pendingFocus.current === focus) pendingFocus.current = null;
+        clearFocus();
         throw error;
       }
     });

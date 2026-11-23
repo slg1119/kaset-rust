@@ -85,12 +85,12 @@ export const commands = {
 	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
 	/**  Plays tracks from a detail page, retaining the original row through shuffle. */
 	playBrowseQueue: (songs: Song[], startIndex: number, playback: BrowsePlayback, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_browse_queue", { songs, startIndex, playback }, options),
-	/**  Moves songs to play next. Returns whether the queue changed. */
-	insertNext: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<boolean>("insert_next", { songs }, options),
-	/**  Appends songs to the queue. Returns whether the queue changed. */
-	enqueue: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<boolean>("enqueue", { songs }, options),
+	/**  Moves songs to play next. Reports whether tracks were added, already queued, or blocked by the cap. */
+	insertNext: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<QueueAddResult>("insert_next", { songs }, options),
+	/**  Appends songs to the queue. Reports whether tracks were added, already queued, or blocked by the cap. */
+	enqueue: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<QueueAddResult>("enqueue", { songs }, options),
 	removeQueueItem: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_queue_item", { index }, options),
-	moveQueueItem: (from: number, to: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("move_queue_item", { from, to }, options),
+	moveQueueItem: (from: number, to: number, options?: InvokeOptions) => __TAURI_INVOKE<boolean>("move_queue_item", { from, to }, options),
 	jumpTo: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("jump_to", { index }, options),
 	clearUpcoming: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_upcoming", undefined, options),
 	startRadio: (song: Song, options?: InvokeOptions) => __TAURI_INVOKE<null>("start_radio", { song }, options),
@@ -364,6 +364,8 @@ export type PodcastShow = {
 	continuation: string | null,
 };
 
+export type QueueAddResult = "Added" | "AlreadyQueued" | "Full";
+
 /**
  *  Emitted to the main window on `player://queue` when the queue or the
  *  current position in it changes.
@@ -521,10 +523,10 @@ export type MockCommandHandlers = {
     windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
     playBrowseQueue: (args: { songs: Song[]; startIndex: number; playback: BrowsePlayback }) => null | Promise<null>,
-    insertNext: (args: { songs: Song[] }) => boolean | Promise<boolean>,
-    enqueue: (args: { songs: Song[] }) => boolean | Promise<boolean>,
+    insertNext: (args: { songs: Song[] }) => QueueAddResult | Promise<QueueAddResult>,
+    enqueue: (args: { songs: Song[] }) => QueueAddResult | Promise<QueueAddResult>,
     removeQueueItem: (args: { index: number }) => null | Promise<null>,
-    moveQueueItem: (args: { from: number; to: number }) => null | Promise<null>,
+    moveQueueItem: (args: { from: number; to: number }) => boolean | Promise<boolean>,
     jumpTo: (args: { index: number }) => null | Promise<null>,
     clearUpcoming: () => null | Promise<null>,
     startRadio: (args: { song: Song }) => null | Promise<null>,

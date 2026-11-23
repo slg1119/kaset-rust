@@ -7,6 +7,13 @@ use ytm_core::models::Song;
 
 pub const MAX_QUEUE_LEN: usize = 500;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+pub enum QueueAddResult {
+    Added,
+    AlreadyQueued,
+    Full,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum RepeatMode {
@@ -95,57 +102,76 @@ impl Queue {
 
     /// Adds radio tracks that are absent from the entire queue.
     pub fn append(&mut self, songs: Vec<Song>) -> usize {
-        self.append_unique(songs, 0)
+        self.position
+            .and_then(|position| self.append_unique(songs, position, 0))
+            .unwrap_or(0)
     }
 
     /// Current and played tracks can be queued again unless already upcoming.
-    pub fn enqueue(&mut self, songs: Vec<Song>) -> usize {
-        self.position
-            .map_or(0, |position| self.append_unique(songs, position + 1))
+    pub fn enqueue(&mut self, songs: Vec<Song>) -> QueueAddResult {
+        let position = self.position.unwrap_or(self.len());
+        let upcoming = self.position.map_or(position, |index| index + 1);
+        match self.append_unique(songs, position, upcoming) {
+            Some(0) => QueueAddResult::Full,
+            Some(count) => {
+                if self.position.is_none() {
+                    self.position = Some(self.len() - count);
+                }
+                QueueAddResult::Added
+            }
+            None => QueueAddResult::AlreadyQueued,
+        }
     }
 
     /// Only tracks before the current position can be dropped to make room.
-    fn append_unique(&mut self, songs: Vec<Song>, dedupe_from: usize) -> usize {
-        let Some(position) = self.position else {
-            return 0;
-        };
-        let capacity = MAX_QUEUE_LEN.saturating_sub(self.songs.len() - position);
+    /// Without a current song, every retained track is played history.
+    fn append_unique(
+        &mut self,
+        songs: Vec<Song>,
+        position: usize,
+        dedupe_from: usize,
+    ) -> Option<usize> {
+        let capacity = MAX_QUEUE_LEN.saturating_sub(self.len() - position);
         let mut known: HashSet<_> = self.order[dedupe_from..]
             .iter()
             .map(|&index| self.songs[index].video_id.clone())
             .collect();
-        let added: Vec<_> = songs
+        let mut unique = songs
             .into_iter()
             .filter(|song| known.insert(song.video_id.clone()))
-            .take(capacity)
-            .collect();
+            .peekable();
+        unique.peek()?;
+        let added: Vec<_> = unique.take(capacity).collect();
         let count = added.len();
         if count == 0 {
-            return 0;
+            return Some(0);
         }
         let overflow = (self.songs.len() + count).saturating_sub(MAX_QUEUE_LEN);
         if overflow > 0 {
             self.drop_range(..overflow);
-            self.position = Some(position - overflow);
+            self.position = self.position.map(|index| index - overflow);
         }
         self.order
             .extend(self.songs.len()..self.songs.len() + count);
         self.songs.extend(added);
-        count
+        Some(count)
     }
 
     /// New occurrences share enqueue's deduplication and capacity rules. A song
     /// already upcoming moves into the requested block with its metadata intact.
-    pub fn insert_next(&mut self, songs: Vec<Song>) -> bool {
+    pub fn insert_next(&mut self, songs: Vec<Song>) -> QueueAddResult {
+        if self.position.is_none() {
+            return self.enqueue(songs);
+        }
         let mut seen = HashSet::new();
         let songs: Vec<_> = songs
             .into_iter()
             .filter(|song| seen.insert(song.video_id.clone()))
             .collect();
         let ids: Vec<_> = songs.iter().map(|song| song.video_id.clone()).collect();
-        let mut changed = self.enqueue(songs) > 0;
+        let mut result = self.enqueue(songs);
         let Some(position) = self.position else {
-            return false;
+            return result;
         };
         let mut destination = position + 1;
         for id in ids {
@@ -156,13 +182,15 @@ impl Queue {
                 let entry = self.order.remove(destination + offset);
                 self.order.insert(destination, entry);
                 destination += 1;
-                changed |= offset != 0;
+                if offset != 0 {
+                    result = QueueAddResult::Added;
+                }
             }
         }
-        if changed {
+        if result == QueueAddResult::Added {
             self.commit_unshuffled_order();
         }
-        changed
+        result
     }
 
     fn len(&self) -> usize {
@@ -384,7 +412,10 @@ mod tests {
         queue.replace(songs(6), 2);
         queue.set_shuffle(true);
         let before = queue.ordered();
-        assert!(queue.insert_next(vec![before[4].clone(), song("new"), song("new")]));
+        assert_eq!(
+            queue.insert_next(vec![before[4].clone(), song("new"), song("new")]),
+            QueueAddResult::Added
+        );
         assert_eq!(
             &queue.ordered()[..3],
             &[before[0].clone(), before[4].clone(), song("new")]
@@ -406,7 +437,10 @@ mod tests {
         let original = songs(MAX_QUEUE_LEN);
         queue.replace(original.clone(), 1);
         let later = original[MAX_QUEUE_LEN - 1].clone();
-        assert!(queue.insert_next(vec![later.clone(), song("new"), song("overflow")]));
+        assert_eq!(
+            queue.insert_next(vec![later.clone(), song("new"), song("overflow")]),
+            QueueAddResult::Added
+        );
         let order = queue.ordered();
         assert_eq!(order.len(), MAX_QUEUE_LEN);
         assert_eq!(queue.position(), Some(0));
@@ -414,6 +448,18 @@ mod tests {
         assert!(!order.contains(&song("overflow")));
         assert!(!queue.remove(MAX_QUEUE_LEN));
         assert!(!queue.jump_to(MAX_QUEUE_LEN));
+    }
+
+    #[test]
+    fn queue_add_reports_duplicates_and_capacity_separately() {
+        for add in [Queue::enqueue, Queue::insert_next] {
+            let mut queue = Queue::new(1);
+            let tracks = songs(MAX_QUEUE_LEN);
+            queue.replace(tracks.clone(), 0);
+            assert_eq!(add(&mut queue, vec![tracks[1].clone()]), QueueAddResult::AlreadyQueued);
+            assert_eq!(add(&mut queue, vec![song("new")]), QueueAddResult::Full);
+            assert_eq!(queue.ordered(), tracks);
+        }
     }
 
     #[test]

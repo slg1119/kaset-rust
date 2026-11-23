@@ -1,7 +1,7 @@
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { commands, type LibraryAction, type Song, type SongActionStatus } from "../bindings";
+import { commands, type LibraryAction, type QueueAddResult, type Song, type SongActionStatus } from "../bindings";
 import { errorMessage } from "../errors";
 import { MoreIcon } from "../icons";
 import { useNotice } from "../notices/NoticeProvider";
@@ -103,12 +103,13 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum,
     items[next]?.focus();
   }
 
-  function run(action: () => Promise<boolean | null>) {
+  function run(action: () => Promise<QueueAddResult | null>) {
     close(true);
     dismiss();
     action()
-      .then((changed) => {
-        if (changed === false) report("Already in the queue");
+      .then((result) => {
+        if (result === "AlreadyQueued") report("Already in the queue");
+        if (result === "Full") report("The queue is full");
       })
       .catch((cause: unknown) => report(errorMessage(cause)));
   }

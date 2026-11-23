@@ -7,7 +7,7 @@ import { renderWithProviders } from "../test/render";
 import { SongMenu } from "./SongMenu";
 
 test("opens from the trigger and the track, with keyboard navigation and focus restoration", async () => {
-  const enqueue = vi.fn(() => true);
+  const enqueue = vi.fn(() => "Added" as const);
   mockCommands({ enqueue });
   renderWithProviders(<SongMenu song={testSong}><span>Test track row</span></SongMenu>);
   const trigger = screen.getByRole("button", { name: "More actions for Test song" });
@@ -57,11 +57,19 @@ test("routes through known artist and album destinations", async () => {
 });
 
 test.each(["Play next", "Add to queue"])("reports a queue no-op after %s", async (action) => {
-  mockCommands({ insertNext: () => false, enqueue: () => false });
+  mockCommands({ insertNext: () => "AlreadyQueued", enqueue: () => "AlreadyQueued" });
   renderWithProviders(<SongMenu song={testSong}>Track</SongMenu>);
   await userEvent.click(screen.getByRole("button", { name: "More actions for Test song" }));
   await userEvent.click(screen.getByRole("menuitem", { name: action }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Already in the queue");
+});
+
+test.each(["Play next", "Add to queue"])("reports the cap after %s", async (action) => {
+  mockCommands({ insertNext: () => "Full", enqueue: () => "Full" });
+  renderWithProviders(<SongMenu song={testSong}>Track</SongMenu>);
+  await userEvent.click(screen.getByRole("button", { name: "More actions for Test song" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: action }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("The queue is full");
 });
 
 test("uses only the song and action for library feedback, then rolls back a rejection", async () => {

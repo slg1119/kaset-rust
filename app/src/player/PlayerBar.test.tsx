@@ -322,7 +322,7 @@ test("a pointer press outside the player dismisses the queue", async () => {
 test("queue exposes its position and lets the user edit upcoming songs", async () => {
   const jumpTo = vi.fn(() => null);
   const removeQueueItem = vi.fn(() => null);
-  const moveQueueItem = vi.fn(() => null);
+  const moveQueueItem = vi.fn(() => false);
   const clearUpcoming = vi.fn(() => null);
   mockCommands({
     playerSnapshot: () => ({
@@ -369,7 +369,7 @@ test("queue keeps focus on the moved occurrence after Alt+Down and Alt+Up", asyn
     songs.splice(to, 0, moved);
     queue.songs = songs;
     await events.playerQueue.emit({ queue: { ...queue } });
-    return null;
+    return true;
   });
   mockCommands({ playerSnapshot: () => ({ state: playingState(), queue: { ...queue } }), moveQueueItem });
   renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
@@ -384,6 +384,23 @@ test("queue keeps focus on the moved occurrence after Alt+Down and Alt+Up", asyn
   await userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}");
   expect(moveQueueItem).toHaveBeenLastCalledWith({ from: 2, to: 1 });
   expect(panel.getByRole("button", { name: "Second" })).toHaveFocus();
+});
+
+test("an Alt+Down no-op with distinct tracks does not steal focus on a later queue update", async () => {
+  const second = { ...testSong, video_id: "test-vid-02", title: "Second" };
+  const third = { ...testSong, video_id: "test-vid-03", title: "Third" };
+  const queue = { songs: [testSong, second, third], current: 0, browse_track: null };
+  const moveQueueItem = vi.fn(() => false);
+  mockCommands({ playerSnapshot: () => ({ state: playingState(), queue }), moveQueueItem });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  await userEvent.click(await screen.findByRole("button", { name: "Queue" }));
+  const button = screen.getByRole("button", { name: "Second" });
+  button.focus();
+  await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+  expect(moveQueueItem).toHaveBeenCalledWith({ from: 1, to: 2 });
+  button.blur();
+  await act(() => events.playerQueue.emit({ queue: { ...queue, songs: [testSong, third, second] } }));
+  expect(document.body).toHaveFocus();
 });
 
 test("rolls back a rejected rating after optimistically pressing Like", async () => {

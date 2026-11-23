@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use ytm_core::models::Song;
 
-use super::queue::{Advance, Queue, RepeatMode};
+use super::queue::{Advance, Queue, QueueAddResult, RepeatMode};
 use super::video_id::VideoId;
 
 /// `player://state` is emitted at most this often for progress-only changes.
@@ -387,35 +387,49 @@ impl Player {
         Ok(outcome)
     }
 
-    pub fn insert_next(&mut self, songs: Vec<Song>, now: Instant) -> Outcome {
+    pub fn insert_next(
+        &mut self,
+        songs: Vec<Song>,
+        now: Instant,
+    ) -> Result<(QueueAddResult, Outcome), PlayerError> {
         self.add_songs(songs, true, now)
     }
 
-    pub fn enqueue(&mut self, songs: Vec<Song>, now: Instant) -> Outcome {
+    pub fn enqueue(
+        &mut self,
+        songs: Vec<Song>,
+        now: Instant,
+    ) -> Result<(QueueAddResult, Outcome), PlayerError> {
         self.add_songs(songs, false, now)
     }
 
-    fn add_songs(&mut self, mut songs: Vec<Song>, next: bool, now: Instant) -> Outcome {
-        songs.retain(|song| VideoId::parse(&song.video_id).is_some());
-        if self.queue.current().is_none() {
-            let mut seen = std::collections::HashSet::new();
-            songs.retain(|song| seen.insert(song.video_id.clone()));
-            songs.truncate(super::queue::MAX_QUEUE_LEN);
-            if songs.is_empty() {
-                return Outcome::default();
-            }
-            self.queue.replace(songs, 0);
-            self.status = PlaybackStatus::Idle;
-            self.browse_queue = None;
-            self.reset_radio();
-            return self.publish_queue(now);
+    fn add_songs(
+        &mut self,
+        songs: Vec<Song>,
+        next: bool,
+        now: Instant,
+    ) -> Result<(QueueAddResult, Outcome), PlayerError> {
+        if songs.is_empty()
+            || songs
+                .iter()
+                .any(|song| !kaset_ipc::valid_video_id(&song.video_id))
+        {
+            return Err(PlayerError::NothingToPlay);
         }
-        let changed = if next {
+        let resume = self.is_ended() && self.queue.current().is_none();
+        let result = if next {
             self.queue.insert_next(songs)
         } else {
-            self.queue.enqueue(songs) > 0
+            self.queue.enqueue(songs)
         };
-        self.queue_edited(changed, now)
+        let outcome = if resume && result == QueueAddResult::Added {
+            self.record_queue_edit();
+            self.reset_radio();
+            self.load_current(now)
+        } else {
+            self.queue_edited(result == QueueAddResult::Added, now)
+        };
+        Ok((result, outcome))
     }
 
     pub fn remove(&mut self, index: usize, now: Instant) -> Outcome {
@@ -733,22 +747,36 @@ mod tests {
     #[test]
     fn queue_review_play_next_replays_current_and_played_songs() {
         let (mut player, now) = playing(&[A, B, C], 1);
-        let edits = player.insert_next(vec![song(B), song(A), song(C), song(B)], now);
+        let (_, edits) = player
+            .insert_next(vec![song(B), song(A), song(C), song(B)], now)
+            .unwrap();
         assert_eq!(edits.command, None);
         assert_eq!(
             edits.queue.unwrap().songs,
             vec![song(A), song(B), song(B), song(A), song(C)]
         );
         assert_eq!(player.queue_state().current, Some(1));
-        assert_eq!(player.insert_next(vec![song(B)], now), Outcome::default());
-        assert!(player.insert_next(vec![song(C)], now).queue.is_some());
+        assert_eq!(
+            player.insert_next(vec![song(B)], now).unwrap(),
+            (QueueAddResult::AlreadyQueued, Outcome::default())
+        );
+        assert!(
+            player
+                .insert_next(vec![song(C)], now)
+                .unwrap()
+                .1
+                .queue
+                .is_some()
+        );
         assert_eq!(player.queue_state().songs[2], song(C));
     }
 
     #[test]
     fn queue_review_enqueue_replays_current_and_played_songs_but_skips_upcoming() {
         let (mut player, now) = playing(&[A, B, C], 1);
-        let edits = player.enqueue(vec![song(B), song(A), song(C), song(A)], now);
+        let (_, edits) = player
+            .enqueue(vec![song(B), song(A), song(C), song(A)], now)
+            .unwrap();
         assert_eq!(edits.command, None);
         assert_eq!(
             edits.queue.unwrap().songs,
@@ -756,8 +784,8 @@ mod tests {
         );
         assert_eq!(player.queue_state().current, Some(1));
         assert_eq!(
-            player.enqueue(vec![song(C), song(B)], now),
-            Outcome::default()
+            player.enqueue(vec![song(C), song(B)], now).unwrap(),
+            (QueueAddResult::AlreadyQueued, Outcome::default())
         );
     }
 
@@ -794,6 +822,22 @@ mod tests {
     }
 
     #[test]
+    fn task12_adding_after_current_is_removed_loads_after_history() {
+        for add in [Player::enqueue, Player::insert_next] {
+            let (mut player, now) = playing(&[A, B], 1);
+            player.remove(1, now);
+
+            let (result, outcome) = add(&mut player, vec![song(C)], now).unwrap();
+            assert_eq!(result, QueueAddResult::Added);
+            assert_eq!(outcome.command, Some(WebCommand::Load(id(C))));
+            assert_eq!(outcome.state.unwrap().status, PlaybackStatus::Loading);
+            let queue = outcome.queue.unwrap();
+            assert_eq!(queue.songs, vec![song(A), song(C)]);
+            assert_eq!(queue.current, Some(1));
+        }
+    }
+
+    #[test]
     fn queue_review_removing_played_song_decrements_the_current_position() {
         let (mut player, now) = playing(&[A, B, C], 1);
         let edits = player.remove(0, now);
@@ -826,7 +870,14 @@ mod tests {
         let before_edit = player.queue_position().0;
         let radio_generation = player.radio_generation();
 
-        assert!(player.enqueue(vec![song(B)], now).queue.is_some());
+        assert!(
+            player
+                .enqueue(vec![song(B)], now)
+                .unwrap()
+                .1
+                .queue
+                .is_some()
+        );
         assert_ne!(player.queue_position().0, before_edit);
         assert_eq!(player.radio_generation(), radio_generation);
         assert_eq!(
@@ -842,7 +893,10 @@ mod tests {
     fn staged_queue_waits_for_play_and_explicit_radio_ignores_repeat_for_first_fill() {
         let mut player = Player::new(1);
         let now = Instant::now();
-        let staged = player.enqueue(vec![song(A), song(A), song("invalid"), song(B)], now);
+        assert!(player.enqueue(vec![song(A), song("invalid")], now).is_err());
+        let (_, staged) = player
+            .enqueue(vec![song(A), song(A), song(B)], now)
+            .unwrap();
         assert_eq!(staged.command, None);
         assert_eq!(staged.queue.unwrap().songs, vec![song(A), song(B)]);
         assert_eq!(player.needs_more(), None);
@@ -854,7 +908,7 @@ mod tests {
         );
         assert_eq!(player.queue_state().songs, vec![song(C)]);
         assert_eq!(player.needs_more(), Some(Seed::Video(id(C))));
-        player.enqueue(vec![song(A), song(B)], now);
+        player.enqueue(vec![song(A), song(B)], now).unwrap();
         assert_eq!(player.needs_more(), Some(Seed::Video(id(C))));
         player.set_radio_continuation(Some("test-continuation".into()));
         assert_eq!(player.needs_more(), None);
@@ -864,7 +918,7 @@ mod tests {
     fn jumping_to_the_first_staged_song_changes_the_autoplay_trigger() {
         let mut player = Player::new(1);
         let now = Instant::now();
-        player.enqueue(vec![song(A)], now);
+        player.enqueue(vec![song(A)], now).unwrap();
         let staged = player.autoplay_trigger();
         assert_eq!(
             player.jump_to(0, now).command,
@@ -1320,7 +1374,7 @@ mod tests {
             (player, now)
         };
         let (mut player, now) = start();
-        player.insert_next(vec![song("test-vid-0C")], now);
+        player.insert_next(vec![song("test-vid-0C")], now).unwrap();
         assert!(player.queue_state().browse_track.is_none());
         let (mut player, now) = start();
         player.move_item(1, 0, now);

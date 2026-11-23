@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Webview};
 use ytm_core::models::Song;
 
-use super::engine::{BrowsePlayback, Outcome, PlaybackEvent, Player, PlayerState, QueueState};
-use super::queue::{MAX_QUEUE_LEN, RepeatMode};
+use super::engine::{
+    BrowsePlayback, Outcome, PlaybackEvent, Player, PlayerError, PlayerState, QueueState,
+};
+use super::queue::{MAX_QUEUE_LEN, QueueAddResult, RepeatMode};
 use super::window::{PLAYER_LABEL, is_music_page};
 use crate::commands::checked_browse_id;
 use crate::error::{AppError, ErrorKind};
@@ -125,26 +127,26 @@ pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Moves songs to play next. Returns whether the queue changed.
+/// Moves songs to play next. Reports whether tracks were added, already queued, or blocked by the cap.
 #[tauri::command]
 #[specta::specta]
 pub async fn insert_next(
     app: AppHandle,
     state: State<'_, AppState>,
     songs: Vec<Song>,
-) -> Result<bool, AppError> {
+) -> Result<QueueAddResult, AppError> {
     validate_queue(&songs)?;
     add_to_queue(&app, &state, |player, now| player.insert_next(songs, now)).await
 }
 
-/// Appends songs to the queue. Returns whether the queue changed.
+/// Appends songs to the queue. Reports whether tracks were added, already queued, or blocked by the cap.
 #[tauri::command]
 #[specta::specta]
 pub async fn enqueue(
     app: AppHandle,
     state: State<'_, AppState>,
     songs: Vec<Song>,
-) -> Result<bool, AppError> {
+) -> Result<QueueAddResult, AppError> {
     validate_queue(&songs)?;
     add_to_queue(&app, &state, |player, now| player.enqueue(songs, now)).await
 }
@@ -152,16 +154,21 @@ pub async fn enqueue(
 async fn add_to_queue(
     app: &AppHandle,
     state: &AppState,
-    add: impl FnOnce(&mut Player, Instant) -> Outcome,
-) -> Result<bool, AppError> {
-    let mut changed = false;
+    add: impl FnOnce(&mut Player, Instant) -> Result<(QueueAddResult, Outcome), PlayerError>,
+) -> Result<QueueAddResult, AppError> {
+    let mut result = QueueAddResult::AlreadyQueued;
     edit_queue(app, state, |player, now| {
-        let outcome = add(player, now);
-        changed = outcome.queue.is_some();
+        let (added, outcome) = add(player, now).map_err(|_| {
+            AppError::new(
+                ErrorKind::InvalidArgument,
+                "Queue additions require valid video IDs.",
+            )
+        })?;
+        result = added;
         Ok(outcome)
     })
     .await?;
-    Ok(changed)
+    Ok(result)
 }
 
 #[tauri::command]
@@ -184,11 +191,15 @@ pub async fn move_queue_item(
     state: State<'_, AppState>,
     from: u32,
     to: u32,
-) -> Result<(), AppError> {
+) -> Result<bool, AppError> {
+    let mut moved = false;
     edit_queue(&app, &state, |player, now| {
-        Ok(player.move_item(from as usize, to as usize, now))
+        let outcome = player.move_item(from as usize, to as usize, now);
+        moved = outcome.queue.is_some();
+        Ok(outcome)
     })
-    .await
+    .await?;
+    Ok(moved)
 }
 
 #[tauri::command]
