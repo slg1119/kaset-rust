@@ -19,7 +19,7 @@ use kaset_session::{
 use ytm_core::YtmError;
 use ytm_core::api_key::music_api_key;
 use ytm_core::auth::CookieJar;
-use ytm_core::client::{ClientConfig, InnerTubeClient};
+use ytm_core::client::{ClientConfig, InnerTubeClient, playlist_browse_id};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::browse_page::parse_browse_page_for_id;
 use ytm_core::parsers::home::parse_feed;
@@ -183,10 +183,13 @@ async fn execute(client: &InnerTubeClient, command: ApiCommand) -> Result<Output
         ApiCommand::Feed(feed) => {
             Output::Feed(parse_feed(&client.browse(feed.browse_id()).await?)?)
         }
-        ApiCommand::Page { browse_id } => Output::Page(parse_browse_page_for_id(
-            &client.browse(&browse_id).await?,
-            &browse_id,
-        )?),
+        ApiCommand::Page { browse_id } => {
+            let browse_id = playlist_browse_id(&browse_id);
+            Output::Page(parse_browse_page_for_id(
+                &client.browse(&browse_id).await?,
+                &browse_id,
+            )?)
+        }
         ApiCommand::Radio { video_id } => {
             Output::Radio(parse_radio(&client.radio(&video_id).await?)?)
         }

@@ -17,6 +17,7 @@ use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
 use crate::error::{AppError, ErrorKind};
 use crate::login::{LOGIN_LABEL, close_login_window, emit_auth_changed, open_login_window};
+use crate::player::video_id::VideoId;
 use crate::session::AuthStatus;
 use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
 use crate::webview_session::{blocking, clear_webview_cookies};
@@ -109,21 +110,23 @@ pub async fn get_lyrics(
     state: State<'_, AppState>,
     video_id: String,
 ) -> Result<LyricsResult, AppError> {
-    checked_browse_value(&video_id, 1..=256, b"", "Invalid video ID.")?;
+    let video_id = VideoId::parse(&video_id)
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidArgument, "Invalid video ID."))?;
     signed_in_request(&app, &state, |client| async move {
-        Ok(client.get_timed_lyrics(&video_id).await?)
+        Ok(client.get_timed_lyrics(video_id.as_str()).await?)
     })
     .await
 }
 
 pub(crate) fn checked_browse_id(id: &str) -> Result<(), AppError> {
+    checked_id(id, "Invalid browse ID.")
+}
+
+fn checked_id(id: &str, message: &'static str) -> Result<(), AppError> {
     if kaset_ipc::valid_browse_id(id) {
         Ok(())
     } else {
-        Err(AppError::new(
-            ErrorKind::InvalidArgument,
-            "Invalid browse ID.",
-        ))
+        Err(AppError::new(ErrorKind::InvalidArgument, message))
     }
 }
 
@@ -131,19 +134,10 @@ pub(crate) fn checked_browse_id(id: &str) -> Result<(), AppError> {
 /// `params`): base64, standard or URL-safe, possibly percent-encoded. They are
 /// only ever sent inside a JSON request body, never in a URL or script.
 pub(super) fn checked_token(value: &str, message: &'static str) -> Result<(), AppError> {
-    checked_browse_value(value, 1..=4096, b"%=+/.", message)
-}
-
-fn checked_browse_value(
-    value: &str,
-    length: std::ops::RangeInclusive<usize>,
-    extra: &[u8],
-    message: &'static str,
-) -> Result<(), AppError> {
-    if length.contains(&value.len())
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-') || extra.contains(&byte)
-        })
+    if (1..=4096).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_-%=+/.".contains(&byte))
     {
         Ok(())
     } else {
@@ -322,15 +316,13 @@ mod tests {
 
     #[test]
     fn checked_browse_id_enforces_ascii_and_length() {
-        let max = "a".repeat(128);
-        for id in ["LL", "MPREb_test-id", &max] {
+        let max = "a".repeat(256);
+        for id in ["A", "LL", "MPREb_test-id", &max] {
             assert!(checked_browse_id(id).is_ok());
         }
 
-        let over = "a".repeat(129);
-        for id in [
-            "", "A", " VLtest", "VLtest\n", "a.b", "a/b", "a?b", "가a", &over,
-        ] {
+        let over = "a".repeat(257);
+        for id in ["", " VLtest", "VLtest\n", "a.b", "a/b", "a?b", "가a", &over] {
             assert_eq!(
                 checked_browse_id(id).unwrap_err().kind,
                 ErrorKind::InvalidArgument

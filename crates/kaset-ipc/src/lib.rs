@@ -117,7 +117,7 @@ pub fn valid_video_id(value: &str) -> bool {
 }
 
 pub fn valid_browse_id(value: &str) -> bool {
-    (2..=128).contains(&value.len()) && id_chars(value)
+    (1..=256).contains(&value.len()) && id_chars(value)
 }
 
 pub fn valid_seek(seconds: f64) -> bool {

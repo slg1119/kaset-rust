@@ -64,7 +64,7 @@ fn protocol_rejects_unknown_versions_commands_and_invalid_arguments() {
         r#"{"v":1,"cmd":"play_video","video_id":"abc-DEF_123","url":"https://example.com"}"#,
         r#"{"v":1,"cmd":"play_video","video_id":"a/b-DEF_123"}"#,
         r#"{"v":1,"cmd":"play_video","video_id":"abcdefghij"}"#,
-        r#"{"v":1,"cmd":"play_page","browse_id":"x"}"#,
+        r#"{"v":1,"cmd":"play_page","browse_id":""}"#,
         r#"{"v":1,"cmd":"play_page","browse_id":"https://example.com"}"#,
         r#"{"v":1,"cmd":"seek","seconds":-1}"#,
         r#"{"v":1,"cmd":"seek","seconds":1e400}"#,
@@ -75,7 +75,7 @@ fn protocol_rejects_unknown_versions_commands_and_invalid_arguments() {
     assert!(encode_request(&Command::Seek { seconds: f64::NAN }).is_err());
     assert!(
         encode_request(&Command::PlayPage {
-            browse_id: "x".repeat(129)
+            browse_id: "x".repeat(257)
         })
         .is_err()
     );
@@ -101,4 +101,18 @@ fn protocol_round_trips_idle_status() {
     };
     let bytes = serde_json::to_vec(&idle).unwrap();
     assert_eq!(serde_json::from_slice::<Response>(&bytes).unwrap(), idle);
+}
+
+#[test]
+fn task13_browse_id_boundaries_are_shared_by_the_protocol() {
+    for id in ["x", &"x".repeat(256)] {
+        let command = Command::PlayPage {
+            browse_id: id.into(),
+        };
+        let line = encode_request(&command).unwrap();
+        assert_eq!(decode_request(&line[..line.len() - 1]).unwrap(), command);
+    }
+    for id in ["", "foo/bar", "가", &"x".repeat(257)] {
+        assert!(!valid_browse_id(id));
+    }
 }

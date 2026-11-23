@@ -60,7 +60,7 @@ fn parses_playback_commands_and_validates_playback_arguments() {
     }
     for args in [
         vec!["play", "bad/id"],
-        vec!["play", "--page", "x"],
+        vec!["play", "--page", "bad/id"],
         vec!["play", "abc-DEF_123", "--page", "VL-test"],
         vec!["seek", "-1"],
         vec!["seek", "1:60"],

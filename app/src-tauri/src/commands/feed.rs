@@ -3,7 +3,7 @@ use tauri::{AppHandle, State};
 use ytm_core::models::FeedPage;
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation};
 
-use super::{checked_browse_value, checked_token, signed_in_request};
+use super::{checked_browse_id, checked_token, signed_in_request};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -99,15 +99,11 @@ async fn fetch_feed(
 }
 
 fn checked_feed_category(browse_id: &str, params: Option<&str>) -> Result<(), AppError> {
-    checked_feed_browse_id(browse_id)?;
+    checked_browse_id(browse_id)?;
     if let Some(params) = params {
         checked_feed_value(params)?;
     }
     Ok(())
-}
-
-pub(super) fn checked_feed_browse_id(value: &str) -> Result<(), AppError> {
-    checked_browse_value(value, 1..=256, b"", "Invalid browse ID.")
 }
 
 pub(super) fn checked_feed_value(value: &str) -> Result<(), AppError> {

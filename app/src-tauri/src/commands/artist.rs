@@ -3,7 +3,7 @@ use ytm_core::models::{ArtistPage, ShelfItem};
 use ytm_core::parsers::artist::{parse_artist, parse_artist_items};
 use ytm_core::parsers::radio::parse_radio;
 
-use super::{checked_browse_value, checked_token, signed_in_request};
+use super::{checked_browse_id, checked_id, checked_token, signed_in_request};
 use crate::error::{AppError, ErrorKind};
 use crate::player::commands::validate_queue;
 use crate::player::queue::MAX_QUEUE_LEN;
@@ -103,7 +103,7 @@ pub async fn play_artist_mix(
 }
 
 fn checked_artist_browse(browse_id: &str, params: Option<&str>) -> Result<(), AppError> {
-    checked_browse_value(browse_id, 1..=256, b"", "Invalid browse ID.")?;
+    checked_browse_id(browse_id)?;
     checked_artist_params(params)
 }
 
@@ -126,7 +126,7 @@ fn checked_artist_mix(
         ));
     }
     if let Some(playlist_id) = playlist_id {
-        checked_browse_value(playlist_id, 1..=256, b"", "Invalid playlist ID.")?;
+        checked_id(playlist_id, "Invalid playlist ID.")?;
     }
     if video_id.is_some_and(|id| VideoId::parse(id).is_none()) {
         return Err(AppError::new(

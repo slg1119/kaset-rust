@@ -4,8 +4,8 @@ use ytm_core::parsers::podcasts::{
     PODCASTS_BROWSE_ID, parse_podcast_episodes_continuation, parse_podcast_show, parse_podcasts,
 };
 
-use super::feed::{checked_feed_browse_id, checked_feed_value};
-use super::signed_in_request;
+use super::feed::checked_feed_value;
+use super::{checked_browse_id, signed_in_request};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -30,7 +30,7 @@ pub async fn get_podcast_show(
     state: State<'_, AppState>,
     browse_id: String,
 ) -> Result<PodcastShow, AppError> {
-    checked_feed_browse_id(&browse_id)?;
+    checked_browse_id(&browse_id)?;
     signed_in_request(&app, &state, |client| async move {
         Ok(parse_podcast_show(&client.browse(&browse_id).await?)?)
     })

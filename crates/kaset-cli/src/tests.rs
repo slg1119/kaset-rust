@@ -339,6 +339,40 @@ fn task12_release_ignores_file_store_environment() {
     );
 }
 
+#[test]
+fn task13_page_and_play_accept_the_same_browse_id_boundaries() {
+    for id in ["x", &"a".repeat(256)] {
+        assert!(Cli::try_parse_from(["kaset", "page", id]).is_ok());
+        assert!(Cli::try_parse_from(["kaset", "play", "--page", id]).is_ok());
+    }
+    for id in ["", "bad/id", "가", &"a".repeat(257)] {
+        assert!(Cli::try_parse_from(["kaset", "page", id]).is_err());
+        assert!(Cli::try_parse_from(["kaset", "play", "--page", id]).is_err());
+    }
+}
+
+#[tokio::test]
+async fn task13_page_normalizes_raw_playlist_ids() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/browse"))
+        .and(body_partial_json(json!({"browseId": "VLPL-test"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page_fixture()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = mock_client(&server, CookieJar::from_header("SAPISID=test-sapisid"));
+    let output = execute(
+        &client,
+        ApiCommand::Page {
+            browse_id: "PL-test".into(),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(output, Output::Page(_)));
+}
+
 #[tokio::test(start_paused = true)]
 async fn task13_session_read_retries_corruption_only() {
     use std::sync::atomic::{AtomicUsize, Ordering};

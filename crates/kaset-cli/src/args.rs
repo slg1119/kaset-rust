@@ -63,7 +63,7 @@ pub(crate) enum PlaybackCommand {
     Play {
         #[arg(value_name = "VIDEO_ID", value_parser = video_id, conflicts_with = "page")]
         video_id: Option<String>,
-        #[arg(long, value_name = "BROWSE_ID", value_parser = playback_browse_id)]
+        #[arg(long, value_name = "BROWSE_ID", value_parser = browse_id)]
         page: Option<String>,
     },
     /// Pause playback.
@@ -137,15 +137,6 @@ impl From<PlaybackCommand> for PlaybackRequest {
             },
         }
     }
-}
-
-fn playback_browse_id(value: &str) -> Result<String, &'static str> {
-    if !kaset_ipc::valid_browse_id(value) {
-        return Err(
-            "expected a browse ID of 2 to 128 ASCII letters, digits, underscores or hyphens",
-        );
-    }
-    Ok(value.into())
 }
 
 fn seek_seconds(value: &str) -> Result<f64, &'static str> {
@@ -226,7 +217,7 @@ fn search_query(value: &str) -> Result<String, &'static str> {
 }
 
 fn browse_id(value: &str) -> Result<String, &'static str> {
-    if !(1..=256).contains(&value.len()) || !id_chars(value) {
+    if !kaset_ipc::valid_browse_id(value) {
         return Err(
             "expected a browse ID of 1 to 256 ASCII letters, digits, underscores or hyphens",
         );
@@ -239,10 +230,4 @@ fn video_id(value: &str) -> Result<String, &'static str> {
         return Err("expected a video ID of 11 ASCII letters, digits, underscores or hyphens");
     }
     Ok(value.into())
-}
-
-fn id_chars(value: &str) -> bool {
-    value
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }

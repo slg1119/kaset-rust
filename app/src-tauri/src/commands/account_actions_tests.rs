@@ -147,3 +147,12 @@ async fn stale_next_response_cannot_restore_tokens_after_sign_out_or_an_edit() {
         assert!(state.feedback.lock().await.entries.is_empty());
     }
 }
+
+#[test]
+fn task13_playlist_creation_caps_the_video_count() {
+    let mut videos = vec!["test-vid001".to_owned(); 500];
+    assert!(validate_playlist_input("Title", "", &videos).is_ok());
+    videos.push("test-vid002".into());
+    let error = validate_playlist_input("Title", "", &videos).unwrap_err();
+    assert_eq!(error.kind, crate::error::ErrorKind::InvalidArgument);
+}

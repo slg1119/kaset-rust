@@ -7,8 +7,9 @@ use ytm_core::client::InnerTubeClient;
 use ytm_core::models::{AddToPlaylistMenu, LikeStatus, PlaylistPrivacy, SongMetadata};
 use ytm_core::secret::Secret;
 
-use super::{checked_browse_value, checked_token, signed_in_request_with_epoch};
+use super::{checked_id, checked_token, signed_in_request_with_epoch};
 use crate::error::{AppError, ErrorKind};
+use crate::player::queue::MAX_QUEUE_LEN;
 use crate::session::AuthStatus;
 use crate::state::AppState;
 use crate::webview_session::blocking;
@@ -138,10 +139,6 @@ fn invalid(message: &'static str) -> AppError {
     AppError::new(ErrorKind::InvalidArgument, message)
 }
 
-fn checked_id(value: &str, message: &'static str) -> Result<(), AppError> {
-    checked_browse_value(value, 1..=256, b"", message)
-}
-
 fn checked_playlist_id(id: &str) -> Result<(), AppError> {
     checked_id(id, "Invalid playlist ID.")?;
     checked_id(id.strip_prefix("VL").unwrap_or(id), "Invalid playlist ID.")
@@ -164,6 +161,9 @@ fn validate_playlist_input(
         return Err(invalid(
             "Enter a playlist description of up to 5,000 characters.",
         ));
+    }
+    if video_ids.len() > MAX_QUEUE_LEN {
+        return Err(invalid("A playlist can be created with up to 500 videos."));
     }
     for id in video_ids {
         checked_id(id, "Invalid video ID.")?;
