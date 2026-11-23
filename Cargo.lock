@@ -2406,6 +2406,7 @@ name = "kaset-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "kaset-ipc",
  "kaset-session",
  "serde_json",
  "tempfile",

@@ -114,8 +114,8 @@ Build and install the standalone CLI from the repository on macOS or Windows.
 cargo install --locked --path crates/kaset-cli
 ```
 
-Sign in once with the Tauri version of the Kaset app. The CLI reads the same
-session from your OS secure store and can run with the app closed.
+Sign in once with the Tauri version of the Kaset app. The browsing commands
+read the session from your OS secure store and can run with the app closed.
 
 ```bash
 kaset search "jazz piano" --filter songs --limit 5
@@ -139,6 +139,26 @@ For a debug app using `KASET_SESSION_STORE=file`, point the CLI to that app's
 `dev-session.txt` with `--session-file <path>`, or set both
 `KASET_SESSION_STORE=file` and `KASET_SESSION_FILE=<path>` for the CLI. A missing
 session exits with status 2 and an expired session exits with status 3.
+
+Playback commands control the running app using its active session.
+
+```bash
+kaset now --json
+kaset play
+kaset play test-vid001
+kaset play --page MPREb_test
+kaset pause
+kaset toggle
+kaset next
+kaset prev
+kaset seek 1:30
+kaset queue --json
+kaset shuffle on
+kaset repeat all
+```
+
+`now` and `queue` print text by default. `queue --json` uses a zero-based
+current-track index. Playback commands exit with status 4 when the app is closed.
 
 ## Contributing
 
