@@ -36,6 +36,8 @@
     "allow-search-continuation",
     "allow-search-suggestions",
     "allow-get-account",
+    "allow-track-notifications",
+    "allow-set-track-notifications",
     "allow-window-vibrancy",
     "allow-play-queue",
     "allow-play-browse-queue",

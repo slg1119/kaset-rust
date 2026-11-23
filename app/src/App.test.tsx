@@ -17,6 +17,7 @@ test("signed in shows the shell with the home feed and the account", async () =>
     authStatus: () => "signed_in",
     getFeed: () => home,
     getAccount: () => account,
+    trackNotifications: () => true,
     playerSnapshot: () => idleSnapshot,
   });
   renderApp();
@@ -41,6 +42,7 @@ test("signed in shows the shell with the home feed and the account", async () =>
   const accountBlock = within(nav).getByRole("region", { name: "Account" });
   expect(await within(accountBlock).findByText("Test User")).toBeInTheDocument();
   expect(within(accountBlock).getByText("@testuser")).toBeInTheDocument();
+  expect(await within(accountBlock).findByRole("switch", { name: "Notifications" })).toBeChecked();
 });
 
 test("an account failure falls back to a generic label", async () => {

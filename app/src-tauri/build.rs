@@ -45,6 +45,8 @@ fn main() {
                 "search_continuation",
                 "search_suggestions",
                 "get_account",
+                "track_notifications",
+                "set_track_notifications",
                 "window_vibrancy",
                 "play_queue",
                 "play_browse_queue",

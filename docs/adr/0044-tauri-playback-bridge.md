@@ -172,3 +172,10 @@ Enqueuing a track preserves the current radio continuation. Clear upcoming
 invalidates pending radio results. Changing shuffle, switching repeat
 off, and pressing Play or Next after the queue ends let the engine recheck
 whether to request more songs.
+
+## M5b track notification preference
+
+Track-change notifications default to on. The app saves changes atomically in
+`track-notifications.json` in its app data directory. The player checks the
+setting before sending each OS notification and still tracks playback while
+notifications are disabled.

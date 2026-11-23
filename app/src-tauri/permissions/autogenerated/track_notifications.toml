@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-track-notifications"
+description = "Enables the track_notifications command without any pre-configured scope."
+commands.allow = ["track_notifications"]
+
+[[permission]]
+identifier = "deny-track-notifications"
+description = "Denies the track_notifications command without any pre-configured scope."
+commands.deny = ["track_notifications"]

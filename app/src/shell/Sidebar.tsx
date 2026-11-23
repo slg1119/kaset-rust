@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commands, type FeedKind, type LibraryKind } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChartBarsIcon, ClockIcon, CompassIcon, HomeIcon, PaletteIcon, PodcastIcon, SearchIcon, SparkleIcon } from "../icons";
@@ -47,11 +47,23 @@ type Props = {
 
 export function Sidebar({ route, onNavigate }: Props) {
   const { report, dismiss } = useNotice();
+  const queryClient = useQueryClient();
   // Display only; a failure falls back to a generic label instead of an alert.
   const account = useQuery({
     queryKey: queryKeys.account,
     queryFn: () => commands.getAccount(),
     staleTime: ACCOUNT_STALE_MS,
+  });
+
+  const notifications = useQuery({
+    queryKey: queryKeys.trackNotifications,
+    queryFn: () => commands.trackNotifications(),
+    staleTime: Infinity,
+  });
+  const saveNotifications = useMutation({
+    mutationFn: (enabled: boolean) => commands.setTrackNotifications(enabled),
+    onSuccess: (_, enabled) => queryClient.setQueryData(queryKeys.trackNotifications, enabled),
+    onError: (cause) => report(errorMessage(cause)),
   });
 
   async function signOut() {
@@ -105,6 +117,24 @@ export function Sidebar({ route, onNavigate }: Props) {
           <span className="item-title">{name}</span>
           {account.data?.handle && <span className="item-subtitle">{account.data.handle}</span>}
         </div>
+        {notifications.data !== undefined ? (
+          <label className="account-notifications">
+            Notifications
+            <input
+              type="checkbox"
+              className="visually-hidden"
+              role="switch"
+              checked={notifications.data}
+              disabled={saveNotifications.isPending}
+              onChange={(event) => saveNotifications.mutate(event.currentTarget.checked)}
+            />
+            <span className="account-switch-track" aria-hidden="true" />
+          </label>
+        ) : notifications.isError && (
+          <button type="button" className="ghost" onClick={() => void notifications.refetch()}>
+            Retry loading notifications
+          </button>
+        )}
         <button type="button" className="ghost" onClick={() => void signOut()}>
           Sign out
         </button>

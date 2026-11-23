@@ -154,3 +154,9 @@ and invalidate the affected queries on success.
 
 Feed and search stop requesting more pages when the latest page has no new
 item identities, even if the server supplies a new continuation token.
+
+## M5b track notification preference
+
+The sidebar Account section has a Notifications switch. TanStack Query reads
+and updates the local preference through Tauri commands. The preference
+applies to the installation and persists across sign-outs and app restarts.

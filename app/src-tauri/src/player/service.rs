@@ -20,6 +20,7 @@ use crate::error::AppError;
 use crate::events::{PlayerStateChanged, QueueChanged};
 use crate::session::AuthStatus;
 use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
+use crate::track_notifications::TrackNotifications;
 
 /// Player events go to the main window. The player window's capability has
 /// no event permissions, so its pages cannot listen to them either.
@@ -249,17 +250,35 @@ fn track_notification(last: &mut Option<String>, state: &PlayerState) -> Option<
     })
 }
 
-fn send_track_notification(app: &AppHandle, notification: Option<TrackNotification>) {
-    if let Some(notification) = notification
-        && let Err(error) = app
-            .notification()
-            .builder()
-            .title(notification.title)
-            .body(notification.body)
-            .show()
-    {
-        tracing::debug!(%error, "could not show track notification");
+fn notify_if_enabled(
+    notification: Option<TrackNotification>,
+    enabled: bool,
+    send: impl FnOnce(TrackNotification),
+) {
+    if enabled && let Some(notification) = notification {
+        send(notification);
     }
+}
+
+fn send_track_notification(app: &AppHandle, notification: Option<TrackNotification>) {
+    if notification.is_none() {
+        return;
+    }
+    notify_if_enabled(
+        notification,
+        app.state::<TrackNotifications>().enabled(),
+        |notification| {
+            if let Err(error) = app
+                .notification()
+                .builder()
+                .title(notification.title)
+                .body(notification.body)
+                .show()
+            {
+                tracing::debug!(%error, "could not show track notification");
+            }
+        },
+    );
 }
 
 fn apply(app: &AppHandle, outcome: Outcome) -> Result<(), AppError> {
@@ -305,6 +324,20 @@ mod tests {
                 })
                 .collect(),
             thumbnail_url: None,
+        }
+    }
+
+    #[test]
+    fn task13_track_notification_gate_obeys_the_setting() {
+        let mut state = Player::new(1).state();
+        state.status = PlaybackStatus::Playing;
+        state.track = Some(track("test-vid-0A", &[]));
+
+        for enabled in [false, true] {
+            let mut sent = false;
+            let notice = track_notification(&mut None, &state);
+            notify_if_enabled(notice, enabled, |_| sent = true);
+            assert_eq!(sent, enabled);
         }
     }
 

@@ -76,6 +76,10 @@ export const commands = {
 	 *  when the response lists no named account.
 	 */
 	getAccount: (options?: InvokeOptions) => __TAURI_INVOKE<Account | null>("get_account", undefined, options),
+	/**  Whether the app sends notifications when playback changes tracks. */
+	trackNotifications: (options?: InvokeOptions) => __TAURI_INVOKE<boolean>("track_notifications", undefined, options),
+	/**  Saves the track notification preference for future launches. */
+	setTrackNotifications: (enabled: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_track_notifications", { enabled }, options),
 	/**
 	 *  Whether native translucency is behind the sidebar (macOS vibrancy,
 	 *  Windows 11 Mica). The UI paints a solid sidebar when it is not.
@@ -522,6 +526,8 @@ export type MockCommandHandlers = {
     searchContinuation: (args: { token: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
     getAccount: () => Account | null | Promise<Account | null>,
+    trackNotifications: () => boolean | Promise<boolean>,
+    setTrackNotifications: (args: { enabled: boolean }) => null | Promise<null>,
     windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
     playBrowseQueue: (args: { songs: Song[]; startIndex: number; playback: BrowsePlayback }) => null | Promise<null>,
@@ -597,6 +603,8 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "search_continuation": return mockCommandHandler(mockHandlers.searchContinuation, "search_continuation", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);
+            case "track_notifications": return mockCommandHandler(mockHandlers.trackNotifications, "track_notifications", args);
+            case "set_track_notifications": return mockCommandHandler(mockHandlers.setTrackNotifications, "set_track_notifications", args);
             case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);
             case "play_queue": return mockCommandHandler(mockHandlers.playQueue, "play_queue", args);
             case "play_browse_queue": return mockCommandHandler(mockHandlers.playBrowseQueue, "play_browse_queue", args);

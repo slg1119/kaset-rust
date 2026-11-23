@@ -238,6 +238,56 @@ button {
   grid-column: 1 / -1;
 }
 
+.account-notifications {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.account-switch-track {
+  appearance: none;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--muted);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.account-switch-track::before {
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+}
+
+.account-notifications input:checked + .account-switch-track {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.account-notifications input:checked + .account-switch-track::before {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+.account-notifications input:focus-visible + .account-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.account-notifications input:disabled + .account-switch-track {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .content-column {
   position: relative;
   min-width: 0;

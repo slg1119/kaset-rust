@@ -22,6 +22,7 @@ export const queryKeys = {
   podcastShow: (browseId: string) => ["podcastShow", browseId] as const,
   suggestions: (input: string) => ["suggestions", input] as const,
   account: ["account"] as const,
+  trackNotifications: ["trackNotifications"] as const,
   songMetadata: (videoId: string) => ["songMetadata", videoId] as const,
   playlistOptionsAll: ["playlistOptions"] as const,
   playlistOptions: (videoId: string) => ["playlistOptions", videoId] as const,

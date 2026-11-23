@@ -6,6 +6,7 @@ pub mod login;
 pub mod player;
 pub mod session;
 pub mod state;
+mod track_notifications;
 pub mod webview_session;
 pub mod window_effects;
 
@@ -16,6 +17,7 @@ use tauri_specta::{Builder, collect_commands, collect_events};
 use crate::session::Session;
 use crate::session::store::{STORE_ENV, store_for, store_kind};
 use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
+use crate::track_notifications::TrackNotifications;
 use crate::webview_session::{blocking, refresh_session_from_webview};
 
 /// Commands and events exposed to the UI. `bindings_are_current` exports
@@ -54,6 +56,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::search_continuation,
             commands::search_suggestions,
             commands::get_account,
+            track_notifications::track_notifications,
+            track_notifications::set_track_notifications,
             commands::window_vibrancy,
             player::commands::play_queue,
             player::commands::play_browse_queue,
@@ -96,9 +100,6 @@ pub fn run() {
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
-            if let Err(error) = app.notification().request_permission() {
-                tracing::debug!(%error, "could not request notification permission");
-            }
             let data_dir = app.path().app_data_dir()?;
             let kind = store_kind(
                 std::env::var(STORE_ENV).ok().as_deref(),
@@ -106,12 +107,18 @@ pub fn run() {
             );
             tracing::info!(store = ?kind, "session store selected");
             // Restore before accepting commands. Store I/O runs on the blocking pool.
-            let session = tauri::async_runtime::block_on(blocking(move || {
+            let (session, notifications) = tauri::async_runtime::block_on(blocking(move || {
                 let session = Session::new(store_for(kind, &data_dir));
                 let status = session.restore();
                 tracing::info!(?status, "session restored");
-                session
+                (session, TrackNotifications::restore(&data_dir))
             }))?;
+            if notifications.enabled()
+                && let Err(error) = app.notification().request_permission()
+            {
+                tracing::debug!(%error, "could not request notification permission");
+            }
+            app.manage(notifications);
             app.manage(AppState::new(session));
             let vibrancy = app
                 .get_webview_window("main")
