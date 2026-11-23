@@ -116,6 +116,8 @@ cargo install --locked --path crates/kaset-cli
 
 Sign in once with the Tauri version of the Kaset app. The browsing commands
 read the session from your OS secure store and can run with the app closed.
+On macOS, Keychain may prompt the first time the CLI reads the session saved
+by the app. Allow access to use browsing commands.
 
 ```bash
 kaset search "jazz piano" --filter songs --limit 5
@@ -133,12 +135,15 @@ kaset whoami --json
 Use the browse or video IDs printed in brackets as inputs to `page` or
 `radio`. Search filtering and limits apply to the first result page.
 Use `--json` on any command for parsed data. Internal pagination and browse
-parameter fields appear as `null`. Set `NO_COLOR` to disable terminal styling.
+parameter fields appear as `null`. Set `NO_COLOR` to a non-empty value to
+disable terminal styling.
 
-For a debug app using `KASET_SESSION_STORE=file`, point the CLI to that app's
-`dev-session.txt` with `--session-file <path>`, or set both
-`KASET_SESSION_STORE=file` and `KASET_SESSION_FILE=<path>` for the CLI. A missing
-session exits with status 2 and an expired session exits with status 3.
+For a debug app using `KASET_SESSION_STORE=file`, build the CLI in debug mode
+with `cargo install --debug --locked --path crates/kaset-cli`. Point it to the
+app's `dev-session.txt` with `--session-file <path>`, or set both
+`KASET_SESSION_STORE=file` and `KASET_SESSION_FILE=<path>` for the CLI. Release
+builds read the OS secure store. A missing session exits with status 2 and an
+expired session exits with status 3.
 
 Playback commands control the running app using its active session.
 

@@ -58,12 +58,16 @@ fn parses_search_options_and_global_flags() {
         "videos",
         "--limit",
         "2",
-        "--session-file",
-        "test-session.txt",
     ])
     .unwrap();
     assert!(args.json);
-    assert_eq!(args.session_file, Some("test-session.txt".into()));
+    #[cfg(debug_assertions)]
+    assert_eq!(
+        Cli::try_parse_from(["kaset", "whoami", "--session-file", "test-session.txt"])
+            .unwrap()
+            .session_file,
+        Some("test-session.txt".into())
+    );
     assert!(matches!(
         args.command,
         Command::Api(ApiCommand::Search {
@@ -81,6 +85,7 @@ fn parses_search_options_and_global_flags() {
     }
 }
 
+#[cfg(debug_assertions)]
 #[test]
 fn selects_explicit_file_then_env_file_then_default_keyring() {
     assert_eq!(
@@ -313,4 +318,23 @@ fn terminal_dim_only_wraps_ids() {
     assert!(text.contains(
         "Seed song — First artist, Second artist, Third artist  \x1b[2m[test-vid001]\x1b[0m"
     ));
+}
+
+#[test]
+fn task12_empty_no_color_keeps_terminal_styling() {
+    use std::ffi::OsStr;
+
+    assert!(dim_ids(true, None));
+    assert!(dim_ids(true, Some(OsStr::new(""))));
+    assert!(!dim_ids(true, Some(OsStr::new("1"))));
+    assert!(!dim_ids(false, None));
+}
+
+#[cfg(not(debug_assertions))]
+#[test]
+fn task12_release_ignores_file_store_environment() {
+    assert_eq!(
+        session_file(None, Some("file"), Some("test-session".into())).unwrap(),
+        None
+    );
 }

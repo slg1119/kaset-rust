@@ -5,7 +5,7 @@ mod remote_tests;
 #[cfg(test)]
 mod tests;
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::future::Future;
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
@@ -83,7 +83,10 @@ async fn main() -> ExitCode {
 
 async fn run_cli(cli: Cli) -> Result<(), CliError> {
     let stdout = io::stdout();
-    let dim_ids = stdout.is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    let dim_ids = dim_ids(
+        stdout.is_terminal(),
+        std::env::var_os("NO_COLOR").as_deref(),
+    );
     let command = match cli.command {
         Command::Api(command) => command,
         Command::Playback(command) => {
@@ -92,8 +95,12 @@ async fn run_cli(cli: Cli) -> Result<(), CliError> {
             return Ok(());
         }
     };
+    #[cfg(debug_assertions)]
+    let explicit_file = cli.session_file;
+    #[cfg(not(debug_assertions))]
+    let explicit_file = None;
     let store: Box<dyn SessionStore> = match session_file(
-        cli.session_file,
+        explicit_file,
         std::env::var(STORE_ENV).ok().as_deref(),
         std::env::var_os(SESSION_FILE_ENV),
     )? {
@@ -110,11 +117,18 @@ async fn run_cli(cli: Cli) -> Result<(), CliError> {
     Ok(())
 }
 
+fn dim_ids(is_terminal: bool, no_color: Option<&OsStr>) -> bool {
+    is_terminal && no_color.is_none_or(OsStr::is_empty)
+}
+
 fn session_file(
     explicit: Option<PathBuf>,
     store_mode: Option<&str>,
     env_path: Option<OsString>,
 ) -> Result<Option<PathBuf>, CliError> {
+    if !cfg!(debug_assertions) {
+        return Ok(None);
+    }
     match (explicit, store_mode) {
         (Some(path), _) => Ok(Some(path)),
         (None, Some("file")) => env_path

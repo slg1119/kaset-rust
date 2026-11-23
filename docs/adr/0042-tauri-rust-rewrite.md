@@ -16,6 +16,8 @@ available outside Apple platforms.
 - Business logic (InnerTube client, parsers, auth/cookies, queue, player
   state) lives in Rust: `crates/ytm-core` (no Tauri dependency) and the Tauri
   shell in `app/src-tauri`.
+- The Tauri executable is named `kaset-desktop` so the standalone CLI can
+  use `kaset` without a Cargo binary name collision.
 - The UI is React + TypeScript + Vite and never sees cookies.
 - Playback keeps the approach of ADR-0001: a hidden WebView on
   music.youtube.com, bridged to Rust. On Windows this is WebView2.

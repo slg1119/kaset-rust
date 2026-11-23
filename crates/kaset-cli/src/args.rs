@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -11,6 +12,7 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) json: bool,
     /// Read a session file from a debug build of the Kaset app.
+    #[cfg(debug_assertions)]
     #[arg(long, global = true, value_name = "PATH")]
     pub(crate) session_file: Option<PathBuf>,
     #[command(subcommand)]
