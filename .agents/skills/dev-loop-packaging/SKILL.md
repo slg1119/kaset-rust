@@ -1,32 +1,29 @@
 ---
 name: dev-loop-packaging
-description: Use when you need a fresh packaged `.app` bundle, a fast build-package-relaunch loop, or a packaged runtime repro for Kaset instead of a compile-only verification.
+description: Use when running Kaset locally, building a fresh Tauri installer, or reproducing an issue in a packaged build.
 metadata:
-  short-description: Package and relaunch Kaset
+  short-description: Run and package Kaset
 ---
 
 # Dev Loop Packaging
 
-`swift build` and `swift test --skip KasetUITests` remain the fastest checks. Package only when you need a runnable app bundle, login/WebView/runtime inspection, or bundle verification.
-
-## Common Commands
+From `app/`, install the locked dependencies and start the desktop dev loop.
 
 ```bash
-Scripts/build-app.sh
-Scripts/compile_and_run.sh
-Scripts/compile_and_run.sh --test
-Scripts/compile_and_run.sh --lint
-Scripts/compile_and_run.sh --wait
+pnpm install --frozen-lockfile
+pnpm tauri dev
 ```
 
-## What The Scripts Do
+The command starts Vite and runs Tauri. Use
+`KASET_SESSION_STORE=file pnpm tauri dev` to isolate a debug session from the
+OS secure store. Keep the generated session file private.
 
-- `Scripts/build-app.sh` builds the app and assembles `.build/app/Kaset.app`. Set `ARCHES` to build for custom architectures.
-- `Scripts/compile_and_run.sh` kills running Kaset processes, optionally runs tests and linting, packages a debug app by default, relaunches it, and checks that it stays running. Pass `--release` for a release build.
-- `Scripts/compile_and_run.sh --test` runs the SwiftPM test target before packaging; it does not run the separate Xcode UI-test project.
+Package with `pnpm tauri build`. Use `--bundles dmg` on macOS or
+`--bundles nsis` on Windows to select the installer. To build a universal
+macOS DMG, install the `aarch64-apple-darwin` and `x86_64-apple-darwin`
+Rust targets, then pass `--target universal-apple-darwin --bundles dmg`.
+The bundle lands under the workspace Cargo `target` directory. See
+`docs/release.md` for release signing and upload.
 
-## Landmarks
-
-- `Scripts/build-app.sh`
-- `Scripts/compile_and_run.sh`
-- `.build/app/Kaset.app`
+Ask before running UI tests. For compile-only or component checks, use
+the commands in `docs/testing.md`.

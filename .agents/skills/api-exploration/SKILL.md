@@ -1,36 +1,29 @@
 ---
 name: api-exploration
-description: Use when a task needs a new or modified YouTube Music API call, response parser validation, authenticated endpoint investigation, or fixture capture; explore endpoints with `swift run api-explorer` before changing production code.
+description: Use when changing a YouTube Music API request or parser, investigating a signed-in endpoint, or capturing a sanitized fixture with ytm-explorer.
 metadata:
   short-description: Explore YouTube Music APIs
 ---
 
 # API Exploration
 
-## Workflow
-
-1. Run `swift run api-explorer auth` if the task touches sign-in-backed endpoints.
-2. Check what already exists with `swift run api-explorer list`.
-3. Probe the endpoint with `browse`, `action`, or `continuation` before touching production code. If the explorer can't express the request you need, add that capability to `Sources/APIExplorer/main.swift`.
-4. Save representative payloads with `-o` when parser work or regression tests need fixtures. `-o` and `-v` emit the raw response, which can include account names, emails, and channel IDs: write captures outside the repo, and redact them before they go into `Tests/KasetTests/Fixtures/` or get quoted in your output.
-5. Update `docs/api-discovery.md` when you confirm a new endpoint, parameter, or auth constraint.
-
-`action` sends a real request as the signed-in user. Read-only actions such as `search` are fine; for anything that changes account data (likes, playlist edits, subscriptions), prefer a captured, sanitized response or a disposable resource, and get explicit approval from the human before sending it live.
-
-## Common Commands
+1. Run `cargo run -p ytm-explorer -- --help` to list the commands.
+2. For authenticated reads, point `KASET_COOKIE_FILE` at a private file
+   outside the repo containing a Cookie header value. Leave the variable
+   unset for guest requests.
+3. Verify the live request and response shape before changing the client
+   or parser. Extend `crates/ytm-explorer/src/main.rs` if the probe is missing.
+4. Prefer summary commands. Where available, use `--out` to capture raw JSON
+   privately outside the repo. Remove credentials, private IDs, and tokens
+   before quoting excerpts or creating fixtures.
+5. Exercise account changes against mock servers. Keep the explorer read-only
+   and get explicit approval before sending any live write.
+6. Record relevant findings in `docs/api-discovery.md` and put minimal,
+   sanitized fixtures in `crates/ytm-core/tests/fixtures/`.
 
 ```bash
-swift run api-explorer auth
-swift run api-explorer list
-swift run api-explorer browse FEmusic_home -v
-swift run api-explorer browse FEmusic_liked_playlists -v
-swift run api-explorer action search '{"query":"never gonna give you up"}'
+cargo run -p ytm-explorer -- search "jazz piano" --parse
+cargo run -p ytm-explorer -- browse FEmusic_home --parse home
+KASET_COOKIE_FILE=/path/outside/repo/cookie-header.txt \
+  cargo run -p ytm-explorer -- library
 ```
-
-## Landmarks
-
-- `Sources/APIExplorer/main.swift`
-- `docs/api-discovery.md`
-- `Tests/KasetTests/Fixtures/`
-
-Authenticated exploration reads the debug cookie export from `~/Library/Application Support/Kaset/cookies.dat`.

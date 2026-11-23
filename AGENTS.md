@@ -1,89 +1,62 @@
 # AGENTS.md
 
-Guidance for AI coding agents working in this repository.
-
-Kaset is a native macOS client for YouTube Music and YouTube, written in Swift 6 and SwiftUI. The deployment target is macOS 15.4, with macOS 26 features such as Liquid Glass layered on top. Write idiomatic SwiftUI and Swift Concurrency code that follows Apple's Human Interface Guidelines.
+Kaset is a YouTube Music desktop app for macOS and Windows. Tauri 2 hosts the
+Rust application and a React, TypeScript, and Vite frontend.
 
 ## Rules
 
-- **Keep real credentials out of everything.** Cookies, SAPISID values, auth tokens, and API keys must not appear in code, comments, logs, docs, test fixtures, or your output. Use placeholders such as `"REDACTED"`, `"mock-token"`, or `"test-cookie"`. The repo is public and the app holds signed-in Google sessions, so a leaked value compromises a real account.
+- **Keep real credentials out of everything.** Cookies, SAPISID values, auth tokens, and API keys must stay out of code, comments, logs, docs, test fixtures, and output. Use placeholders such as `"REDACTED"`, `"mock-token"`, or `"test-cookie"`.
 - **Ask before running UI tests.** They launch the app and take over the desktop.
-- **Ask before adding a third-party dependency.** The project keeps them minimal; Sparkle, for app updates, is currently the only one.
-- **Prefer the API clients over WebView.** Use `YTMusicClient` (YouTube Music) or `YouTubeClient` (YouTube) whenever the endpoint exists. WebView is only for DRM playback and sign-in.
-- **Extend the API explorer instead of writing one-off scripts.** API exploration and debugging tooling belongs in `Sources/APIExplorer/main.swift` so the next person can reuse it.
-- **Keep standard macOS shortcuts.** Don't rebind `⌘M`, `⌘W`, `⌘Q`, `⌘H`, or `⌘,` unless the human asks. For media shortcuts, follow macOS and Apple Music conventions and update `docs/keyboard-shortcuts.md`.
+- **Prefer the API client over WebView.** Use the InnerTube client in `crates/ytm-core` for data requests. Use WebViews for sign-in and DRM playback.
+- **Extend the API explorer.** Put reusable API probes in `crates/ytm-explorer`.
+- **Keep standard macOS shortcuts.** Preserve `⌘M`, `⌘W`, `⌘Q`, `⌘H`, and `⌘,` unless the human asks to change them. Follow macOS and Apple Music conventions for media shortcuts and update `docs/keyboard-shortcuts.md`.
 - **Record significant design changes** as an ADR in `docs/adr/`.
 
 ## Working Style
 
 - Deliver what was asked, at the scope intended. Make routine judgment calls yourself, and check in only when different readings of the request would lead to materially different work.
-- Match existing implementations: a new detail view follows the existing detail views, a new parser follows `Sources/Kaset/Services/API/Parsers/`.
+- Match existing implementations: a new detail view follows the existing detail views, a new parser follows `crates/ytm-core/src/parsers/`.
 - Adapt new code to existing public signatures, protocols, and model types instead of changing them, unless the task calls for it.
 - If an approach goes wrong, revert and re-scope rather than layering patches on it.
 
 ## Build & Code Quality
 
+From the repository root:
+
 ```bash
-swift build                              # Build
-swift test --skip KasetUITests --no-parallel  # Unit tests, serial like CI (UI tests live in a separate Xcode project)
-swiftlint --strict && swiftformat .      # Lint & format
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-A code change is done when these pass for the code you touched. Stay CLI-first; use Xcode or `xcodebuild` only for UI tests, runtime debugging, screenshots, or scheme-specific investigation.
+From `app/`:
 
-CI pins the SwiftFormat version in `.github/workflows/lint.yml`; format with that version, since newer releases can rewrite unrelated files.
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm tauri dev
+pnpm tauri build
+```
 
-`.swiftformat` uses `--self insert`: in static methods call other static methods as `Self.methodName()`, and in instance methods write `self.property` explicitly.
-
-## Coding Rules
-
-Project rules that differ from standard Swift/SwiftUI conventions and aren't mechanically checked:
-
-| Avoid | Use | Why |
-|-------|-----|-----|
-| `.background(.ultraThinMaterial)` | `compatGlass(...)` helpers in `LiquidGlassCompat.swift`, or `.glassEffect()` behind `#available(macOS 26.0, *)` | Liquid Glass on macOS 26 with a macOS 15 fallback |
-| Force unwraps (`!`) | Optional handling or `guard` | Project policy |
-
-- Mark `@Observable` classes with `@MainActor`.
-- Write new unit tests with Swift Testing (`@Test`, `#expect`).
-- Throw `YTMusicError.authExpired` on HTTP 401/403.
-- Use `.task` instead of `.onAppear { Task { } }`.
-
-`swiftlint --strict` enforces the mechanically checkable bans (`print()`, `DispatchQueue`, `NavigationView`, `foregroundColor`, `cornerRadius`, `contentMargins`) and names the replacement in each message; see `.swiftlint.yml`.
-
-## Localization
-
-`Sources/Kaset/Resources/Localizable.xcstrings` is the source of truth. Packaged builds compile the catalog, but SwiftPM/Xcode runtime builds read the checked-in `Sources/Kaset/Resources/*.lproj/Localizable.strings` mirrors, so the two must change together or the build types diverge.
-
-- When adding keys or changing translations, update the catalog first, then the matching `.lproj/Localizable.strings` files in the same change.
-- Run `swift test --skip KasetUITests --filter LocalizationCatalogParityTests` after localization changes.
-- Siri phrases for App Shortcuts live in `Sources/Kaset/Resources/AppShortcuts.xcstrings` (no `.lproj` mirror). `Scripts/build-app.sh` fails if it drifts from `KasetShortcuts`, so update it whenever a phrase changes.
-- When adding a locale, also register its `.lproj` in `Package.swift`, add the `SettingsManager.ContentLanguage` case, and extend the localization tests.
+Run the development and bundle commands when you need the app or installer.
+The verification commands above run without a desktop app session.
 
 ## API Discovery
 
-YouTube's response shapes are undocumented and change without notice, so a parser written from inference compiles and then silently returns nothing. Before adding or changing an API call, request shape, or response parser, verify the real request and response with `swift run api-explorer` (see the `api-exploration` skill). Prefer read-only probes. Get explicit approval from the human before sending a live request that changes account data.
+YouTube Music responses are undocumented. Before changing a request or parser,
+verify the response shape with `cargo run -p ytm-explorer -- <command>` and
+follow the `api-exploration` skill. Use read-only probes and keep any
+`KASET_COOKIE_FILE` outside the repository. Exercise account writes against
+mock servers. Get explicit approval before sending a live account write.
 
 ## Debugging & Measurement
 
-For bugs about timing, lifecycle, or "why didn't this run/load/update" (SwiftUI `.task` or state churn, cold-launch ordering, perceived latency), measure before fixing. Reasoning about SwiftUI lifecycle or async ordering from source alone is unreliable, and a short timestamped trace settles in one launch what hypothesizing cannot. Add the trace, reproduce, fix what the data points at, re-measure, then remove the instrumentation before committing.
-
-The app is sandboxed, which breaks most ad-hoc logging without any error:
-
-- `Logger`/`os_log` `.info` and `.debug` lines don't reliably appear in `log stream` or `log show`.
-- Writes to a hardcoded `/tmp/...` path are blocked.
-- Window-screenshot automation is unreliable.
-
-Write throwaway traces to `NSTemporaryDirectory()`, `synchronize()` after each line, and read them from `~/Library/Containers/com.sertacozercan.Kaset/Data/tmp/` (`com.sertacozercan.Kaset.debug` for packaged debug builds). `docs/common-bug-patterns.md` has the trace template, the single-flight load pattern for the `.task`-restart cancellation deadlock, concurrency anti-patterns, and a pre-submit checklist.
-
-### Cookie storage in debug builds
-
-Sandboxed builds without a valid Developer ID or provisioning profile (local debug and ad-hoc builds) hang inside `SecItemCopyMatching` when they query the Keychain.
-
-- `#if DEBUG` builds therefore store cookies in Application Support at `Kaset/cookies.dat` and skip the Keychain. Launch with `KASET_DEBUG_COOKIE_STORAGE=keychain` to test the production Keychain path.
-- Packaged debug builds use the bundle ID `com.sertacozercan.Kaset.debug`, which gives them their own container, UserDefaults, and WebKit cookie jar. Don't package a debug build with the release bundle ID: each build's startup would overwrite the other's session.
-- The Keychain is shared, so `KASET_DEBUG_COOKIE_STORAGE=keychain` reads and writes the release archive.
-- The debug file backend has its own sign-out tombstone key (`authCookieBackupInvalidated.debugFileStorage`). Debug-only auth state must not write the release key.
+For lifecycle, timing, or async ordering issues, capture timestamped state
+transitions and reproduce before changing behavior. Measure again after the
+fix and remove temporary instrumentation. Keep credentials and account data
+out of traces.
 
 ## Code Review
 
@@ -111,18 +84,13 @@ Review findings are advisory, including P2 and P3: check each one against the re
 
 Repeatable, repo-specific workflows live in `.agents/skills/` (also exposed as `.claude/skills/`). Add new workflows there so this file stays focused on repo-wide rules.
 
-## Tauri port (in progress)
+## Architecture & Rules
 
-The app is being rewritten as a Tauri 2 + Rust app (ADR-0042) on `main`. Until
-the Swift sources are deleted, both trees exist.
-
-- Rust workspace: `crates/ytm-core` (InnerTube client, parsers; no Tauri
-  dependency, optional `specta` feature), `crates/ytm-explorer` (read-only API
-  probes, replaces `Sources/APIExplorer` for Rust work), and `app/src-tauri`
-  (crate `kaset`, the Tauri shell). `crates/kaset-cli` builds the standalone
-  `kaset` CLI and `crates/kaset-session` holds its shared non-Tauri session store.
-- Rust checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
-- App (`app/`, pnpm): `pnpm install`, `pnpm tauri dev`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm tauri build`.
+- Rust workspace: `crates/ytm-core` (InnerTube client and parsers, optional
+  `specta` feature), `crates/ytm-explorer` (read-only API probes), and
+  `app/src-tauri` (crate `kaset`, the Tauri shell). `crates/kaset-cli` builds
+  the standalone CLI, `crates/kaset-session` shares the session store between
+  app and CLI, and `crates/kaset-ipc` defines their local playback protocol.
 - IPC: commands and events go through `tauri-specta`. After changing a command,
   event, or a type they use, run `cargo test -p kaset bindings_are_current` and
   commit `app/src/bindings.ts`. Never hand-write `invoke("…")` in the frontend.
@@ -165,9 +133,5 @@ the Swift sources are deleted, both trees exist.
   command). Every `backdrop-filter` needs the `-webkit-` prefix. New API commands use
   `signed_in_request` in `commands.rs`. Test screens with
   `test/render.tsx` (`renderWithProviders`, `renderApp`) and `mockCommands`.
-- Search (`ytm-core::parsers::search`) is a port of the Swift parser verified
-  with `cargo run -p ytm-explorer -- search "<query>" --parse` and a signed-in
-  `KASET_COOKIE_FILE` outside the repository.
-- Credentials stay in `ytm_core::secret::Secret`; never log cookie values or
+- Credentials stay in `ytm_core::secret::Secret`. Never log cookie values or
   format `keyring::Error`.
-- The Swift-era minimal-dependency rule does not apply to the Rust/Tauri code.

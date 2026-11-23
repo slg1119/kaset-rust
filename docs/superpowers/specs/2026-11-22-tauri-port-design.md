@@ -1,23 +1,23 @@
 # Kaset Tauri Port — Design
 
 - Date: 2026-11-22
-- Status: Approved (brainstorming), pending implementation plan
-- Branch: `feat/tauri-port`
+- Status: Implemented through M6. See the verification items below.
+- Branch: `main`
 
 ## Goal
 
-Replace the Swift/SwiftUI macOS app with a single Tauri 2 app that runs on
+Replace the original macOS app with a single Tauri 2 app that runs on
 macOS and Windows, with the business logic in Rust and the UI in React.
 
 ## Decisions
 
 | Topic | Decision |
 |-------|----------|
-| Relationship to Swift app | **Full replacement.** Swift sources stay in the repo as reference during the port and are deleted in one change once the MVP is complete. |
+| Relationship to original app | **Full replacement.** The original sources served as a porting reference and were removed at the MVP cutover (ADR-0047). |
 | Repository | Same repository (`kaset-rust`). |
 | Frontend | React + TypeScript + Vite, pnpm. |
 | Logic placement | **Rust-centric.** API client, parsers, auth/cookies, queue and player state live in Rust. React renders and caches. |
-| Dependencies | The Swift-era "minimal dependencies" rule does not apply to the Tauri app. |
+| Dependencies | Tauri dependencies are evaluated on their own merits. |
 | Test environment | Development on macOS. Windows verified through CI build artifacts now and on real hardware later. A YouTube Music Premium account is available for DRM checks. |
 
 ## Scope
@@ -61,19 +61,18 @@ kaset/
 │  └─ src-tauri/      # Tauri shell: windows, commands, events, OS integration
 ├─ crates/
 │  ├─ ytm-core/       # Pure Rust: InnerTube client, parsers, models (no Tauri dependency)
-│  ├─ ytm-explorer/   # CLI replacing Sources/APIExplorer, for verifying real responses
+│  ├─ ytm-explorer/   # Read-only probes for verifying real responses
 │  ├─ kaset-session/  # Shared OS secure store and debug file store for app and CLI
-│  └─ kaset-cli/      # User CLI `kaset` (milestone 6): ytm-core + app remote control
-├─ Cargo.toml         # Cargo workspace
-└─ Sources/, Package.swift, …  # Swift app — deleted after MVP
+│  ├─ kaset-ipc/      # Local playback protocol and transport
+│  └─ kaset-cli/      # User CLI: ytm-core + app remote control
+└─ Cargo.toml         # Cargo workspace
 ```
 
 ### `crates/ytm-core`
 
 - InnerTube client for `music.youtube.com/youtubei/v1` with client `WEB_REMIX`,
   SAPISIDHASH authorization computed from injected cookies.
-- One parser module per endpoint, mirroring `Sources/Kaset/Services/API/Parsers/`
-  (home, search, search suggestions, playlist, album, radio queue, …).
+- Endpoint-specific parser modules for home, search, details, and radio.
 - serde models for songs, albums, playlists, artists, shelves.
 - Does not store cookies; callers pass a cookie set in.
 - Buildable and testable with `cargo test` alone.
@@ -130,8 +129,7 @@ Rust PlayerState ──emit("player://state")──▶ React player bar
 - `ytm-core` defines `YtmError` with `thiserror`:
   `AuthExpired`, `Network`, `Http { status }`, `Parse { endpoint, path }`, `RateLimited`.
   `Parse` records the JSON path that failed.
-- Parsers skip malformed individual items with a warning instead of failing
-  the whole response, matching the Swift parsers.
+- Parsers can skip malformed individual items and retain usable results.
 - Tauri commands return `Result<T, AppError>`; `AppError` serializes as
   `{ kind, message }`.
 - React: a global handler routes `AuthExpired` to sign-in; other errors show a
@@ -155,7 +153,7 @@ Rust PlayerState ──emit("player://state")──▶ React player bar
 
 - **Parsers:** snapshot tests (`insta`) against real JSON fixtures in
   `crates/ytm-core/tests/fixtures/`, captured with `ytm-explorer` and scrubbed.
-  Reuse fixtures from the Swift tests where they exist.
+  Keep fixture payloads minimal.
 - **API client:** fixed-input unit test for SAPISIDHASH; HTTP mocked with
   `wiremock`; 401/403 → `AuthExpired`.
 - **Queue/player state machine:** Rust unit tests for next, previous, repeat,
@@ -170,9 +168,9 @@ GitHub Actions matrix on macOS and Windows:
 - `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`
 - `pnpm lint`, `pnpm typecheck`, `pnpm test`
 - `tauri build`, uploading the Windows installer (`.msi` / NSIS) as an artifact
-  for later hardware verification.
+  for hardware verification.
 
-The Swift workflows are removed together with the Swift sources.
+Version tags publish a universal macOS DMG and an x64 Windows NSIS installer.
 
 ## Risks — verify first (spike, first implementation step)
 
@@ -185,25 +183,31 @@ The Swift workflows are removed together with the Swift sources.
    inherits Edge's Widevine support, but nothing confirms YouTube Music
    specifically.
 4. Google sign-in is not rejected inside the embedded WebView ("This browser
-   or app may not be secure"). The Swift app signs in through WKWebView with a
-   Safari user agent; WebView2 on Windows is unverified.
+   or app may not be secure"). macOS sign-in uses WKWebView with a Safari user agent; WebView2 on Windows is unverified.
 
 If any of these fails, stop and revisit the design before building further.
 
 ## Documentation
 
 - ADR `docs/adr/0042-tauri-rust-rewrite.md` records this decision.
-- `AGENTS.md` is rewritten for Tauri/Rust when the Swift sources are deleted.
-  The credential rule, API-over-WebView rule, and verify-with-explorer rule
-  carry over.
+- `AGENTS.md` documents the Tauri workspace and its contribution rules.
+- ADR-0047 records the removal of the original app and release path.
 
 ## Milestones
 
-0. Spike: the four risks above.
-1. Workspace scaffold, `ytm-core` client + SAPISIDHASH, `ytm-explorer`.
-2. Sign-in and cookie persistence.
-3. Playback bridge, queue, OS media controls.
-4. UI shell: sidebar, home, search, player bar.
-5. Playlist and album detail. MVP complete → delete Swift sources, rewrite AGENTS.md and CI.
-6. User CLI `kaset` (see "User CLI"): standalone commands first, then the
-   app's local IPC endpoint and CLI playback remote control.
+| Milestone | Delivered | Status |
+| --- | --- | --- |
+| M0 | Playback and sign-in spike | Done |
+| M1 | Workspace, InnerTube client, and API explorer | Done |
+| M2 | Sign-in and session persistence | Done |
+| M3 | Playback bridge, queue, and OS media controls | Done |
+| M4 | UI shell, home, search, and player bar | Done |
+| M5 | Playlist and album detail, M5b feature work, and MVP cutover | Done |
+| M6 | Standalone CLI and playback remote control | Done |
+
+## Verification status
+
+- Windows hardware verification remains open for sign-in, DRM playback,
+  media keys, and native notifications.
+- Live signed-in API verification remains open for the parity wave.
+- The track-change notification toggle shipped in M5b.

@@ -1,240 +1,60 @@
 # Contributing to Kaset
 
-Thank you for your interest in contributing! This document provides guidelines and information for developers.
+## Getting started
 
-## Getting Started
-
-### Requirements
-
-- macOS 26.0 or later
-- Xcode 16.0 or later
-- Swift 6.0
-
-### Build & Run
+Install stable Rust, Node.js 24, the pnpm version in `app/package.json`, and
+the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/).
+On macOS this includes Apple's command-line build tools. On Windows it
+includes the MSVC build tools and WebView2.
 
 ```bash
-# Clone the repository
-git clone https://github.com/sozercan/kaset.git
-cd kaset
-
-# Build from command line
-swift build
-
-# Run unit tests serially, as CI does (do not combine with UI tests)
-swift test --skip KasetUITests --no-parallel
-
-# Package and run the app
-Scripts/compile_and_run.sh
-
-# If you don't have Apple Development certificates configured,
-# use ad-hoc signing instead
-KASET_SIGNING=adhoc ./Scripts/compile_and_run.sh
-
-# Lint & Format
-swiftlint --strict && swiftformat .
+cd app
+pnpm install --frozen-lockfile
+pnpm tauri dev
 ```
 
-Or open `Package.swift` in Xcode to work in the IDE.
+Run `pnpm tauri build` from `app/` for a packaged build. The
+[release guide](docs/release.md) describes the tag workflow and signing.
 
-## Project Structure
+## Project structure
 
-```
-Package.swift           → SPM manifest (build configuration)
-Sources/
-  └── Kaset/            → Main app target
-      ├── Models/       → Data models (Song, Playlist, Album, Artist, etc.)
-      ├── Services/
-      │   ├── API/      → YTMusicClient + YouTubeClient (InnerTube API calls)
-      │   ├── Auth/     → AuthService (login state machine)
-      │   ├── Player/   → PlayerService, NowPlayingManager (playback, media keys)
-      │   └── WebKit/   → WebKitManager (cookie store, persistent login)
-      ├── ViewModels/   → Music view models plus YouTube/ video-source view models
-      ├── Utilities/    → DiagnosticsLogger, extensions
-      └── Views/        → SwiftUI views (MainWindow, Sidebar, PlayerBar, YouTube views, etc.)
-  └── APIExplorer/      → API explorer CLI tool
-Tests/                  → Unit tests (KasetTests/)
-Scripts/                → Build scripts
-docs/                   → Detailed documentation
-```
+| Path | Purpose |
+| --- | --- |
+| `app/src` | React screens, navigation, and queries |
+| `app/src-tauri` | Tauri commands, sign-in, playback, and OS integration |
+| `crates/ytm-core` | InnerTube client, parsers, and models |
+| `crates/ytm-explorer` | Read-only API probes |
+| `crates/kaset-session` | Shared session persistence |
+| `crates/kaset-ipc` | Local playback IPC protocol and transport |
+| `crates/kaset-cli` | Standalone command-line client and app remote control |
 
-### Key Files
+See [architecture](docs/architecture.md), [playback](docs/playback.md), and
+[API discovery](docs/api-discovery.md) for more detail.
 
-| File                                                | Purpose                                    |
-| --------------------------------------------------- | ------------------------------------------ |
-| `Sources/Kaset/AppDelegate.swift`                   | Window lifecycle, background audio support |
-| `Sources/Kaset/Services/WebKit/WebKitManager.swift` | Cookie store & persistence                 |
-| `Sources/Kaset/Services/Auth/AuthService.swift`     | Login state machine                        |
-| `Sources/Kaset/Services/API/YTMusicClient.swift`    | YouTube Music API client                   |
-| `Sources/Kaset/Services/API/YouTubeClient.swift`    | Regular YouTube API client                 |
-| `Sources/Kaset/Services/Player/PlayerService.swift` | Playback state & control                   |
-| `Sources/Kaset/Services/Player/YouTubePlayerService.swift` | Regular YouTube playback state & control   |
-| `Sources/Kaset/Views/MiniPlayerWebView.swift`       | Singleton WebView, playback UI             |
-| `Sources/Kaset/Views/YouTube/YouTubeWatchWebView.swift` | Singleton WebView for regular YouTube watch playback |
-| `Sources/Kaset/Views/MainWindow.swift`              | Main app window                            |
-| `Sources/Kaset/Utilities/DiagnosticsLogger.swift`   | Logging                                    |
+## Coding and verification
 
-## Architecture
+Follow [AGENTS.md](AGENTS.md) for credential handling, API verification, IPC
+bindings, and review. Keep changes focused and update the relevant docs and
+[keyboard shortcut list](docs/keyboard-shortcuts.md) when behavior changes.
 
-For detailed architecture documentation, see the `docs/` folder:
+Run the workspace checks from the repository root.
 
-- **[docs/architecture.md](docs/architecture.md)** — Services, state management, data flow
-- **[docs/playback.md](docs/playback.md)** — WebView playback system, background audio
-- **[docs/youtube.md](docs/youtube.md)** — Regular YouTube source, video playback, Shorts, comments, and parser strategy
-- **[docs/testing.md](docs/testing.md)** — Test commands, patterns, debugging
-
-### High-Level Overview
-
-The app uses a clean architecture with:
-
-- **Observable Pattern**: `@Observable` classes for reactive state management
-- **MainActor Isolation**: All UI and service classes are `@MainActor` for thread safety
-- **Dual Source Model**: YouTube Music and regular YouTube are parallel experiences behind a sidebar source toggle
-- **WebKit Integration**: Persistent `WKWebsiteDataStore` for cookie management, authentication, and DRM playback
-- **Swift Concurrency**: `async`/`await` throughout, no `DispatchQueue`
-
-### Playback Architecture
-
-Kaset has two playback paths. YouTube Music uses `PlayerService` plus the
-`SingletonPlayerWebView` at `music.youtube.com`; regular YouTube uses
-`YouTubePlayerService` plus `YouTubeWatchWebView` at `www.youtube.com`.
-`PlaybackArbiter` keeps one audio source active at a time and media keys route
-to the source that played most recently.
-
-#### YouTube Music
-
-```
-User clicks Play
-    │
-    ▼
-PlayerService.play(videoId:)
-    │
-    ├── Sets pendingPlayVideoId
-    └── Shows mini player toast (160×90)
-            │
-            ▼
-    SingletonPlayerWebView.shared
-            │
-            ├── One WebView for entire app
-            ├── Loads music.youtube.com/watch?v={id}
-            └── JS bridge sends state updates
-                    │
-                    ▼
-            PlayerService updates:
-            - isPlaying
-            - progress
-            - duration
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-#### Regular YouTube
+Run the frontend checks from `app/`.
 
-```
-User opens a YouTube video
-    │
-    ▼
-YouTubePlayerService.play(video:)
-    │
-    ├── Sets active video metadata
-    ├── Loads www.youtube.com/watch?v={id}
-    └── Hosts YouTubeWatchWebView inline or in the floating window
-            │
-            ▼
-    JavaScript bridge sends state, captions, quality, and ad updates
-            │
-            ▼
-    YouTubePlayerService updates playback state and YouTubePlayerBar
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
 
-### Authentication Flow
-
-```
-App Launch → Check cookies → __Secure-3PAPISID exists?
-    │                              │
-    │ No                           │ Yes
-    ▼                              ▼
-Show LoginSheet              AuthService.loggedIn
-    │
-    │ User signs in
-    ▼
-Observer detects cookie → Dismiss sheet
-```
-
-### Background Audio
-
-```
-Close window (⌘W) → Window hides → active playback continues
-Click dock icon    → Window shows → same Music/YouTube WebView state
-Quit app (⌘Q)     → App terminates → playback stops
-```
-
-## Coding Guidelines
-
-### Modern SwiftUI APIs
-
-| ❌ Avoid                          | ✅ Use                                     |
-| --------------------------------- | ------------------------------------------ |
-| `.foregroundColor()`              | `.foregroundStyle()`                       |
-| `.cornerRadius()`                 | `.clipShape(.rect(cornerRadius:))`         |
-| `onChange(of:) { newValue in }`   | `onChange(of:) { _, newValue in }`         |
-| `Task.sleep(nanoseconds:)`        | `Task.sleep(for: .seconds())`              |
-| `NavigationView`                  | `NavigationSplitView` or `NavigationStack` |
-| `onTapGesture()`                  | `Button` (unless tap location needed)      |
-| `tabItem()`                       | `Tab` API                                  |
-| `AnyView`                         | Concrete types or `@ViewBuilder`           |
-| `print()`                         | `DiagnosticsLogger`                        |
-| `DispatchQueue`                   | Swift concurrency (`async`/`await`)        |
-| `String(format: "%.2f", n)`       | `Text(n, format: .number.precision(...))`  |
-| Force unwraps (`!`)               | Optional handling or `guard`               |
-| Image-only buttons without labels | Add `.accessibilityLabel()`                |
-
-### Swift Concurrency
-
-- Mark `@Observable` classes with `@MainActor`
-- Never use `DispatchQueue` — use `async`/`await`, `MainActor`
-- For `@MainActor` test classes, don't call `super.setUp()` in async context:
-
-```swift
-@MainActor
-final class MyServiceTests: XCTestCase {
-    override func setUp() async throws {
-        // Do NOT call: try await super.setUp()
-        // Set up test fixtures here
-    }
-
-    override func tearDown() async throws {
-        // Clean up here
-        // Do NOT call: try await super.tearDown()
-    }
-}
-```
-
-**Why?** `XCTestCase` is not `Sendable`. Calling `super.setUp()` from a `@MainActor` async context sends `self` across actor boundaries, causing Swift 6 strict concurrency errors.
-
-### WebKit Patterns
-
-- Use `WebKitManager`'s shared `WKWebsiteDataStore` for cookie persistence
-- Use `SingletonPlayerWebView.shared` for playback (never create multiple WebViews)
-- Compute `SAPISIDHASH` fresh per request using current cookies
-
-### Keyboard Shortcuts
-
-- Preserve standard macOS app/window shortcuts such as `⌘M`, `⌘W`, `⌘Q`, `⌘H`, and `⌘,` unless there is explicit product direction to change them
-- Prefer native macOS and Apple Music shortcut conventions for playback actions
-- Update `docs/keyboard-shortcuts.md` whenever shortcut behavior changes
-
-### Error Handling
-
-- Throw `YTMusicError.authExpired` on HTTP 401/403
-- Use `DiagnosticsLogger` for all logging (not `print()`)
-- Show user-friendly error messages with retry options
-
-## Pull Request Guidelines
-
-1. **No Third-Party Frameworks** — Do not introduce third-party dependencies without discussion first
-2. **Build Must Pass** — Run `swift build`
-3. **Tests Must Pass** — Run `swift test --skip KasetUITests --no-parallel` for unit tests
-4. **Linting** — Run `swiftlint --strict && swiftformat .` before submitting
-5. **Small PRs** — Keep changes focused and reviewable
-6. **Share AI Prompts** — If you used AI assistance, include the prompt in your PR (see below)
+Record the commands and results in your PR. See the [testing guide](docs/testing.md)
+for focused checks and desktop verification.
 
 ## AI-Assisted Contributions & Prompt Requests
 
@@ -270,29 +90,3 @@ Create an issue using the **Prompt Request** template if you:
 3. **Define acceptance criteria** — How will we know it worked?
 4. **Include context** — Link to issues, docs, or examples
 5. **Test locally when possible** — Verify the prompt produces working code
-
-### Example Prompt
-
-```
-Add haptic feedback to the shuffle button in PlayerBar.swift.
-
-Requirements:
-- Use HapticService.toggle() on button tap
-- Only trigger haptic on state change (not when already shuffled)
-- Follow existing haptic patterns used in volume controls
-- Add unit test in PlayerServiceTests.swift
-
-Reference: Sources/Kaset/Services/HapticService.swift for existing patterns
-```
-
-## Testing
-
-```bash
-# Run unit tests serially, as CI does (several suites share singletons)
-swift test --skip KasetUITests --no-parallel
-
-# Run specific unit test (use --filter)
-swift test --skip KasetUITests --filter PlayerServiceTests
-```
-
-See [docs/testing.md](docs/testing.md) for detailed testing patterns and debugging tips.

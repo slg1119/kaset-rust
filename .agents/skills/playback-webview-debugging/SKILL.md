@@ -1,32 +1,25 @@
 ---
 name: playback-webview-debugging
-description: Use when playback, auth recovery, queue sync, or hidden WebView state diverges from native Swift state and you need to debug the DRM playback WebView, bridge events, or cookie/auth behavior.
+description: Use when investigating Tauri player navigation, DRM playback, bridge events, queue synchronization, or playback session recovery.
 metadata:
-  short-description: Debug playback WebView state
+  short-description: Debug the Tauri player WebView
 ---
 
 # Playback WebView Debugging
 
-Typical symptoms: playback starts, stops, or advances unexpectedly; API calls return 401/403 because auth looks stale; WebView metadata drifts from the native queue; or you need to see JavaScript bridge events or DOM/player state.
+1. Reproduce using `cd app && pnpm tauri dev`. Ask before running UI tests.
+2. Start a track to create the hidden `player` window. Use WebView devtools
+   in a local debug build, targeting the player document rather than the
+   React window. On macOS, use Safari's Develop menu when the player
+   document is listed. For a local diagnostic build, open the player
+   window's devtools explicitly if the hidden window cannot be selected.
+3. Compare timestamped navigation, bridge events, and Rust state. Confirm
+   that the event belongs to the current video and that any async response
+   matches the current session and queue generation.
+4. Keep cookies, headers, and private response data out of traces and
+   captures. Remove temporary instrumentation and rerun the reproduction.
 
-## Runtime Workflow
-
-1. Reproduce with the packaged app or `Scripts/compile_and_run.sh` (see the `dev-loop-packaging` skill).
-2. Watch runtime logs in the Xcode Console with the filters `subsystem:com.sertacozercan.Kaset category:Player` and `subsystem:com.sertacozercan.Kaset category:Auth` (see `DiagnosticsLogger`). `.info`/`.debug` lines don't reliably surface from the sandbox, so for timing or ordering questions use a file trace as described under Debugging & Measurement in `AGENTS.md`.
-3. In debug builds, confirm `webView.isInspectable = true`, then inspect the player WebView with Safari Web Inspector.
-4. To simulate auth expiry, delete both `__Secure-3PAPISID` and `SAPISID` with Safari Web Inspector's storage tools, then trigger an authenticated API call. `WebKitManager.getSAPISID()` falls back to `SAPISID`, so deleting only one keeps the session alive.
-5. If auth cookies or headers look wrong, run `swift run api-explorer auth` and compare against the exported cookie state.
-
-## Landmarks
-
-- `docs/testing.md`
-- `docs/playback.md`
-- `Sources/Kaset/Views/MiniPlayerWebView.swift`
-- `Sources/Kaset/Views/SingletonPlayerWebView+ObserverScript.swift`
-- `Sources/Kaset/Views/SingletonPlayerWebView+NavigationState.swift`
-- `Sources/Kaset/Views/SingletonPlayerWebView+QueueInjection.swift`
-- `Sources/Kaset/Services/Player/PlayerService.swift`
-- `Sources/Kaset/Services/Player/PlayerService+WebPlaybackIdentity.swift`
-- `Sources/Kaset/Services/Player/PlayerService+WebQueueSync.swift`
-- `Sources/Kaset/Services/Player/PlayerService+QueueNavigationRecovery.swift`
-- `Sources/Kaset/Services/WebKit/WebKitManager.swift`
+Bridge and playback code live in `app/src-tauri/src/player/`. The remote
+permissions are in `app/src-tauri/capabilities/player.json`.
+See `docs/playback.md` and `docs/testing.md` for the architecture and
+verification commands.
