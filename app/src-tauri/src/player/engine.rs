@@ -711,6 +711,7 @@ mod tests {
 
     fn song(id: &str) -> Song {
         Song {
+            album: None,
             is_podcast_episode: None,
             video_id: id.into(),
             title: format!("Song {id}"),

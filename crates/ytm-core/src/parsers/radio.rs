@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use super::helpers::album_from_run;
 use crate::YtmError;
 use crate::json::{at, str_at, thumbnail_url};
 use crate::models::{ArtistRef, RadioQueue, Song};
@@ -72,6 +73,11 @@ fn parse_song(item: &Value) -> Option<Song> {
             )
         })?;
     Some(Song {
+        album: at(renderer, &["longBylineText", "runs"])
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .find_map(album_from_run),
         is_podcast_episode: None,
         video_id: str_at(renderer, &["videoId"])?.into(),
         title: str_at(renderer, &["title", "runs", "0", "text"])?.into(),
@@ -102,7 +108,7 @@ mod tests {
 
     use super::{parse_radio, parse_radio_continuation};
     use crate::YtmError;
-    use crate::models::{ArtistRef, Song};
+    use crate::models::{AlbumRef, ArtistRef, Song};
 
     #[test]
     fn parses_radio_songs_in_order_and_skips_incomplete_items() {
@@ -114,6 +120,10 @@ mod tests {
             queue.songs,
             [
                 Song {
+                    album: Some(AlbumRef {
+                        browse_id: "MPREb_test_album".into(),
+                        title: "Test album".into(),
+                    }),
                     is_podcast_episode: None,
                     video_id: "test-vid001".into(),
                     title: "Seed song".into(),
@@ -134,6 +144,7 @@ mod tests {
                     thumbnail_url: Some("https://example.com/test-large.jpg".into()),
                 },
                 Song {
+                    album: None,
                     is_podcast_episode: None,
                     video_id: "test-vid002".into(),
                     title: "Wrapped song".into(),
@@ -154,6 +165,7 @@ mod tests {
         assert_eq!(
             queue.songs,
             [Song {
+                album: None,
                 is_podcast_episode: None,
                 video_id: "test-vid004".into(),
                 title: "More music".into(),

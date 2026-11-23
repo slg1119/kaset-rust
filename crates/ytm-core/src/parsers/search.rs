@@ -9,8 +9,8 @@ use regex::Regex;
 use serde_json::Value;
 
 use super::helpers::{
-    artists_from_flex_column, is_artist_page_type, is_clock_duration, is_navigable_artist_id,
-    page_type,
+    album_from_run, artists_from_flex_column, is_artist_page_type, is_clock_duration,
+    is_navigable_artist_id, metadata_runs, page_type,
 };
 use crate::json::{at, str_at, thumbnail_url};
 use crate::models::{ArtistRef, BrowseCard, SearchItem, SearchResults, Song};
@@ -361,6 +361,7 @@ fn parse_renderer(renderer: &Value, endpoints: &[&Value]) -> Option<SearchItem> 
 
     let (video_id, video_type) = playable(renderer, endpoints)?;
     let song = Song {
+        album: None,
         is_podcast_episode: None,
         video_id: video_id.to_owned(),
         title,
@@ -378,6 +379,7 @@ fn parse_renderer(renderer: &Value, endpoints: &[&Value]) -> Option<SearchItem> 
         }));
     }
     let song = Song {
+        album: metadata_runs(renderer).into_iter().find_map(album_from_run),
         artists: item_artists(renderer, true),
         ..song
     };
@@ -502,28 +504,6 @@ fn item_title(renderer: &Value) -> Option<String> {
 }
 
 // MARK: - Metadata
-
-/// Runs of the flex columns after the title, or else `subtitle` and
-/// `secondSubtitle`.
-fn metadata_runs(renderer: &Value) -> Vec<&Value> {
-    let flex: Vec<&Value> = array(renderer.get("flexColumns"))
-        .iter()
-        .skip(1)
-        .flat_map(|column| {
-            array(at(
-                column,
-                &["musicResponsiveListItemFlexColumnRenderer", "text", "runs"],
-            ))
-        })
-        .collect();
-    if !flex.is_empty() {
-        return flex;
-    }
-    ["subtitle", "secondSubtitle"]
-        .iter()
-        .flat_map(|key| array(at(renderer, &[key, "runs"])))
-        .collect()
-}
 
 fn split_metadata(text: &str) -> impl Iterator<Item = &str> {
     text.split(['•', '·'])

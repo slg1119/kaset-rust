@@ -1,8 +1,8 @@
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { events, mockCommands } from "./bindings";
-import { idleSnapshot } from "./player/testing";
+import { events, mockCommands, type Song } from "./bindings";
+import { idleSnapshot, playingState, testSong } from "./player/testing";
 import { account, home } from "./test/fixtures";
 import { renderApp } from "./test/render";
 
@@ -186,4 +186,38 @@ test("keyboard shortcuts control playback and navigation", async () => {
   // Space types in the search field instead of toggling playback.
   await userEvent.keyboard(" ");
   expect(togglePlayback).toHaveBeenCalledTimes(1);
+});
+
+test("carries a song's album through the queue and opens it from player artwork", async () => {
+  const album = { browse_id: "MPREb_test_album", title: "Test record" };
+  const song = { ...testSong, album };
+  const playQueue = vi.fn(() => null);
+  const getBrowsePage = vi.fn(() => ({
+    title: album.title, subtitle: null, second_subtitle: null, thumbnail_url: null,
+    songs: [song], continuation: null,
+  }));
+  mockCommands({
+    authStatus: () => "signed_in",
+    getAccount: () => account,
+    getFeed: () => ({ ...home, sections: [{ title: "Quick picks", items: [{ ...song, kind: "song" }] }] }),
+    playerSnapshot: () => idleSnapshot,
+    playQueue,
+    getBrowsePage,
+  });
+  renderApp();
+
+  await userEvent.click(await screen.findByRole("button", { name: /Play Test song/ }));
+  expect(playQueue).toHaveBeenCalledWith({ songs: [song], startIndex: 0 });
+
+  const playTrack = (track: Song) => act(() => events.playerState.emit({ state: playingState({ track }) }));
+  await playTrack(testSong);
+  const player = within(await screen.findByRole("contentinfo", { name: "Player" }));
+  expect(player.queryByRole("button", { name: /Open album/ })).not.toBeInTheDocument();
+
+  await playTrack(song);
+  await userEvent.click(player.getByRole("button", { name: "Open album Test record" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Test record" })).toBeInTheDocument();
+  expect(getBrowsePage).toHaveBeenCalledExactlyOnceWith({ browseId: album.browse_id });
+  await userEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "Home" })).toBeInTheDocument();
 });

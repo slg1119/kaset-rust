@@ -4,9 +4,58 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::json::{at, str_at};
-use crate::models::ArtistRef;
+use crate::models::{AlbumRef, ArtistRef};
 
 const BROWSE_ENDPOINT: &[&str] = &["navigationEndpoint", "browseEndpoint"];
+
+/// Runs of the flex columns after the title, or else `subtitle` and
+/// `secondSubtitle`.
+pub(super) fn metadata_runs(renderer: &Value) -> Vec<&Value> {
+    let flex: Vec<&Value> = renderer
+        .get("flexColumns")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .skip(1)
+        .flat_map(|column| {
+            at(
+                column,
+                &["musicResponsiveListItemFlexColumnRenderer", "text", "runs"],
+            )
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        })
+        .collect();
+    if !flex.is_empty() {
+        return flex;
+    }
+    ["subtitle", "secondSubtitle"]
+        .iter()
+        .flat_map(|key| {
+            at(renderer, &[key, "runs"])
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .collect()
+}
+
+/// A canonical album link from a subtitle or byline run.
+pub(super) fn album_from_run(run: &Value) -> Option<AlbumRef> {
+    album_ref(
+        str_at(at(run, BROWSE_ENDPOINT)?, &["browseId"])?,
+        run_text(run)?,
+    )
+}
+
+pub(super) fn album_ref(browse_id: &str, title: &str) -> Option<AlbumRef> {
+    let suffix = browse_id.strip_prefix("MPREb_")?;
+    (!suffix.is_empty() && !title.trim().is_empty()).then(|| AlbumRef {
+        browse_id: browse_id.into(),
+        title: title.into(),
+    })
+}
 
 pub(super) fn page_type(browse: &Value) -> Option<&str> {
     str_at(

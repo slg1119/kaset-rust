@@ -47,6 +47,7 @@ impl Playback for FakePlayer {
         *self.page_id.lock().unwrap() = Some(browse_id);
         self.change(Action::Replace(vec![
             Song {
+                album: None,
                 is_podcast_episode: None,
                 video_id: "test-vid001".into(),
                 title: "Test song".into(),
@@ -57,6 +58,7 @@ impl Playback for FakePlayer {
                 thumbnail_url: None,
             },
             Song {
+                album: None,
                 is_podcast_episode: None,
                 video_id: "test-vid002".into(),
                 title: "Second song".into(),

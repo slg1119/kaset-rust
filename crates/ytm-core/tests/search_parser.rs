@@ -40,6 +40,9 @@ fn parses_shelves_in_server_order() {
         panic!("expected a song");
     };
     assert_eq!(song.title, "Search Result Song 1");
+    let album = song.album.as_ref().expect("linked third flex column");
+    assert_eq!(album.browse_id, "MPREb_search_album_1");
+    assert_eq!(album.title, "Search Album 1");
     assert_eq!(
         song.artists,
         [ArtistRef {

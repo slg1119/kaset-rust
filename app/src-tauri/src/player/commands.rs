@@ -110,10 +110,27 @@ pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
             format!("A queue holds at most {MAX_QUEUE_LEN} songs."),
         ));
     }
+    for album in songs.iter().filter_map(|song| song.album.as_ref()) {
+        checked_browse_id(&album.browse_id)?;
+        if !album
+            .browse_id
+            .strip_prefix("MPREb_")
+            .is_some_and(|suffix| !suffix.is_empty())
+        {
+            return Err(AppError::new(
+                ErrorKind::InvalidArgument,
+                "Invalid album browse ID.",
+            ));
+        }
+    }
     let too_long = |value: &str| value.len() > MAX_SONG_STRING_BYTES;
     if songs.iter().any(|song| {
         too_long(&song.video_id)
             || too_long(&song.title)
+            || song
+                .album
+                .as_ref()
+                .is_some_and(|album| too_long(&album.title))
             || song.thumbnail_url.as_deref().is_some_and(too_long)
             || song.artists.iter().any(|artist| {
                 too_long(&artist.name) || artist.browse_id.as_deref().is_some_and(too_long)
@@ -363,6 +380,7 @@ mod tests {
 
     fn song() -> Song {
         Song {
+            album: None,
             is_podcast_episode: None,
             video_id: "abc-DEF_123".into(),
             title: "Test song".into(),
@@ -381,6 +399,31 @@ mod tests {
         songs.push(song());
         let error = validate_queue(&songs).unwrap_err();
         assert_eq!(error.kind, ErrorKind::InvalidArgument);
+    }
+
+    #[test]
+    fn validates_optional_album_ids_at_the_queue_boundary() {
+        let mut track = song();
+        track.album = Some(ytm_core::models::AlbumRef {
+            browse_id: "MPREb_test-album".into(),
+            title: "Test album".into(),
+        });
+        assert!(validate_queue(std::slice::from_ref(&track)).is_ok());
+
+        for id in [
+            "MPREb_",
+            "MPREb_bad/path",
+            "UCtest-artist",
+            &"MPREb_x".repeat(40),
+        ] {
+            track.album.as_mut().unwrap().browse_id = id.into();
+            assert_eq!(
+                validate_queue(std::slice::from_ref(&track))
+                    .unwrap_err()
+                    .kind,
+                ErrorKind::InvalidArgument
+            );
+        }
     }
 
     #[test]

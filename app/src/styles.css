@@ -852,6 +852,16 @@ button.top-card:hover {
   background: var(--accent-hover);
 }
 
+.player-album {
+  display: flex;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .player-now {
   display: flex;
   align-items: center;

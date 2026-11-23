@@ -41,7 +41,7 @@ function ShellLayout() {
       : { kind: "artist", browseId, name, from: current });
   }
 
-  function openPage(card: PageCard) {
+  function openPage(card: Pick<PageCard, "kind" | "browse_id" | "title">) {
     if (card.kind === "artist") {
       openArtist(card.browse_id, card.title);
       return;
@@ -50,7 +50,9 @@ function ShellLayout() {
       setRoute({ kind: "podcast_show", browseId: card.browse_id, title: card.title, from: route });
       return;
     }
-    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, isAlbum: card.kind === "album", from: route });
+    setRoute((current) => current.kind === "page" && current.browseId === card.browse_id
+      ? current
+      : { kind: "page", browseId: card.browse_id, title: card.title, isAlbum: card.kind === "album", from: current });
   }
 
   function openCategory(item: CategoryItem) {
@@ -143,7 +145,7 @@ function ShellLayout() {
           );
         })}
         <NoticeBanner />
-        <PlayerBar onOpenArtist={openArtist} />
+        <PlayerBar onOpenArtist={openArtist} onOpenAlbum={(album) => openPage({ ...album, kind: "album" })} />
       </div>
     </div>
   );

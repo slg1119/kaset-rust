@@ -26,7 +26,10 @@
                                   {"text": ", "},
                                   {"text": "Third artist"},
                                   {"text": " • "},
-                                  {"text": "Test album"}
+                                  {
+                                    "text": "Test album",
+                                    "navigationEndpoint": {"browseEndpoint": {"browseId": "MPREb_test_album"}}
+                                  }
                                 ]
                               },
                               "thumbnail": {

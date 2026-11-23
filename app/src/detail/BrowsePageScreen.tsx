@@ -65,10 +65,18 @@ async function fetchPage(browseId: string, cursor: string | null): Promise<Track
   return { header, tracks: header };
 }
 
-function playlistRows(pages: TrackPage[]) {
-  const cover = pages[0]?.header?.thumbnail_url;
+function playlistRows(pages: TrackPage[], browseId: string) {
+  const header = pages[0]?.header;
+  const cover = header?.thumbnail_url;
+  const album = browseId.startsWith("MPREb_") && header?.title
+    ? { browse_id: browseId, title: header.title }
+    : undefined;
   return pages.flatMap(({ tracks }) => tracks.songs.map((song, index) => ({
-    song: song.thumbnail_url === null && cover ? { ...song, thumbnail_url: cover } : song,
+    song: {
+      ...song,
+      ...(song.thumbnail_url === null && cover && { thumbnail_url: cover }),
+      ...(!song.album && album && { album }),
+    },
     setVideoId: tracks.set_video_ids?.[index],
   })));
 }
@@ -129,7 +137,7 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
   const data = page.data?.pages[0]?.header;
   const headingId = useId();
   const pageTitle = data?.title || title;
-  const rows = page.data ? playlistRows(page.data.pages) : [];
+  const rows = page.data ? playlistRows(page.data.pages, browseId) : [];
   const songs = rows.map(({ song }) => song);
   const playlist = !isAlbum && browseId !== LIKED_SONGS_ID ? data?.playlist : undefined;
   const editing = save.isPending || removeTrack.isPending;
@@ -161,7 +169,7 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
         if (controller.signal.aborted) return;
         if (!next.data) return;
         hasMore = next.hasNextPage;
-        allSongs = playlistRows(next.data.pages).map(({ song }) => song);
+        allSongs = playlistRows(next.data.pages, browseId).map(({ song }) => song);
       }
       if (allSongs.length === 0) return;
       // A row beyond the IPC cap starts its own queue at that row.

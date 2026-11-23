@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 use super::helpers::{
-    artists_from_flex_column, artists_from_runs, is_artist_page_type, is_navigable_artist_id,
-    page_type,
+    album_from_run, artists_from_flex_column, artists_from_runs, is_artist_page_type,
+    is_navigable_artist_id, metadata_runs, page_type,
 };
 use super::podcasts::parse_multi_row_episode;
 use crate::YtmError;
@@ -247,6 +247,7 @@ fn parse_watch_item(renderer: &Value, endpoint_key: &str) -> Option<Song> {
     let video_id = str_at(renderer, &[endpoint_key, "watchEndpoint", "videoId"])
         .filter(|id| !id.is_empty())?;
     Some(Song {
+        album: metadata_runs(renderer).into_iter().find_map(album_from_run),
         is_podcast_episode: None,
         video_id: video_id.into(),
         title: renderer.get("title").and_then(runs_text)?,
@@ -296,6 +297,7 @@ pub(super) fn parse_responsive_song(renderer: &Value) -> Option<Song> {
         })
         .or_else(|| str_at(renderer, PLAY_BUTTON_VIDEO_ID))?;
     Some(Song {
+        album: metadata_runs(renderer).into_iter().find_map(album_from_run),
         is_podcast_episode: None,
         video_id: video_id.into(),
         title: flex_column(renderer, 0).and_then(runs_text)?,

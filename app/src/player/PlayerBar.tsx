@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { commands, type RepeatMode } from "../bindings";
+import { commands, type AlbumRef, type RepeatMode } from "../bindings";
 import { errorMessage } from "../errors";
 import { LyricsIcon, NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
@@ -30,7 +30,10 @@ const SEEK_SETTLE_MS = 2000;
  * queued. Publishes its height as `--player-space` on its parent so the
  * scrolling content can leave room below the last row.
  */
-export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
+export function PlayerBar({ onOpenArtist, onOpenAlbum }: {
+  onOpenArtist?: OpenArtist;
+  onOpenAlbum?: (album: AlbumRef) => void;
+}) {
   const { report, dismiss } = useNotice();
   const { state, queue } = usePlayer();
   // While the user drags the seek slider, show the drag position.
@@ -109,6 +112,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
 
   if (state === null || state.track === null) return null;
   const track = state.track;
+  const album = track.album;
 
   function run(action: () => Promise<unknown>) {
     dismiss();
@@ -170,7 +174,18 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
         </button>
       </div>
       <div className="player-now">
-        <Artwork url={track.thumbnail_url} size={44} />
+        {album && onOpenAlbum ? (
+          <button
+            className="player-album"
+            type="button"
+            aria-label={`Open album ${album.title}`}
+            onClick={() => onOpenAlbum(album)}
+          >
+            <Artwork url={track.thumbnail_url} size={44} />
+          </button>
+        ) : (
+          <Artwork url={track.thumbnail_url} size={44} />
+        )}
         <div className="player-meta">
           <div className="player-title">
             <strong className="item-title">{track.title}</strong>

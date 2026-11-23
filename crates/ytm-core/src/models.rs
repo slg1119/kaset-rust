@@ -9,7 +9,16 @@ pub struct ArtistRef {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct AlbumRef {
+    pub browse_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Song {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album: Option<AlbumRef>,
     /// Known podcast episodes skip track-rating controls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_podcast_episode: Option<bool>,
@@ -361,6 +370,7 @@ mod tests {
     #[test]
     fn song_round_trips_through_json() {
         let song = Song {
+            album: None,
             is_podcast_episode: None,
             video_id: "test-video1".into(),
             title: "Test song".into(),

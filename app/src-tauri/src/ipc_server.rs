@@ -174,6 +174,7 @@ async fn execute(player: &impl Playback, command: Command) -> Result<Response, A
             return Ok(Response::Ok);
         }
         Command::PlayVideo { video_id } => Action::Replace(vec![Song {
+            album: None,
             is_podcast_episode: None,
             title: video_id.clone(),
             video_id,

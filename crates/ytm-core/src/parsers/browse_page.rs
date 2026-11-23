@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::account_actions::{playlist_actions, playlist_set_video_id};
-use super::helpers::{append_actions, shelf_continuation};
+use super::helpers::{album_ref, append_actions, shelf_continuation};
 use super::home::parse_responsive_song;
 use crate::YtmError;
 use crate::json::{at, runs_text, str_at, thumbnail_url};
@@ -103,7 +103,11 @@ fn parse_page(value: &Value, browse_id: Option<&str>) -> Result<BrowsePage, YtmE
         continuation,
         set_video_ids,
     } = parse_track_shelves(track_shelves);
+    let album = browse_id.and_then(|id| album_ref(id, &title));
     for song in &mut songs {
+        if song.album.is_none() {
+            song.album.clone_from(&album);
+        }
         if song.thumbnail_url.is_none() {
             song.thumbnail_url.clone_from(&thumbnail);
         }

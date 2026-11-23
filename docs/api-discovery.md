@@ -32,3 +32,14 @@ provides read-only probes. Use mock servers when implementing likes, library
 edits, playlist edits, or subscriptions.
 
 Earlier protocol investigations are in this document's Git history.
+
+## Track album links
+
+Guest probes via `ytm-explorer radio` and `page` confirmed that the
+watch-next track byline can link to a canonical `MPREb_` album and that
+album browse rows can omit the link. The byline path is
+`playlistPanelVideoRenderer.longBylineText.runs[].navigationEndpoint.browseEndpoint.browseId`.
+For responsive search and shelf rows, the Swift flex-column parser and
+sanitized fixtures use the same browse endpoint inside metadata-column
+text runs. The run text supplies the album title. Album pages can supply
+their own request ID and header title when a row lacks a link.

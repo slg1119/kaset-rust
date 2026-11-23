@@ -45,6 +45,18 @@
                                     ]
                                   }
                                 }
+                              },
+                              {
+                                "musicResponsiveListItemFlexColumnRenderer": {
+                                  "text": {
+                                    "runs": [
+                                      {
+                                        "text": "Search Album 1",
+                                        "navigationEndpoint": {"browseEndpoint": {"browseId": "MPREb_search_album_1"}}
+                                      }
+                                    ]
+                                  }
+                                }
                               }
                             ],
                             "thumbnail": {

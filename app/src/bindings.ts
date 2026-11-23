@@ -147,6 +147,11 @@ export type AddToPlaylistOption = {
 	privacy_status: PlaylistPrivacy | null,
 };
 
+export type AlbumRef = {
+	browse_id: string,
+	title: string,
+};
+
 /**
  *  Error returned by every command. Serializes as `{ kind, message }`.
  *  `message` is for display and never contains cookies or headers.
@@ -443,6 +448,7 @@ export type ShelfItem = {
 } & BrowseCard | { kind: "category"; title: string; browse_id: string; params: string | null; color: string | null };
 
 export type Song = {
+	album?: AlbumRef | null,
 	/**  Known podcast episodes skip track-rating controls. */
 	is_podcast_episode?: boolean | null,
 	video_id: string,

@@ -4,6 +4,9 @@ expression: results
 ---
 items:
   - kind: song
+    album:
+      browse_id: MPREb_search_album_1
+      title: Search Album 1
     video_id: search-video-1
     title: Search Result Song 1
     artists:

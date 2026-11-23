@@ -30,7 +30,7 @@ fn two_column(header: Value, sections: Value) -> Value {
 
 #[test]
 fn album_reads_header_and_tracks_with_cover_fallback() {
-    let page = parse_browse_page(&two_column(
+    let page = parse_browse_page_for_id(&two_column(
         json!({
             "title": {"runs": [{"text": "Test Album"}]},
             "subtitle": {"runs": [{"text": "Album"}, {"text": " • "}, {"text": "Test Artist"}]},
@@ -42,13 +42,18 @@ fn album_reads_header_and_tracks_with_cover_fallback() {
             track("test-video2", "Track Two", None),
             track("", "Unavailable", None)
         ]}}]),
-    ))
+    ), "MPREb_test_album")
     .unwrap();
     assert_eq!(page.title, "Test Album");
     assert_eq!(page.subtitle.as_deref(), Some("Album • Test Artist"));
     assert_eq!(page.second_subtitle.as_deref(), Some("2 songs"));
     assert_eq!(page.thumbnail_url.as_deref(), Some(ART));
     assert_eq!(page.songs.len(), 2);
+    assert!(page.songs.iter().all(|song| {
+        song.album.as_ref().is_some_and(|album| {
+            album.browse_id == "MPREb_test_album" && album.title == "Test Album"
+        })
+    }));
     assert_eq!(page.songs[0].artists[0].name, "Test Artist");
     assert_eq!(page.songs[1].thumbnail_url.as_deref(), Some(ART));
     assert!(page.songs[1].artists.is_empty());

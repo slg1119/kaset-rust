@@ -23,6 +23,7 @@ export function toSong(item: Song | Episode): Song {
     title: item.title,
     artists: item.artists,
     thumbnail_url: item.thumbnail_url,
+    ...(item.album && { album: item.album }),
     ...((item.is_podcast_episode || ("kind" in item && item.kind === "episode")) && { is_podcast_episode: true }),
   };
 }
