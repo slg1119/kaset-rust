@@ -416,15 +416,20 @@ impl Player {
         {
             return Err(PlayerError::NothingToPlay);
         }
-        let resume = self.is_ended() && self.queue.current().is_none();
-        let result = if next {
+        let resume = self.is_ended();
+        let ended_with_current = self.queue.current().is_some();
+        let result = if resume {
+            self.queue.enqueue_after_end(songs)
+        } else if next {
             self.queue.insert_next(songs)
         } else {
             self.queue.enqueue(songs)
         };
         let outcome = if resume && result == QueueAddResult::Added {
             self.record_queue_edit();
-            self.reset_radio();
+            if !ended_with_current {
+                self.reset_radio();
+            }
             self.load_current(now)
         } else {
             self.queue_edited(result == QueueAddResult::Added, now)
@@ -835,6 +840,24 @@ mod tests {
             let queue = outcome.queue.unwrap();
             assert_eq!(queue.songs, vec![song(A), song(C)]);
             assert_eq!(queue.current, Some(1));
+        }
+    }
+
+    #[test]
+    fn task13_adding_after_natural_queue_end_loads_the_added_song() {
+        for add in [Player::enqueue, Player::insert_next] {
+            let (mut player, now) = playing(&[A, B], 1);
+            let ended = player.handle_event(ended(B), now);
+            assert_eq!(ended.state.unwrap().status, PlaybackStatus::Ended);
+            assert_eq!(player.queue_state().current, Some(1));
+
+            let (result, outcome) = add(&mut player, vec![song(C), song(B)], now).unwrap();
+            assert_eq!(result, QueueAddResult::Added);
+            assert_eq!(outcome.command, Some(WebCommand::Load(id(C))));
+            assert_eq!(outcome.state.unwrap().status, PlaybackStatus::Loading);
+            let queue = outcome.queue.unwrap();
+            assert_eq!(queue.songs, vec![song(A), song(B), song(C), song(B)]);
+            assert_eq!(queue.current, Some(2));
         }
     }
 

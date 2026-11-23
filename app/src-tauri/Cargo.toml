@@ -41,5 +41,6 @@ ytm-core = { version = "0.1.0", path = "../../crates/ytm-core", features = ["spe
 windows = { version = "0.62", features = ["Media", "Win32_Foundation", "Win32_System_WinRT"] }
 
 [dev-dependencies]
+wiremock = "0.6"
 kaset-session = { path = "../../crates/kaset-session", features = ["test-support"] }
 tokio = { version = "1", features = ["macros", "rt"] }

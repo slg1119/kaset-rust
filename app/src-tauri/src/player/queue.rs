@@ -123,6 +123,17 @@ impl Queue {
         }
     }
 
+    /// After playback ends, keep the old entries as history and select the
+    /// first new occurrence, as when appending after a removed final track.
+    pub(super) fn enqueue_after_end(&mut self, songs: Vec<Song>) -> QueueAddResult {
+        let previous = self.position.take();
+        let result = self.enqueue(songs);
+        if result != QueueAddResult::Added {
+            self.position = previous;
+        }
+        result
+    }
+
     /// Only tracks before the current position can be dropped to make room.
     /// Without a current song, every retained track is played history.
     fn append_unique(

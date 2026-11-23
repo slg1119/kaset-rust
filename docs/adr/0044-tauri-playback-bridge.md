@@ -160,7 +160,8 @@ an upcoming occurrence, and Add to Queue skips it. Either action can replay
 a current or played track that has no upcoming occurrence. The 500-song cap
 can evict played history to make room. Reordering stays within upcoming tracks.
 Removing the last current track ends playback and retains played history.
-Adding to that queue appends after the history and starts the first addition.
+Adding after removal or natural completion appends after the history and
+starts the first addition.
 A fresh queue can hold staged songs until the user starts playback. Queue
 additions report duplicate and capacity outcomes separately. Turning shuffle
 off restores the underlying order of retained songs.

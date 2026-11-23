@@ -10,7 +10,6 @@ use ytm_core::secret::Secret;
 use super::{checked_id, checked_token, signed_in_request_with_epoch};
 use crate::error::{AppError, ErrorKind};
 use crate::player::queue::MAX_QUEUE_LEN;
-use crate::session::AuthStatus;
 use crate::state::AppState;
 use crate::webview_session::blocking;
 
@@ -38,8 +37,8 @@ pub struct SongActionStatus {
     can_remove: bool,
 }
 
-/// Serializes feedback writes and token storage. Metadata requests run outside
-/// the lock and cannot restore tokens fetched before a successful edit.
+/// Stores feedback tokens for the active session. Metadata fetched before a
+/// successful edit cannot restore invalidated tokens.
 #[derive(Default)]
 pub(crate) struct FeedbackCache {
     epoch: u64,
@@ -212,16 +211,35 @@ pub async fn edit_library(
 ) -> Result<(), AppError> {
     checked_id(&edit.video_id, "Invalid video ID.")?;
     account_request(&app, &state, async |client, epoch| {
-        let mut cache = state.feedback.lock().await;
-        if state.session.epoch() != epoch || state.session.status() != AuthStatus::SignedIn {
-            return Err(AppError::not_signed_in());
-        }
-        let token = cache.token(epoch, &edit.video_id, edit.action)?;
-        client.edit_library(token).await?;
-        cache.edited(&edit.video_id);
-        Ok(())
+        send_library_edit(&state, &client, epoch, &edit).await
     })
     .await
+}
+
+async fn send_library_edit(
+    state: &AppState,
+    client: &InnerTubeClient,
+    epoch: u64,
+    edit: &LibraryEdit,
+) -> Result<(), AppError> {
+    // Serialize edits so a token cannot be submitted twice while its request
+    // is pending. Sign-out and metadata reads only use the feedback cache lock.
+    let _edit = state.library_edits.lock().await;
+    let token = {
+        let mut cache = state.feedback.lock().await;
+        if !state.session.is_signed_in_at(epoch) {
+            return Err(AppError::not_signed_in());
+        }
+        cache.token(epoch, &edit.video_id, edit.action)?.clone()
+    };
+    client.edit_library(&token).await?;
+
+    let mut cache = state.feedback.lock().await;
+    if !state.session.is_signed_in_at(epoch) || !cache.select_epoch(epoch) {
+        return Err(AppError::not_signed_in());
+    }
+    cache.edited(&edit.video_id);
+    Ok(())
 }
 
 #[tauri::command]

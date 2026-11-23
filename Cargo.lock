@@ -2399,6 +2399,7 @@ dependencies = [
  "tracing-subscriber",
  "window-vibrancy",
  "windows",
+ "wiremock",
  "ytm-core",
 ]
 

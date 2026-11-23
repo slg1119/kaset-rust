@@ -156,3 +156,96 @@ fn task13_playlist_creation_caps_the_video_count() {
     let error = validate_playlist_input("Title", "", &videos).unwrap_err();
     assert_eq!(error.kind, crate::error::ErrorKind::InvalidArgument);
 }
+
+#[tokio::test]
+async fn task13_sign_out_finishes_while_the_library_edit_request_is_pending() {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use tokio::sync::Notify;
+    use tokio::time::timeout;
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+    use ytm_core::auth::CookieJar;
+    use ytm_core::client::{ClientConfig, InnerTubeClient};
+
+    let state = Arc::new(signed_in_state());
+    let epoch = state.session.epoch();
+    let video_id = "test-vid001";
+    state
+        .feedback
+        .lock()
+        .await
+        .insert(epoch, video_id, feedback_metadata());
+
+    let server = MockServer::start().await;
+    let received = Arc::new(Notify::new());
+    Mock::given(method("POST"))
+        .and(path("/feedback"))
+        .and(body_partial_json(
+            serde_json::json!({"feedbackTokens": ["test-add"]}),
+        ))
+        .respond_with({
+            let received = Arc::clone(&received);
+            move |_: &Request| {
+                received.notify_one();
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({}))
+                    .set_delay(Duration::from_secs(1))
+            }
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let mut config = ClientConfig::music("test-key");
+    config.base_url = server.uri();
+    let client = InnerTubeClient::new(config, state.session.cookies_for_epoch(epoch)).unwrap();
+    let pending = tokio::spawn({
+        let state = Arc::clone(&state);
+        async move {
+            let edit = LibraryEdit {
+                video_id: video_id.into(),
+                action: LibraryAction::Add,
+            };
+            super::send_library_edit(&state, &client, epoch, &edit).await
+        }
+    });
+
+    timeout(Duration::from_secs(5), received.notified())
+        .await
+        .unwrap();
+    timeout(
+        Duration::from_millis(500),
+        crate::commands::finish_sign_out(&state, async { state.session.sign_out() }),
+    )
+    .await
+    .expect("sign-out waited on the pending library edit")
+    .unwrap();
+    assert!(!pending.is_finished());
+    assert!(state.feedback.lock().await.entries.is_empty());
+
+    // A late response must leave the same song's new-session token alone.
+    state
+        .session
+        .sign_in(CookieJar::from_header("SAPISID=test-new-cookie"))
+        .unwrap();
+    let new_epoch = state.session.epoch();
+    state
+        .feedback
+        .lock()
+        .await
+        .insert(new_epoch, video_id, feedback_metadata());
+    assert_eq!(
+        pending.await.unwrap().unwrap_err().kind,
+        crate::error::ErrorKind::NotSignedIn
+    );
+    assert!(
+        state
+            .feedback
+            .lock()
+            .await
+            .token(new_epoch, video_id, LibraryAction::Add)
+            .is_ok()
+    );
+}

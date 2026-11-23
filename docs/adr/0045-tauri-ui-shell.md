@@ -143,7 +143,9 @@ background fallback.
 Track ratings and library status share the song-metadata query. Tauri keeps
 feedback tokens in an epoch-scoped cache and accepts only a video ID and a
 library action from React. Playlist removal uses the server’s occurrence ID
-so duplicate videos can be edited individually.
+so duplicate videos can be edited individually. Library edits release the
+feedback cache lock before making the request so sign-out can clear the cache
+while it is pending. Late edit responses do not update a newer session.
 
 Playlist creation and deletion use native HTML dialogs. The single action
 notice follows the open dialog. Rating, library, playlist, and subscription

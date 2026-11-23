@@ -51,6 +51,7 @@ pub struct AppState {
     pub launch: LaunchGate,
     pub player: PlayerService,
     pub(crate) feedback: Mutex<FeedbackCache>,
+    pub(crate) library_edits: Mutex<()>,
     client: OnceCell<Arc<InnerTubeClient>>,
 }
 
@@ -61,6 +62,7 @@ impl AppState {
             launch: LaunchGate::new(),
             player: PlayerService::new(),
             feedback: Mutex::default(),
+            library_edits: Mutex::default(),
             client: OnceCell::new(),
         }
     }
