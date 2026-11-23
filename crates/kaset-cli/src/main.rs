@@ -147,7 +147,16 @@ async fn run<F>(
 where
     F: Future<Output = Result<Output, YtmError>>,
 {
-    let header = store.load()?.ok_or(CliError::MissingSession)?;
+    let mut retries = 0;
+    let header = loop {
+        match store.load() {
+            Err(StoreError::Corrupt(_)) if retries < 3 => {
+                retries += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            result => break result?.ok_or(CliError::MissingSession)?,
+        }
+    };
     let jar = CookieJar::from_header(header.expose());
     if jar.sapisid().is_none() {
         return Err(YtmError::AuthExpired.into());

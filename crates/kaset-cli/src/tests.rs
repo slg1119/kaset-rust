@@ -338,3 +338,58 @@ fn task12_release_ignores_file_store_environment() {
         None
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn task13_session_read_retries_corruption_only() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    struct RotatingStore {
+        attempts: AtomicUsize,
+        failures: usize,
+        corrupt: bool,
+    }
+
+    impl SessionStore for RotatingStore {
+        fn load(&self) -> Result<Option<Secret>, StoreError> {
+            if self.attempts.fetch_add(1, Ordering::Relaxed) < self.failures {
+                return if self.corrupt {
+                    Err(StoreError::Corrupt("missing chunk"))
+                } else {
+                    Err(StoreError::Keyring("unavailable"))
+                };
+            }
+            Ok(Some(Secret::new("SAPISID=test-sapisid")))
+        }
+
+        fn save(&self, _: &Secret) -> Result<(), StoreError> {
+            panic!("read must not write the store");
+        }
+
+        fn clear(&self) -> Result<(), StoreError> {
+            panic!("read must not clear the store");
+        }
+    }
+
+    for (failures, corrupt, attempts, delay, succeeds) in [
+        (1, true, 2, 50, true),
+        (3, true, 4, 150, true),
+        (4, true, 4, 150, false),
+        (1, false, 1, 0, false),
+    ] {
+        let store = RotatingStore {
+            attempts: AtomicUsize::new(0),
+            failures,
+            corrupt,
+        };
+        let start = Instant::now();
+        let result = run(&store, ApiCommand::Whoami, |_, _| {
+            ready(Ok(Output::Account(None)))
+        })
+        .await;
+        assert_eq!(result.is_ok(), succeeds);
+        assert_eq!(store.attempts.load(Ordering::Relaxed), attempts);
+        assert_eq!(start.elapsed(), Duration::from_millis(delay));
+    }
+}

@@ -9,9 +9,39 @@ use tokio::net::{UnixListener, UnixStream};
 use super::{ClientError, Listener};
 
 pub(super) fn endpoint() -> io::Result<PathBuf> {
-    Ok(std::env::temp_dir()
-        .join(format!("kaset-{}", uid()))
-        .join("kaset.sock"))
+    #[cfg(target_os = "macos")]
+    let root = darwin_user_temp_dir()?;
+    #[cfg(not(target_os = "macos"))]
+    let root = std::env::temp_dir();
+
+    Ok(root.join(format!("kaset-{}", uid())).join("kaset.sock"))
+}
+
+#[cfg(target_os = "macos")]
+fn darwin_user_temp_dir() -> io::Result<PathBuf> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let key = libc::_CS_DARWIN_USER_TEMP_DIR;
+    // SAFETY: With a null buffer and zero length, confstr returns the required size.
+    let size = unsafe { libc::confstr(key, std::ptr::null_mut(), 0) };
+    if size == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut bytes = vec![0_u8; size];
+    // SAFETY: The buffer has size writable bytes.
+    let written = unsafe { libc::confstr(key, bytes.as_mut_ptr().cast(), size) };
+    if written == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if written <= 1 || written > size {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid Darwin temp directory",
+        ));
+    }
+    bytes.truncate(written - 1); // Exclude the terminating NUL.
+    Ok(PathBuf::from(OsString::from_vec(bytes)))
 }
 
 fn uid() -> u32 {
@@ -128,4 +158,38 @@ pub(super) async fn connect(path: &Path) -> Result<UnixStream, ClientError> {
         return Err(denied().into());
     }
     Ok(stream)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn task13_socket_path_ignores_tmpdir() {
+    const CHILD: &str = "KASET_TEST_SOCKET_PATH_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let output = std::process::Command::new("/usr/bin/getconf")
+            .arg("DARWIN_USER_TEMP_DIR")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let root = String::from_utf8(output.stdout).unwrap();
+        let expected = Path::new(root.trim_end())
+            .join(format!("kaset-{}", uid()))
+            .join("kaset.sock");
+        assert_eq!(endpoint().unwrap(), expected);
+        return;
+    }
+    // Give the child a different TMPDIR without changing this test process's environment.
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "transport::local::task13_socket_path_ignores_tmpdir",
+        ])
+        .env(CHILD, "1")
+        .env("TMPDIR", "/path/to/override")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
