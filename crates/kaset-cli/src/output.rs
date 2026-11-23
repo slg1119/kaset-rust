@@ -180,3 +180,68 @@ impl<W: Write> Text<W> {
         Ok(())
     }
 }
+
+pub(crate) fn write_playback(
+    mut out: impl Write,
+    response: &kaset_ipc::Response,
+    json: bool,
+    dim_ids: bool,
+) -> io::Result<()> {
+    use kaset_ipc::Response;
+
+    if json {
+        match response {
+            Response::Status { status } => serde_json::to_writer_pretty(&mut out, status)?,
+            Response::Queue { queue } => serde_json::to_writer_pretty(&mut out, queue)?,
+            Response::Ok => return Ok(()),
+            Response::Error { error } => return Err(io::Error::other(*error)),
+        }
+        return writeln!(out);
+    }
+
+    let mut text = Text { out, dim_ids };
+    match response {
+        Response::Status { status } => {
+            let Some(track) = &status.track else {
+                return writeln!(text.out, "Nothing playing.");
+            };
+            text.track("", track)?;
+            writeln!(
+                text.out,
+                "{}  {} / {}",
+                status.status.as_str(),
+                clock(status.position),
+                clock(status.duration),
+            )
+        }
+        Response::Queue { queue } => {
+            if queue.songs.is_empty() {
+                return writeln!(text.out, "Queue is empty.");
+            }
+            let current = queue.current.and_then(|index| usize::try_from(index).ok());
+            for (index, track) in queue.songs.iter().enumerate() {
+                let marker = if current == Some(index) { ">" } else { " " };
+                text.track(&format!("{marker} {}. ", index + 1), track)?;
+            }
+            Ok(())
+        }
+        Response::Ok => Ok(()),
+        Response::Error { error } => Err(io::Error::other(*error)),
+    }
+}
+
+impl<W: Write> Text<W> {
+    fn track(&mut self, prefix: &str, track: &kaset_ipc::Track) -> io::Result<()> {
+        self.item(
+            prefix,
+            &track.title,
+            Some(&track.artists.join(", ")),
+            &track.video_id,
+        )
+    }
+}
+
+fn clock(seconds: f64) -> String {
+    let whole = seconds as u64;
+    format!("{}:{:02}", whole / 60, whole % 60)
+}

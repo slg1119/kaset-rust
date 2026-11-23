@@ -66,9 +66,9 @@ fn parses_search_options_and_global_flags() {
     assert_eq!(args.session_file, Some("test-session.txt".into()));
     assert!(matches!(
         args.command,
-        Command::Search {
+        Command::Api(ApiCommand::Search {
             query, filter: Some(args::SearchFilter::Videos), limit: Some(2)
-        } if query == "test query"
+        }) if query == "test query"
     ));
     for invalid in [
         vec!["search"],
@@ -117,7 +117,7 @@ async fn maps_missing_and_http_expired_sessions_to_documented_exit_codes() {
     let missing = MemoryStore::default();
     let result = run(
         &missing,
-        Command::Whoami,
+        ApiCommand::Whoami,
         |_, _| -> std::future::Ready<Result<Output, YtmError>> {
             panic!("missing session must short-circuit the client")
         },
@@ -141,7 +141,7 @@ async fn maps_missing_and_http_expired_sessions_to_documented_exit_codes() {
         .expect(1)
         .mount(&server)
         .await;
-    let result = run(&store, Command::Whoami, |jar, command| async {
+    let result = run(&store, ApiCommand::Whoami, |jar, command| async {
         execute(&mock_client(&server, jar), command).await
     })
     .await;
@@ -156,7 +156,7 @@ async fn maps_missing_and_http_expired_sessions_to_documented_exit_codes() {
     assert_eq!(store.load().unwrap(), saved);
 
     store.save(&Secret::new("SID=test-only")).unwrap();
-    let result = run(&store, Command::Whoami, |_, _| {
+    let result = run(&store, ApiCommand::Whoami, |_, _| {
         ready(Ok(Output::Account(None)))
     })
     .await;
@@ -274,6 +274,9 @@ async fn routes_and_formats_every_standalone_command() {
         let command = Cli::try_parse_from(std::iter::once("kaset").chain(args))
             .unwrap()
             .command;
+        let Command::Api(command) = command else {
+            panic!("expected an API command");
+        };
         let output = execute(&client, command).await.unwrap();
         let mut text = Vec::new();
         output.write(&mut text, false, false).unwrap();

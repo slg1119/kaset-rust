@@ -137,3 +137,10 @@ starts the returned tracks through the existing queue engine. The engine keeps
 the continuation for autoplay. A changed session or replaced queue prevents a
 late response from starting playback. When there is no mix endpoint, the hero
 queues the page’s top songs.
+
+## M5b CLI playback
+
+The running desktop app exposes a same-user local endpoint for CLI controls.
+The CLI dispatch shares the player service and retains normal queue and
+autoplay behavior. See [ADR-0046](0046-cli-ipc.md) for the protocol and threat
+model.

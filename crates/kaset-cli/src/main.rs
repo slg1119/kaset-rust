@@ -1,6 +1,8 @@
 mod args;
 mod output;
 #[cfg(test)]
+mod remote_tests;
+#[cfg(test)]
 mod tests;
 
 use std::ffi::OsString;
@@ -10,6 +12,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
+use kaset_ipc::ClientError;
 use kaset_session::{
     FileStore, SESSION_FILE_ENV, STORE_ENV, SessionStore, StoreError, keyring_store,
 };
@@ -23,7 +26,7 @@ use ytm_core::parsers::home::parse_feed;
 use ytm_core::parsers::radio::parse_radio;
 use ytm_core::parsers::search::parse_search;
 
-use args::{Cli, Command};
+use args::{ApiCommand, Cli, Command};
 use output::Output;
 
 #[derive(Debug, thiserror::Error)]
@@ -36,6 +39,8 @@ enum CliError {
     Store(#[from] StoreError),
     #[error(transparent)]
     Api(#[from] YtmError),
+    #[error(transparent)]
+    Playback(#[from] ClientError),
     #[error("could not write output: {0}")]
     Output(#[from] io::Error),
 }
@@ -43,8 +48,11 @@ enum CliError {
 impl CliError {
     fn exit_code(&self) -> ExitCode {
         ExitCode::from(match self {
-            Self::MissingSession => 2,
-            Self::Api(YtmError::AuthExpired) => 3,
+            Self::MissingSession
+            | Self::Playback(ClientError::Rejected(kaset_ipc::Error::NotSignedIn)) => 2,
+            Self::Api(YtmError::AuthExpired)
+            | Self::Playback(ClientError::Rejected(kaset_ipc::Error::AuthExpired)) => 3,
+            Self::Playback(ClientError::NotRunning) => 4,
             _ => 1,
         })
     }
@@ -74,6 +82,16 @@ async fn main() -> ExitCode {
 }
 
 async fn run_cli(cli: Cli) -> Result<(), CliError> {
+    let stdout = io::stdout();
+    let dim_ids = stdout.is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    let command = match cli.command {
+        Command::Api(command) => command,
+        Command::Playback(command) => {
+            let response = kaset_ipc::request(command.into()).await?;
+            output::write_playback(stdout.lock(), &response, cli.json, dim_ids)?;
+            return Ok(());
+        }
+    };
     let store: Box<dyn SessionStore> = match session_file(
         cli.session_file,
         std::env::var(STORE_ENV).ok().as_deref(),
@@ -82,14 +100,12 @@ async fn run_cli(cli: Cli) -> Result<(), CliError> {
         Some(path) => Box::new(FileStore::new(path)),
         None => Box::new(keyring_store()),
     };
-    let output = run(store.as_ref(), cli.command, |jar, command| async move {
+    let output = run(store.as_ref(), command, |jar, command| async move {
         let client = InnerTubeClient::new(ClientConfig::music(music_api_key().await?), Some(jar))?;
         execute(&client, command).await
     })
     .await?;
 
-    let stdout = io::stdout();
-    let dim_ids = stdout.is_terminal() && std::env::var_os("NO_COLOR").is_none();
     output.write(&mut stdout.lock(), cli.json, dim_ids)?;
     Ok(())
 }
@@ -111,8 +127,8 @@ fn session_file(
 
 async fn run<F>(
     store: &dyn SessionStore,
-    command: Command,
-    request: impl FnOnce(CookieJar, Command) -> F,
+    command: ApiCommand,
+    request: impl FnOnce(CookieJar, ApiCommand) -> F,
 ) -> Result<Output, CliError>
 where
     F: Future<Output = Result<Output, YtmError>>,
@@ -125,9 +141,9 @@ where
     Ok(request(jar, command).await?)
 }
 
-async fn execute(client: &InnerTubeClient, command: Command) -> Result<Output, YtmError> {
+async fn execute(client: &InnerTubeClient, command: ApiCommand) -> Result<Output, YtmError> {
     Ok(match command {
-        Command::Search {
+        ApiCommand::Search {
             query,
             filter,
             limit,
@@ -141,11 +157,15 @@ async fn execute(client: &InnerTubeClient, command: Command) -> Result<Output, Y
             }
             Output::Search(results)
         }
-        Command::Feed(feed) => Output::Feed(parse_feed(&client.browse(feed.browse_id()).await?)?),
-        Command::Page { browse_id } => {
+        ApiCommand::Feed(feed) => {
+            Output::Feed(parse_feed(&client.browse(feed.browse_id()).await?)?)
+        }
+        ApiCommand::Page { browse_id } => {
             Output::Page(parse_browse_page(&client.browse(&browse_id).await?)?)
         }
-        Command::Radio { video_id } => Output::Radio(parse_radio(&client.radio(&video_id).await?)?),
-        Command::Whoami => Output::Account(parse_account(&client.accounts_list().await?)),
+        ApiCommand::Radio { video_id } => {
+            Output::Radio(parse_radio(&client.radio(&video_id).await?)?)
+        }
+        ApiCommand::Whoami => Output::Account(parse_account(&client.accounts_list().await?)),
     })
 }

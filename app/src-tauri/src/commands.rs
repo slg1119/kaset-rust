@@ -71,9 +71,17 @@ pub async fn get_browse_page(
     state: State<'_, AppState>,
     browse_id: String,
 ) -> Result<BrowsePage, AppError> {
+    load_browse_page(&app, &state, browse_id).await
+}
+
+pub(crate) async fn load_browse_page(
+    app: &AppHandle,
+    state: &AppState,
+    browse_id: String,
+) -> Result<BrowsePage, AppError> {
     checked_browse_id(&browse_id)?;
     let browse_id = playlist_browse_id(&browse_id);
-    signed_in_request(&app, &state, |client| async move {
+    signed_in_request(app, state, |client| async move {
         Ok(parse_browse_page(&client.browse(&browse_id).await?)?)
     })
     .await
@@ -95,7 +103,14 @@ pub async fn get_lyrics(
 }
 
 fn checked_browse_id(id: &str) -> Result<(), AppError> {
-    checked_browse_value(id, 2..=128, b"", "Invalid browse ID.")
+    if kaset_ipc::valid_browse_id(id) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            ErrorKind::InvalidArgument,
+            "Invalid browse ID.",
+        ))
+    }
 }
 
 /// The one validator for opaque server values (continuation tokens, browse

@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod error;
 pub mod events;
+mod ipc_server;
 pub mod login;
 pub mod player;
 pub mod session;
@@ -98,6 +99,7 @@ pub fn run() {
             tracing::info!(vibrancy, "main window effects");
             app.manage(window_effects::WindowEffects { vibrancy });
             player::media::attach(app.handle());
+            ipc_server::start(app.handle().clone());
             refresh_cookies_from_webview(app.handle().clone());
             Ok(())
         })
