@@ -161,6 +161,11 @@ impl Queue {
         self.position
     }
 
+    /// Index of the current song in the original queue order.
+    pub fn original_position(&self) -> Option<usize> {
+        self.position.map(|position| self.order[position])
+    }
+
     /// Songs in play order.
     pub fn ordered(&self) -> Vec<Song> {
         self.order
@@ -191,7 +196,7 @@ impl Queue {
         if shuffle {
             self.shuffle_around_current();
         } else {
-            let current = self.position.map(|position| self.order[position]);
+            let current = self.original_position();
             self.order = (0..self.songs.len()).collect();
             self.position = current;
         }

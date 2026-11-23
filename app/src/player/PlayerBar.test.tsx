@@ -6,13 +6,14 @@ import { renderWithProviders } from "../test/render";
 import { formatTime } from "./format";
 import { PlayerBar } from "./PlayerBar";
 import { idleSnapshot, playingState, testSong } from "./testing";
-import { usePlayer } from "./usePlayer";
+import { PlayerProvider } from "./PlayerProvider";
+import { usePlayerSubscription } from "./usePlayer";
 
 function renderPlaying(overrides: Parameters<typeof playingState>[0] = {}) {
   const handlers = {
     playerSnapshot: () => ({
       state: playingState(overrides),
-      queue: { songs: [testSong, testSong], current: 0 },
+      queue: { songs: [testSong, testSong], current: 0, browse_track: null },
     }),
     togglePlayback: vi.fn(() => null),
     nextTrack: vi.fn(() => null),
@@ -22,7 +23,7 @@ function renderPlaying(overrides: Parameters<typeof playingState>[0] = {}) {
     setShuffle: vi.fn(() => null),
   };
   mockCommands(handlers);
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   return handlers;
 }
 
@@ -37,14 +38,14 @@ test("formats times as m:ss", () => {
 test("stays hidden while nothing is queued", async () => {
   const playerSnapshot = vi.fn(() => idleSnapshot);
   mockCommands({ playerSnapshot });
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await vi.waitFor(() => expect(playerSnapshot).toHaveBeenCalled());
   expect(screen.queryByRole("contentinfo", { name: "Player" })).not.toBeInTheDocument();
 });
 
 test("shows the track from player://state", async () => {
   mockCommands({ playerSnapshot: () => idleSnapshot });
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await act(() => events.playerState.emit({ state: playingState() }));
   expect(await screen.findByText("Test song")).toBeInTheDocument();
   expect(screen.getByText("Test artist")).toBeInTheDocument();
@@ -57,7 +58,7 @@ test("follows player://queue for the position in the queue", async () => {
   renderPlaying();
   expect(await screen.findByText("1 of 2")).toBeInTheDocument();
   await act(() =>
-    events.playerQueue.emit({ queue: { songs: [testSong, testSong, testSong], current: 2 } }),
+    events.playerQueue.emit({ queue: { songs: [testSong, testSong, testSong], current: 2, browse_track: null } }),
   );
   expect(await screen.findByText("3 of 3")).toBeInTheDocument();
 });
@@ -114,7 +115,7 @@ test("command errors are shown", async () => {
       throw { kind: "internal", message: "player window failed" };
     },
   });
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await userEvent.click(await screen.findByRole("button", { name: "Next" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("player window failed");
 });
@@ -127,7 +128,7 @@ test("the snapshot waits for both listeners, and earlier events win", async () =
   let reply: ((snapshot: typeof idleSnapshot) => void) | undefined;
   const playerSnapshot = vi.fn(() => new Promise<typeof idleSnapshot>((resolve) => (reply = resolve)));
   mockCommands({ playerSnapshot });
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await act(async () => expect(listenQueue).toHaveBeenCalledOnce());
   expect(playerSnapshot).not.toHaveBeenCalled();
   await act(async () => finishRegistration?.(vi.fn()));
@@ -143,7 +144,7 @@ test("a failed snapshot is reported", async () => {
       throw { kind: "internal", message: "player unavailable" };
     },
   });
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Could not read the player state: player unavailable",
   );
@@ -206,7 +207,7 @@ test("unmounting stops listening to player events", async () => {
   vi.spyOn(events.playerQueue, "listen").mockResolvedValue(stopQueue);
   const playerSnapshot = vi.fn(() => idleSnapshot);
   mockCommands({ playerSnapshot });
-  const { unmount } = renderWithProviders(<PlayerBar />);
+  const { unmount } = renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await vi.waitFor(() => expect(playerSnapshot).toHaveBeenCalled());
   unmount();
   await vi.waitFor(() => expect(stopState).toHaveBeenCalledTimes(1));
@@ -244,7 +245,7 @@ test("publishes its height for the scrolling content", async () => {
     mockCommands({ playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }) });
     const { container, unmount } = renderWithProviders(
       <div className="content-column">
-        <PlayerBar />
+        <PlayerProvider><PlayerBar /></PlayerProvider>
       </div>,
     );
     await screen.findByRole("contentinfo", { name: "Player" });
@@ -266,7 +267,7 @@ test("a rejected listener reports an error and the other listener is cleaned up"
   vi.spyOn(events.playerQueue, "listen").mockResolvedValue(stopQueue);
   const playerSnapshot = vi.fn(() => idleSnapshot);
   mockCommands({ playerSnapshot });
-  const { unmount } = renderHook(() => usePlayer(onError));
+  const { unmount } = renderHook(() => usePlayerSubscription(onError));
 
   await vi.waitFor(() => expect(onError).toHaveBeenCalledExactlyOnceWith(
     "Could not listen for player updates: listen failed",

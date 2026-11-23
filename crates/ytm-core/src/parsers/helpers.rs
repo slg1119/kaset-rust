@@ -34,6 +34,43 @@ pub(super) fn is_navigable_artist_id(id: &str) -> bool {
     id.starts_with("UC") || id.starts_with("MPLAUC")
 }
 
+pub(super) fn shelf_continuation<'a>(shelf: &'a Value, rows: &'a [Value]) -> Option<&'a str> {
+    str_at(
+        shelf,
+        &["continuations", "0", "nextContinuationData", "continuation"],
+    )
+    .filter(|token| !token.is_empty())
+    .or_else(|| {
+        let endpoint = at(
+            rows.last()?,
+            &["continuationItemRenderer", "continuationEndpoint"],
+        )?;
+        str_at(endpoint, &["continuationCommand", "token"])
+            .filter(|token| !token.is_empty())
+            .or_else(|| {
+                at(endpoint, &["commandExecutorCommand", "commands"])?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|command| str_at(command, &["continuationCommand", "token"]))
+                    .find(|token| !token.is_empty())
+            })
+    })
+}
+
+pub(super) fn append_actions(value: &Value) -> impl Iterator<Item = (&Value, &[Value])> {
+    ["onResponseReceivedActions", "onResponseReceivedEndpoints"]
+        .into_iter()
+        .filter_map(|key| value.get(key)?.as_array())
+        .flatten()
+        .filter_map(|entry| {
+            let action = entry.get("appendContinuationItemsAction")?;
+            Some((
+                action,
+                action.get("continuationItems")?.as_array()?.as_slice(),
+            ))
+        })
+}
+
 /// Bullet-delimited subtitle fields with linked artists take priority.
 pub(super) fn artists_from_runs(text: Option<&Value>) -> Vec<ArtistRef> {
     let runs = artist_runs(text);

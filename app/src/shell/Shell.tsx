@@ -1,24 +1,26 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { commands, type BrowseEndpoint } from "../bindings";
 import { ArtistMoreScreen, ArtistScreen } from "../detail/ArtistScreen";
 import { BrowsePageScreen } from "../detail/BrowsePageScreen";
 import { errorMessage } from "../errors";
 import { FeedScreen, type CategoryItem } from "../home/FeedScreen";
+import { LibraryScreen } from "../library/LibraryScreen";
 import type { PageCard } from "../music/items";
 import { NoticeBanner, NoticeProvider, useNotice } from "../notices/NoticeProvider";
+import { PlayerProvider } from "../player/PlayerProvider";
 import { PlayerBar } from "../player/PlayerBar";
 import { PodcastShowScreen } from "../podcasts/PodcastShowScreen";
 import type { Filter } from "../search/groups";
 import { SearchScreen } from "../search/SearchScreen";
 import type { Shortcut } from "./shortcuts";
-import { FEED_TABS, Sidebar, type Route } from "./Sidebar";
+import { FEED_TABS, LIBRARY_TABS, Sidebar, type Route } from "./Sidebar";
 import { useShortcuts } from "./useShortcuts";
 
 /** The signed-in app: sidebar, the current screen, notices, and the floating player bar. */
 export function Shell() {
   return (
     <NoticeProvider>
-      <ShellLayout />
+      <PlayerProvider><ShellLayout /></PlayerProvider>
     </NoticeProvider>
   );
 }
@@ -81,51 +83,58 @@ function ShellLayout() {
     <div className="shell">
       <Sidebar route={route} onNavigate={setRoute} />
       <div className="content-column">
-        <main key={JSON.stringify([route.kind, "browseId" in route ? route.browseId : null, "params" in route ? route.params : null])} className="content">
-          {(route.kind === "category" || isFeedKind(route.kind)) && (
-            <FeedScreen
-              source={route.kind === "category" ? route : { kind: route.kind }}
-              title={route.kind === "category" ? route.title : FEED_TABS[route.kind].label}
-              {...artistActions}
-              onBack={route.kind === "category" ? () => setRoute(route.from) : undefined}
-            />
-          )}
-          {route.kind === "search" && (
-            <SearchScreen
-              query={query}
-              onSubmit={setQuery}
-              focusRequest={searchFocus}
-              filter={searchFilter}
-              onFilterChange={setSearchFilter}
-              onOpenPage={openPage}
-              onOpenArtist={openArtist}
-            />
-          )}
-          {route.kind === "podcast_show" && (
-            <PodcastShowScreen
-              key={route.browseId}
-              browseId={route.browseId}
-              title={route.title}
-              onBack={() => setRoute(route.from)}
-            />
-          )}
-          {route.kind === "page" && (
-            <BrowsePageScreen
-              browseId={route.browseId}
-              title={route.title}
-              onOpenArtist={openArtist}
-              onBack={() => setRoute(route.from)}
-            />
-          )}
-          {route.kind === "artist" && (
-            <ArtistScreen browseId={route.browseId} name={route.name} {...artistActions}
-              onOpenMore={openArtistMore} onBack={() => setRoute(route.from)} />
-          )}
-          {route.kind === "artist-more" && (
-            <ArtistMoreScreen browseId={route.browseId} params={route.params} title={route.title}
-              {...artistActions} onBack={() => setRoute(route.from)} />
-          )}
-        </main>
+        {routeStack(route).map((entry, index) => {
+          const active = entry === route;
+          const onBack = "from" in entry ? () => setRoute(entry.from) : undefined;
+          return (
+            <ScreenFrame key={screenKey(entry, index)} active={active}>
+              {(entry.kind === "category" || isFeedKind(entry.kind)) && (
+                <FeedScreen
+                  source={entry.kind === "category" ? entry : { kind: entry.kind }}
+                  title={entry.kind === "category" ? entry.title : FEED_TABS[entry.kind].label}
+                  {...artistActions}
+                  active={active}
+                  onBack={onBack}
+                />
+              )}
+              {entry.kind === "search" && (
+                <SearchScreen
+                  query={query}
+                  onSubmit={setQuery}
+                  focusRequest={searchFocus}
+                  filter={searchFilter}
+                  onFilterChange={setSearchFilter}
+                  onOpenPage={openPage}
+                  onOpenArtist={openArtist}
+                />
+              )}
+              {entry.kind === "library" && (entry.collection === "songs" ? (
+                <BrowsePageScreen browseId="VLLM" title={LIBRARY_TABS.songs} onOpenArtist={openArtist} active={active} />
+              ) : (
+                <LibraryScreen collection={entry.collection} title={LIBRARY_TABS[entry.collection]} {...artistActions} />
+              ))}
+              {entry.kind === "podcast_show" && (
+                <PodcastShowScreen
+                  browseId={entry.browseId}
+                  title={entry.title}
+                  onBack={() => setRoute(entry.from)}
+                />
+              )}
+              {entry.kind === "page" && (
+                <BrowsePageScreen browseId={entry.browseId} title={entry.title}
+                  onOpenArtist={openArtist} onBack={onBack} active={active} />
+              )}
+              {entry.kind === "artist" && (
+                <ArtistScreen browseId={entry.browseId} name={entry.name} {...artistActions}
+                  onOpenMore={openArtistMore} onBack={() => setRoute(entry.from)} />
+              )}
+              {entry.kind === "artist-more" && (
+                <ArtistMoreScreen browseId={entry.browseId} params={entry.params} title={entry.title}
+                  {...artistActions} onBack={() => setRoute(entry.from)} />
+              )}
+            </ScreenFrame>
+          );
+        })}
         <NoticeBanner />
         <PlayerBar onOpenArtist={openArtist} />
       </div>
@@ -135,4 +144,48 @@ function ShellLayout() {
 
 function isFeedKind(kind: Route["kind"]): kind is keyof typeof FEED_TABS {
   return Object.hasOwn(FEED_TABS, kind);
+}
+
+function routeStack(route: Route): Route[] {
+  const routes = [route];
+  while ("from" in route) {
+    route = route.from;
+    routes.push(route);
+  }
+  return routes.reverse();
+}
+
+function screenKey(route: Route, depth: number) {
+  return JSON.stringify([
+    depth, route.kind,
+    "collection" in route ? route.collection : null,
+    "browseId" in route ? route.browseId : null,
+    "params" in route ? route.params : null,
+  ]);
+}
+
+/** Covered screens keep their DOM and scroll containers while a detail is open. */
+function ScreenFrame({ active, children }: { active: boolean; children: ReactNode }) {
+  const lastControl = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (active && lastControl.current?.isConnected) {
+      lastControl.current.focus({ preventScroll: true });
+    }
+  }, [active]);
+
+  return (
+    <div
+      className="content content-frame"
+      role={active ? "main" : undefined}
+      aria-hidden={!active || undefined}
+      inert={!active}
+      onClickCapture={(event) => {
+        // macOS WebKit does not focus buttons clicked with a pointer.
+        const target = event.target;
+        if (target instanceof Element) lastControl.current = target.closest("button");
+      }}
+    >
+      {children}
+    </div>
+  );
 }

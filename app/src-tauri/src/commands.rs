@@ -1,5 +1,6 @@
 pub mod artist;
 pub mod feed;
+pub mod library;
 pub mod podcasts;
 
 use std::future::Future;
@@ -9,7 +10,7 @@ use tauri::{AppHandle, Manager, State};
 use ytm_core::client::{InnerTubeClient, playlist_browse_id};
 use ytm_core::models::{Account, BrowsePage, LyricsResult, SearchFilter, SearchResults};
 use ytm_core::parsers::account::parse_account;
-use ytm_core::parsers::browse_page::parse_browse_page;
+use ytm_core::parsers::browse_page::parse_browse_page_for_id;
 use ytm_core::parsers::search::{parse_search, parse_search_continuation};
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
@@ -82,7 +83,10 @@ pub(crate) async fn load_browse_page(
     checked_browse_id(&browse_id)?;
     let browse_id = playlist_browse_id(&browse_id);
     signed_in_request(app, state, |client| async move {
-        Ok(parse_browse_page(&client.browse(&browse_id).await?)?)
+        Ok(parse_browse_page_for_id(
+            &client.browse(&browse_id).await?,
+            &browse_id,
+        )?)
     })
     .await
 }
@@ -102,7 +106,7 @@ pub async fn get_lyrics(
     .await
 }
 
-fn checked_browse_id(id: &str) -> Result<(), AppError> {
+pub(crate) fn checked_browse_id(id: &str) -> Result<(), AppError> {
     if kaset_ipc::valid_browse_id(id) {
         Ok(())
     } else {

@@ -7,9 +7,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Webview};
 use ytm_core::models::Song;
 
-use super::engine::{Outcome, PlaybackEvent, Player, PlayerState, QueueState};
+use super::engine::{BrowsePlayback, Outcome, PlaybackEvent, Player, PlayerState, QueueState};
 use super::queue::{MAX_QUEUE_LEN, RepeatMode};
 use super::window::{PLAYER_LABEL, is_music_page};
+use crate::commands::checked_browse_id;
 use crate::error::{AppError, ErrorKind};
 use crate::session::AuthStatus;
 use crate::state::AppState;
@@ -32,14 +33,58 @@ pub async fn play_queue(
     songs: Vec<Song>,
     start_index: u32,
 ) -> Result<(), AppError> {
+    play_queue_inner(&app, &state, songs, start_index, None).await
+}
+
+/// Plays tracks from a detail page, retaining the original row through shuffle.
+#[tauri::command]
+#[specta::specta]
+pub async fn play_browse_queue(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    songs: Vec<Song>,
+    start_index: u32,
+    playback: BrowsePlayback,
+) -> Result<(), AppError> {
+    checked_browse_id(&playback.browse_id)?;
+    if playback
+        .offset
+        .checked_add(MAX_QUEUE_LEN as u32 - 1)
+        .is_none()
+    {
+        return Err(AppError::new(
+            ErrorKind::InvalidArgument,
+            "Invalid track offset.",
+        ));
+    }
+    play_queue_inner(&app, &state, songs, start_index, Some(playback)).await
+}
+
+async fn play_queue_inner(
+    app: &AppHandle,
+    state: &AppState,
+    songs: Vec<Song>,
+    start_index: u32,
+    playback: Option<BrowsePlayback>,
+) -> Result<(), AppError> {
     let start = usize::try_from(start_index).unwrap_or(usize::MAX);
     state
         .player
-        .update(&app, |player, now| {
+        .update(app, |player, now| {
             if state.session.status() != AuthStatus::SignedIn {
                 return Err(AppError::not_signed_in());
             }
-            replace_queue(player, songs, start, now)
+            match playback {
+                Some(origin) => {
+                    validate_queue(&songs)?;
+                    player
+                        .play_browse_songs(songs, start, origin, now)
+                        .map_err(|error| {
+                            AppError::new(ErrorKind::InvalidArgument, error.to_string())
+                        })
+                }
+                None => replace_queue(player, songs, start, now),
+            }
         })
         .await
 }

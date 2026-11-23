@@ -1,0 +1,29 @@
+{
+  "contents": {
+    "singleColumnBrowseResultsRenderer": {
+      "tabs": [{ "tabRenderer": { "content": { "sectionListRenderer": { "contents": [
+        { "gridRenderer": { "items": [
+          { "musicTwoRowItemRenderer": {
+            "title": { "runs": [{ "text": "Saved playlist" }] },
+            "subtitle": { "runs": [{ "text": "Test owner" }] },
+            "navigationEndpoint": { "browseEndpoint": { "browseId": "VLPLtest" } }
+          } },
+          { "musicTwoRowItemRenderer": {
+            "title": { "runs": [{ "text": "Saved album" }] },
+            "navigationEndpoint": { "browseEndpoint": { "browseId": "MPREtest" } }
+          } }
+        ], "continuations": [{ "nextContinuationData": { "continuation": "test-library-next" } }] } },
+        { "itemSectionRenderer": { "contents": [
+          { "musicShelfRenderer": { "contents": [
+            { "musicResponsiveListItemRenderer": {
+              "flexColumns": [{ "musicResponsiveListItemFlexColumnRenderer": {
+                "text": { "runs": [{ "text": "Followed artist" }] }
+              } }],
+              "navigationEndpoint": { "browseEndpoint": { "browseId": "UCtest" } }
+            } }
+          ] } }
+        ] } }
+      ] } } } }]
+    }
+  }
+}

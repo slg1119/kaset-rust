@@ -5,11 +5,12 @@ import { errorMessage } from "../errors";
 import { ChevronLeftIcon, RefreshIcon } from "../icons";
 import type { OpenArtist } from "../music/ArtistNames";
 import { isPlayable, type PageCard } from "../music/items";
-import { CategoryGrid, FeedShelf, type CategoryItem } from "./FeedShelf";
-
-export type { CategoryItem } from "./FeedShelf";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { FEED_STALE_MS, nextPageParam, queryKeys } from "../query";
+import { CategoryGrid, FeedShelf, type CategoryItem } from "./FeedShelf";
+import { useLoadMore } from "./useLoadMore";
+
+export type { CategoryItem } from "./FeedShelf";
 
 export type FeedSource = { kind: FeedKind | "podcasts" } | { kind: "category"; browseId: string; params: string | null };
 
@@ -19,6 +20,7 @@ type Props = {
   onOpenPage: (card: PageCard) => void;
   onOpenArtist?: OpenArtist;
   onOpenCategory: (item: CategoryItem) => void;
+  active?: boolean;
   onBack?: () => void;
 };
 
@@ -48,12 +50,16 @@ function useFeed(source: FeedSource, chip: string | null) {
   return { feed: chip === null ? base : filtered, chips: base.data?.pages[0].chips ?? [] };
 }
 
-export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenArtist, onBack }: Props) {
+export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenArtist, onBack, active = true }: Props) {
   const [chip, setChip] = useState<string | null>(null);
   const { feed, chips } = useFeed(source, source.kind === "home" ? chip : null);
   const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = feed;
   const play = usePlayQueue();
-  const sentinel = useRef<HTMLDivElement>(null);
+  const sentinel = useLoadMore(
+    active && hasNextPage && !isFetching && !isFetchNextPageError,
+    feed.data?.pages.length ?? 0,
+    fetchNextPage,
+  );
   const backButton = useRef<HTMLButtonElement>(null);
   const sections = feed.data?.pages.flatMap((page) => page.sections) ?? [];
   const gridIndex = source.kind === "home"
@@ -63,16 +69,6 @@ export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenAr
   useEffect(() => {
     backButton.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const target = sentinel.current;
-    if (!target || !hasNextPage || isFetching || isFetchNextPageError || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) void fetchNextPage({ cancelRefetch: false });
-    }, { root: target.closest("main"), rootMargin: "0px 0px 160px" });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetching, isFetchNextPageError, chip]);
 
   return (
     <>

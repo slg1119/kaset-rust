@@ -52,7 +52,7 @@ function renderPodcasts(handlers: Parameters<typeof mockCommands>[0] = {}) {
 }
 
 async function openShow() {
-  await userEvent.click(await screen.findByRole("button", { name: "Open Test podcast" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Open Test podcast, Test host" }));
   expect(await screen.findByRole("heading", { name: show.title, level: 1 })).toBeInTheDocument();
 }
 
@@ -74,7 +74,8 @@ test("opens the podcast feed and show, loads more episodes, and queues from the 
   expect(getPodcastShow).toHaveBeenCalledWith({ browseId: "MPSPPtest" });
   expect(nav.getByRole("button", { name: "Podcasts" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByText("About the show")).toBeInTheDocument();
-  expect(screen.getByText("Test host")).toBeInTheDocument();
+  // The covered feed stays mounted (inert) under the show.
+  expect(within(screen.getByRole("main")).getByText("Test host")).toBeInTheDocument();
   expect(screen.getByText(/Nov 22, 2026.*42 min/)).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Load more episodes" }));
@@ -117,7 +118,7 @@ test("offers in-screen retries for show and continuation failures", async () => 
     .mockImplementationOnce(() => { throw { kind: "parse", message: "Could not load episodes" }; })
     .mockReturnValue({ episodes: [], continuation: null });
   renderPodcasts({ getPodcastShow, getPodcastEpisodesContinuation });
-  await userEvent.click(await screen.findByRole("button", { name: "Open Test podcast" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Open Test podcast, Test host" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not load show");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(await screen.findByRole("heading", { name: show.title, level: 1 })).toBeInTheDocument();

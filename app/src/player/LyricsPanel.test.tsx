@@ -5,6 +5,7 @@ import { events, mockCommands } from "../bindings";
 import { isMac } from "../shell/shortcuts";
 import { renderWithProviders } from "../test/render";
 import { PlayerBar } from "./PlayerBar";
+import { PlayerProvider } from "./PlayerProvider";
 import { idleSnapshot, playingState, testSong } from "./testing";
 
 const timedLyrics = {
@@ -24,7 +25,7 @@ function renderLyrics(getLyrics = vi.fn(() => timedLyrics)) {
     playerSnapshot: () => ({ state: playingState({ position: 0 }), queue: idleSnapshot.queue }),
   };
   mockCommands(handlers);
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   return { getLyrics, seekTo };
 }
 
@@ -57,7 +58,7 @@ test.each([
     playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }),
   };
   mockCommands(handlers);
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   const toggle = await screen.findByRole("button", { name: "Lyrics" });
   const primary = isMac() ? { metaKey: true } : { ctrlKey: true };
   fireEvent.keyDown(toggle, { key: "l", ...primary });
@@ -99,7 +100,7 @@ test("retries a failed load and switches lyrics when the track changes", async (
     playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }),
   };
   mockCommands(handlers);
-  renderWithProviders(<PlayerBar />);
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
   await userEvent.click(await screen.findByRole("button", { name: "Lyrics" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Connection lost");
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));

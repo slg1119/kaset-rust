@@ -59,7 +59,7 @@ function mount(page = artist, track: Song | null = null, overrides?: Parameters<
 
 test("opens a Home artist, plays top songs, and navigates to See all and back", async () => {
   const { getArtist, getArtistMore, playQueue } = mount();
-  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist, 1.2M subscribers" }));
   expect(await screen.findByRole("heading", { name: "Test Artist", level: 1 })).toBeInTheDocument();
   expect(getArtist).toHaveBeenCalledWith({ browseId: "UCtest-artist" });
   expect(screen.getByText("123 subscribers")).toBeInTheDocument();
@@ -81,7 +81,7 @@ test("plays the server artist mix and opens linked track and player credits", as
   const { getArtist, playArtistMix, playQueue } = mount({
     ...artist, radio_playlist_id: "RD-test", radio_params: "test%3D",
   }, song);
-  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist, 1.2M subscribers" }));
   await screen.findByRole("heading", { name: "Test Artist" });
   await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "Play" }));
   expect(playArtistMix).toHaveBeenCalledWith({ playlistId: "RD-test", videoId: null, params: "test%3D" });
@@ -104,10 +104,10 @@ test("opens an artist from Search and restores the result on back", async () => 
   const input = screen.getByRole("combobox");
   await userEvent.type(input, "test{Enter}");
   const top = await screen.findByRole("region", { name: "Top result" });
-  await userEvent.click(within(top).getByRole("button", { name: "Open Test artist" }));
+  await userEvent.click(within(top).getByRole("button", { name: "Open Test artist, 42K subscribers" }));
   expect(await screen.findByRole("heading", { name: "Test Artist", level: 1 })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(within(await screen.findByRole("region", { name: "Top result" })).getByRole("button", { name: "Open Test artist" })).toBeInTheDocument();
+  expect(within(await screen.findByRole("region", { name: "Top result" })).getByRole("button", { name: "Open Test artist, 42K subscribers" })).toBeInTheDocument();
 });
 
 
@@ -120,7 +120,7 @@ test("retries artist load in place and reports a shuffle action failure", async 
   const playArtistMix = vi.fn().mockRejectedValue({ kind: "network", message: "Could not start mix." });
   mount(artist, null, { getArtist, playArtistMix });
   await userEvent.click(await screen.findByRole("button", { name: "Explore" }));
-  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist, 1.2M subscribers" }));
   const main = within(screen.getByRole("main"));
   expect(await main.findByRole("alert")).toHaveTextContent("Artist could not load.");
   await userEvent.click(main.getByRole("button", { name: "Retry" }));

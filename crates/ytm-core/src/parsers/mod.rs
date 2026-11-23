@@ -3,6 +3,7 @@ pub mod artist;
 pub mod browse_page;
 mod helpers;
 pub mod home;
+pub mod library;
 pub mod lyrics;
 pub mod podcasts;
 pub mod radio;

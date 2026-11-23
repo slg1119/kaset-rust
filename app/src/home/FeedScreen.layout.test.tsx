@@ -21,8 +21,8 @@ test("the first all-song shelf is a song grid and the rest are carousels", async
   expect(mixed.querySelector(".carousel")).not.toBeNull();
   expect(within(mixed).getByText("Album • 2024")).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Play Mixed song" })).toBeInTheDocument();
-  expect(within(mixed).getByRole("button", { name: "Open Test album" })).toBeInTheDocument();
-  expect(within(mixed).getByRole("button", { name: "Open Round artist" })).toBeInTheDocument();
+  expect(within(mixed).getByRole("button", { name: "Open Test album, Album • 2024" })).toBeInTheDocument();
+  expect(within(mixed).getByRole("button", { name: "Open Round artist, 1.2M subscribers" })).toBeInTheDocument();
   expect(within(mixed).getByRole("button", { name: "Next in Mixed for you" })).toBeInTheDocument();
 
   const images = [...container.querySelectorAll("img")];

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { commands, type FeedKind } from "../bindings";
+import { commands, type FeedKind, type LibraryKind } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChartBarsIcon, ClockIcon, CompassIcon, HomeIcon, PaletteIcon, PodcastIcon, SearchIcon, SparkleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
@@ -7,13 +7,14 @@ import { useNotice } from "../notices/NoticeProvider";
 import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
 type FeedRoute = { kind: FeedKind | "podcasts" };
+type LibraryRoute = { kind: "library"; collection: LibraryKind };
 type SearchRoute = { kind: "search" };
 type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: Route };
 type PageRoute = { kind: "page"; browseId: string; title: string; from: Route };
 type PodcastShowRoute = { kind: "podcast_show"; browseId: string; title: string; from: Route };
 type ArtistRoute = { kind: "artist"; browseId: string; name: string; from: Route };
 type ArtistMoreRoute = { kind: "artist-more"; browseId: string; params: string | null; title: string; from: ArtistRoute };
-export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute | PodcastShowRoute | ArtistRoute | ArtistMoreRoute;
+export type Route = FeedRoute | LibraryRoute | SearchRoute | CategoryRoute | PageRoute | PodcastShowRoute | ArtistRoute | ArtistMoreRoute;
 
 const SEARCH = { route: "search", label: "Search", Icon: SearchIcon } as const;
 
@@ -26,6 +27,15 @@ export const FEED_TABS = {
   podcasts: { label: "Podcasts", Icon: PodcastIcon },
   history: { label: "History", Icon: ClockIcon },
 } satisfies Record<FeedRoute["kind"], { label: string; Icon: typeof HomeIcon }>;
+
+export const LIBRARY_TABS = {
+  playlists: "Playlists",
+  songs: "Liked songs",
+  albums: "Albums",
+  artists: "Artists",
+} satisfies Record<LibraryKind, string>;
+
+const LIBRARY_ORDER: LibraryKind[] = ["playlists", "songs", "albums", "artists"];
 
 const FEED_ORDER: FeedRoute["kind"][] = ["home", "explore", "charts", "moods_and_genres", "new_releases", "podcasts", "history"];
 const ROUTES = [SEARCH, ...FEED_ORDER.map((route) => ({ route, ...FEED_TABS[route] }))];
@@ -73,6 +83,22 @@ export function Sidebar({ route, onNavigate }: Props) {
           </li>
         ))}
       </ul>
+      <section aria-labelledby="sidebar-library">
+        <h2 className="nav-heading" id="sidebar-library">Library</h2>
+        <ul className="nav">
+          {LIBRARY_ORDER.map((collection) => (
+            <li key={collection}>
+              <button
+                type="button"
+                aria-current={selected.kind === "library" && selected.collection === collection ? "page" : undefined}
+                onClick={() => onNavigate({ kind: "library", collection })}
+              >
+                {LIBRARY_TABS[collection]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
       <section className="account" aria-label="Account">
         <Artwork url={account.data?.photo_url ?? null} size={32} shape="round" />
         <div className="item-text">

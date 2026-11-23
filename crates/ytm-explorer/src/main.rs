@@ -8,8 +8,9 @@ use ytm_core::client::{ClientConfig, InnerTubeClient, MUSIC_ORIGIN, playlist_bro
 use ytm_core::models::{FeedPage, PodcastEpisodesPage, SearchFilter, SearchResults};
 use ytm_core::parsers::account::parse_account;
 use ytm_core::parsers::artist::{parse_artist, parse_artist_items};
-use ytm_core::parsers::browse_page::parse_browse_page;
+use ytm_core::parsers::browse_page::{parse_browse_page_continuation, parse_browse_page_for_id};
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation, parse_home};
+use ytm_core::parsers::library::{parse_library, parse_library_continuation};
 use ytm_core::parsers::podcasts::{
     PODCASTS_BROWSE_ID, parse_podcast_episodes_continuation, parse_podcast_show, parse_podcasts,
     parse_podcasts_continuation,
@@ -47,6 +48,17 @@ enum Command {
     },
     /// Probe the next feed page. Reports shape without printing tokens.
     FeedContinue { token: String },
+    /// Probe a Library collection (or VLLM). Prints counts and cursor presence.
+    Library {
+        #[arg(default_value = "FEmusic_library_landing")]
+        browse_id: String,
+        #[arg(long)]
+        params: Option<String>,
+    },
+    /// Probe collection pagination without printing continuation tokens.
+    LibraryContinue { token: String },
+    /// Probe album/playlist pagination without printing continuation tokens.
+    PageContinue { token: String },
     /// Probe an artist page or a See all destination without printing params.
     Artist {
         browse_id: String,
@@ -178,6 +190,31 @@ async fn main() -> Result<()> {
             let raw = client.browse_continuation(&token).await?;
             (feed_summary(parse_feed_continuation(&raw)?), None)
         }
+        Command::Library { browse_id, params } => {
+            let raw = client
+                .browse_with_params(&browse_id, params.as_deref())
+                .await?;
+            let summary = if browse_id == "VLLM" {
+                let page = parse_browse_page_for_id(&raw, &browse_id)?;
+                page_summary(page.songs.len(), page.continuation.is_some())
+            } else {
+                let page = parse_library(&raw)?;
+                library_summary(page)
+            };
+            (summary, None)
+        }
+        Command::LibraryContinue { token } => {
+            let raw = client.browse_continuation(&token).await?;
+            (library_summary(parse_library_continuation(&raw)?), None)
+        }
+        Command::PageContinue { token } => {
+            let raw = client.browse_continuation(&token).await?;
+            let page = parse_browse_page_continuation(&raw)?;
+            (
+                page_summary(page.songs.len(), page.continuation.is_some()),
+                None,
+            )
+        }
         Command::Artist {
             browse_id,
             params,
@@ -264,9 +301,10 @@ async fn main() -> Result<()> {
             )
         }
         Command::Page { browse_id, parse } => {
-            let raw = client.browse(&playlist_browse_id(&browse_id)).await?;
+            let browse_id = playlist_browse_id(&browse_id);
+            let raw = client.browse(&browse_id).await?;
             let text = if parse {
-                serde_json::to_string_pretty(&parse_browse_page(&raw)?)?
+                serde_json::to_string_pretty(&parse_browse_page_for_id(&raw, &browse_id)?)?
             } else {
                 serde_json::to_string_pretty(&raw)?
             };
@@ -401,6 +439,23 @@ fn search_summary(page: &SearchResults) -> String {
         "{} items, continuation present: {}",
         page.items.len(),
         page.continuation.is_some()
+    )
+}
+
+fn page_summary(songs: usize, has_more: bool) -> String {
+    format!("{songs} songs, continuation present: {has_more}")
+}
+
+fn library_summary(page: ytm_core::models::LibraryPage) -> String {
+    let items: usize = page
+        .sections
+        .iter()
+        .map(|section| section.items.len())
+        .sum();
+    format!(
+        "{} sections, {items} items, {} continuations",
+        page.sections.len(),
+        page.continuations.len()
     )
 }
 

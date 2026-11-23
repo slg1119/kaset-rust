@@ -1,0 +1,13 @@
+{
+  "continuationContents": {
+    "musicPlaylistShelfContinuation": {
+      "contents": [{ "musicResponsiveListItemRenderer": {
+        "playlistItemData": { "videoId": "test-vid-01" },
+        "flexColumns": [{ "musicResponsiveListItemFlexColumnRenderer": {
+          "text": { "runs": [{ "text": "Next song" }] }
+        } }]
+      } }],
+      "continuations": [{ "nextContinuationData": { "continuation": "test-next" } }]
+    }
+  }
+}

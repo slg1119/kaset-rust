@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { commands, type ArtistPage, type BrowseEndpoint, type Song } from "../bindings";
 import { errorMessage } from "../errors";
@@ -60,6 +60,7 @@ function ArtistHero({ artist, play, topSongs }: {
   topSongs: Song[];
 }) {
   const { report, dismiss } = useNotice();
+  const headingId = useId();
   const [starting, setStarting] = useState(false);
   const hasRadio = artist.radio_playlist_id || artist.radio_video_id;
   const playlistId = hasRadio ? artist.radio_playlist_id : artist.shuffle_playlist_id;
@@ -83,10 +84,10 @@ function ArtistHero({ artist, play, topSongs }: {
   }
 
   return (
-    <section className="artist-hero" aria-labelledby="artist-title">
+    <section className="artist-hero" aria-labelledby={headingId}>
       <div className="artist-hero-art"><Artwork url={artist.thumbnail_url} size="fill" /></div>
       <div className="artist-summary">
-        <h1 id="artist-title">{artist.name}</h1>
+        <h1 id={headingId}>{artist.name}</h1>
         {artist.subscribers && <p>{artist.subscribers}</p>}
         {artist.description && <p className="artist-description">{artist.description}</p>}
         <button type="button" className="primary artist-play" onClick={() => void start()}

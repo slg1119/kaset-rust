@@ -51,6 +51,25 @@ pub struct PlayerState {
 pub struct QueueState {
     pub songs: Vec<Song>,
     pub current: Option<u32>,
+    pub browse_track: Option<BrowseTrack>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+pub struct BrowseTrack {
+    pub browse_id: String,
+    pub index: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, specta::Type)]
+pub struct BrowsePlayback {
+    pub browse_id: String,
+    pub offset: u32,
+    pub shuffle: bool,
+}
+
+struct BrowseQueue {
+    browse_id: String,
+    indices: Vec<u32>,
 }
 
 /// Sent by the init script in the player window through `playback_event`.
@@ -137,6 +156,7 @@ fn position_seconds(position: f64, duration: f64) -> f64 {
 pub struct Player {
     queue: Queue,
     queue_generation: u64,
+    browse_queue: Option<BrowseQueue>,
     radio_continuation: Option<String>,
     status: PlaybackStatus,
     position: f64,
@@ -150,6 +170,7 @@ impl Player {
         Self {
             queue: Queue::new(seed),
             queue_generation: 0,
+            browse_queue: None,
             radio_continuation: None,
             status: PlaybackStatus::Idle,
             position: 0.0,
@@ -180,6 +201,13 @@ impl Player {
                 .queue
                 .position()
                 .and_then(|position| u32::try_from(position).ok()),
+            browse_track: self.browse_queue.as_ref().and_then(|origin| {
+                let index = *origin.indices.get(self.queue.original_position()?)?;
+                Some(BrowseTrack {
+                    browse_id: origin.browse_id.clone(),
+                    index,
+                })
+            }),
         }
     }
 
@@ -258,21 +286,53 @@ impl Player {
         start: usize,
         now: Instant,
     ) -> Result<Outcome, PlayerError> {
-        let start_valid = songs
+        self.replace_queue(songs, start, None, now)
+    }
+
+    pub fn play_browse_songs(
+        &mut self,
+        songs: Vec<Song>,
+        start: usize,
+        playback: BrowsePlayback,
+        now: Instant,
+    ) -> Result<Outcome, PlayerError> {
+        self.replace_queue(songs, start, Some(playback), now)
+    }
+
+    fn replace_queue(
+        &mut self,
+        songs: Vec<Song>,
+        start: usize,
+        playback: Option<BrowsePlayback>,
+        now: Instant,
+    ) -> Result<Outcome, PlayerError> {
+        if !songs
             .get(start)
-            .is_some_and(|song| VideoId::parse(&song.video_id).is_some());
-        if !start_valid {
+            .is_some_and(|song| VideoId::parse(&song.video_id).is_some())
+        {
             return Err(PlayerError::NothingToPlay);
         }
-        let skipped_before = songs[..start]
-            .iter()
-            .filter(|song| VideoId::parse(&song.video_id).is_none())
-            .count();
-        let playable: Vec<Song> = songs
+        let (indices, playable): (Vec<_>, Vec<_>) = songs
             .into_iter()
-            .filter(|song| VideoId::parse(&song.video_id).is_some())
-            .collect();
-        self.queue.replace(playable, start - skipped_before);
+            .enumerate()
+            .filter(|(_, song)| VideoId::parse(&song.video_id).is_some())
+            .unzip();
+        let start = indices.partition_point(|&index| index < start);
+        let shuffle = playback.as_ref().is_some_and(|origin| origin.shuffle);
+        self.browse_queue = playback.and_then(|origin| {
+            let indices = indices
+                .iter()
+                .map(|&index| u32::try_from(index).ok()?.checked_add(origin.offset))
+                .collect::<Option<Vec<_>>>()?;
+            Some(BrowseQueue {
+                browse_id: origin.browse_id,
+                indices,
+            })
+        });
+        self.queue.replace(playable, start);
+        if shuffle {
+            self.queue.set_shuffle(true);
+        }
         self.queue_generation += 1;
         self.radio_continuation = None;
         Ok(self.load_current(now))
@@ -381,6 +441,7 @@ impl Player {
     /// Empties the queue and closes the player window.
     pub fn stop(&mut self, now: Instant) -> Outcome {
         self.queue.clear();
+        self.browse_queue = None;
         self.queue_generation += 1;
         self.radio_continuation = None;
         self.status = PlaybackStatus::Idle;
@@ -891,9 +952,31 @@ mod tests {
         let queue = QueueState {
             songs: Vec::new(),
             current: None,
+            browse_track: None,
         };
         assert_eq!(outcome.queue, Some(queue.clone()));
         assert_eq!(player.queue_state(), queue);
+    }
+
+    #[test]
+    fn browse_queue_reports_duplicate_track_row_across_shuffle_and_invalid_rows() {
+        let (mut player, now) = playing(&[A], 0);
+        let tracks = vec![song(A), song("invalid"), song(A), song(B)];
+        let origin = BrowsePlayback {
+            browse_id: "test-playlist".into(),
+            offset: 500,
+            shuffle: true,
+        };
+        let outcome = player.play_browse_songs(tracks, 2, origin, now).unwrap();
+        let queue = outcome.queue.unwrap();
+        assert_eq!(queue.current, Some(0));
+        assert_eq!(queue.browse_track.unwrap().index, 502);
+        player.set_shuffle(false, now);
+        let queue = player.queue_state();
+        assert_eq!(queue.current, Some(1));
+        assert_eq!(queue.browse_track.unwrap().index, 502);
+        player.play_songs(vec![song(A)], 0, now).unwrap();
+        assert!(player.queue_state().browse_track.is_none());
     }
 
     #[test]
