@@ -1,3 +1,5 @@
+mod account_actions;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
@@ -80,6 +82,15 @@ impl InnerTubeClient {
         &self.cookies
     }
 
+    /// Reuses the connection pool while binding requests to one cookie snapshot.
+    pub fn with_cookie_snapshot(&self, cookies: CookieJar) -> Self {
+        Self {
+            http: self.http.clone(),
+            config: self.config.clone(),
+            cookies: SharedCookies::new(Some(cookies)),
+        }
+    }
+
     /// Replaces the cookies used by later requests. `None` sends unauthenticated requests.
     pub fn set_cookies(&self, cookies: Option<CookieJar>) {
         self.cookies.set(cookies);
@@ -100,11 +111,20 @@ impl InnerTubeClient {
         })
     }
 
-    pub async fn post(
+    pub async fn post(&self, endpoint: &str, body: Map<String, Value>) -> Result<Value, YtmError> {
+        self.post_with_auth(endpoint, body, false).await
+    }
+
+    async fn post_with_auth(
         &self,
         endpoint: &str,
         mut body: Map<String, Value>,
+        requires_auth: bool,
     ) -> Result<Value, YtmError> {
+        let cookies = self.cookies.get();
+        if requires_auth && cookies.is_none() {
+            return Err(YtmError::AuthExpired);
+        }
         body.insert("context".into(), self.context());
         let mut request = self
             .http
@@ -118,7 +138,7 @@ impl InnerTubeClient {
             .header("Referer", MUSIC_ORIGIN)
             .json(&body);
 
-        if let Some(jar) = self.cookies.get() {
+        if let Some(jar) = cookies {
             let sapisid = jar.sapisid().ok_or(YtmError::AuthExpired)?;
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)

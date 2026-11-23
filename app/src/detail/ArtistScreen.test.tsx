@@ -1,4 +1,4 @@
-import { within, screen } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { mockCommands, type ArtistPage, type Song } from "../bindings";
@@ -129,4 +129,23 @@ test("retries artist load in place and reports a shuffle action failure", async 
   expect(playArtistMix).toHaveBeenCalledWith({ playlistId: "RDAO-test", videoId: null, params: "test%3D" });
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not start mix.");
   expect(main.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("optimistically subscribes, rolls back on failure, and refreshes after retry", async () => {
+  let reject!: (error: Error) => void;
+  let subscribed = false;
+  const setArtistSubscribed = vi.fn()
+    .mockImplementationOnce(() => new Promise<null>((_, fail) => { reject = fail; }))
+    .mockImplementation(() => { subscribed = true; return null; });
+  const getArtist = vi.fn(() => ({ ...artist, subscribed }));
+  mount(artist, null, { getArtist, setArtistSubscribed });
+  await userEvent.click(await screen.findByRole("button", { name: "Open Round artist, 1.2M subscribers" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Subscribe" }));
+  expect(await screen.findByRole("button", { name: "Unsubscribe" })).toBeDisabled();
+  expect(setArtistSubscribed).toHaveBeenCalledWith({ channelId: artist.channel_id, subscribed: true });
+  await act(() => reject(new Error("Subscription failed")));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Subscription failed");
+  await userEvent.click(await screen.findByRole("button", { name: "Subscribe" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeEnabled());
+  expect(getArtist).toHaveBeenCalledTimes(2);
 });

@@ -131,6 +131,10 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Report song rating and library state without displaying feedback tokens.
+    SongMetadata { video_id: String },
+    /// List the playlists available for a song without modifying them.
+    AddToPlaylistOptions { video_id: String },
     /// Read a track's lyrics and report availability without dumping the response.
     Lyrics { video_id: String },
     /// POST /next to start a radio mix. Use --parse to print the queue model.
@@ -353,6 +357,14 @@ async fn main() -> Result<()> {
                 serde_json::to_string_pretty(&raw)?
             };
             (text, out)
+        }
+        Command::SongMetadata { video_id } => {
+            let metadata = client.song_metadata(&video_id).await?;
+            (serde_json::to_string_pretty(&metadata)?, None)
+        }
+        Command::AddToPlaylistOptions { video_id } => {
+            let menu = client.add_to_playlist_options(&video_id).await?;
+            (serde_json::to_string_pretty(&menu)?, None)
         }
         Command::Lyrics { video_id } => {
             let lyrics = client.get_timed_lyrics(&video_id).await?;

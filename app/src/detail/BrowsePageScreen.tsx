@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { commands, type BrowsePage, type BrowsePageContinuation } from "../bindings";
 import { errorMessage } from "../errors";
@@ -7,11 +7,14 @@ import { ChevronLeftIcon, PlayIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { artistNames } from "../music/items";
+import { playlistQueries, useAccountMutation } from "../music/accountActions";
 import { SongMenu } from "../music/SongMenu";
 import { useNotice } from "../notices/NoticeProvider";
 import { usePlayerQueue } from "../player/usePlayer";
 import { MAX_QUEUE_LENGTH } from "../player/usePlayQueue";
 import { BROWSE_PAGE_STALE_MS, queryKeys } from "../query";
+
+import { PlaylistActions, playlistContentsQueries } from "./PlaylistActions";
 
 type Props = {
   browseId: string;
@@ -23,8 +26,31 @@ type Props = {
 };
 
 type TrackPage = { header?: BrowsePage; tracks: BrowsePageContinuation };
+type TrackPages = InfiniteData<TrackPage, string | null>;
+
+function removePlaylistTrack(data: TrackPages, setVideoId: string): TrackPages {
+  return {
+    ...data,
+    pages: data.pages.map((entry) => {
+      const ids = entry.tracks.set_video_ids;
+      if (!ids?.includes(setVideoId)) return entry;
+      return {
+        ...entry,
+        tracks: {
+          ...entry.tracks,
+          songs: entry.tracks.songs.filter((_, index) => ids[index] !== setVideoId),
+          set_video_ids: ids.filter((id) => id !== setVideoId),
+        },
+      };
+    }),
+  };
+}
 
 const LIKED_SONGS_ID = "VLLM";
+
+function randomStartIndex(length: number) {
+  return Math.floor(Math.random() * length);
+}
 
 async function fetchPage(browseId: string, cursor: string | null): Promise<TrackPage> {
   if (cursor !== null) {
@@ -39,16 +65,20 @@ async function fetchPage(browseId: string, cursor: string | null): Promise<Track
   return { header, tracks: header };
 }
 
-function playlistSongs(pages: TrackPage[]) {
+function playlistRows(pages: TrackPage[]) {
   const cover = pages[0]?.header?.thumbnail_url;
-  return pages.flatMap(({ tracks }) => tracks.songs.map((song) =>
-    song.thumbnail_url === null && cover ? { ...song, thumbnail_url: cover } : song,
-  ));
+  return pages.flatMap(({ tracks }) => tracks.songs.map((song, index) => ({
+    song: song.thumbnail_url === null && cover ? { ...song, thumbnail_url: cover } : song,
+    setVideoId: tracks.set_video_ids?.[index],
+  })));
 }
 
 export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbum, active = true }: Props) {
+  const key = queryKeys.browsePage(browseId);
+  const queryClient = useQueryClient();
+  const [deleted, setDeleted] = useState(false);
   const page = useInfiniteQuery({
-    queryKey: queryKeys.browsePage(browseId),
+    queryKey: key,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => fetchPage(browseId, pageParam),
     getNextPageParam: ({ tracks }, _pages, _pageParam, used) => {
@@ -56,8 +86,29 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
       return token && !used.includes(token) ? token : undefined;
     },
     staleTime: BROWSE_PAGE_STALE_MS,
+    enabled: !deleted,
   });
   const { report, dismiss } = useNotice();
+  const save = useAccountMutation({
+    request: (saved: boolean) => commands.setPlaylistSaved(browseId, saved),
+    optimistic: {
+      key,
+      update: (data: TrackPages, saved) => ({
+        ...data,
+        pages: data.pages.map((entry) => entry.header?.playlist ? {
+          ...entry,
+          header: { ...entry.header, playlist: { ...entry.header.playlist, saved } },
+        } : entry),
+      }),
+    },
+    invalidate: () => [...playlistQueries(browseId), queryKeys.library("playlists")],
+  });
+  const removeTrack = useAccountMutation({
+    request: ({ videoId, setVideoId }: { videoId: string; setVideoId: string }) =>
+      commands.removeFromPlaylist(browseId, videoId, setVideoId),
+    optimistic: { key, update: (data: TrackPages, { setVideoId }) => removePlaylistTrack(data, setVideoId) },
+    invalidate: () => playlistContentsQueries(browseId),
+  });
   const queue = usePlayerQueue();
   const backButton = useRef<HTMLButtonElement>(null);
   const playback = useRef<AbortController | null>(null);
@@ -78,7 +129,18 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
   const data = page.data?.pages[0]?.header;
   const headingId = useId();
   const pageTitle = data?.title || title;
-  const songs = page.data ? playlistSongs(page.data.pages) : [];
+  const rows = page.data ? playlistRows(page.data.pages) : [];
+  const songs = rows.map(({ song }) => song);
+  const playlist = !isAlbum && browseId !== LIKED_SONGS_ID ? data?.playlist : undefined;
+  const editing = save.isPending || removeTrack.isPending;
+
+  function leaveDeletedPlaylist() {
+    setDeleted(true);
+    for (const queryKey of playlistQueries(browseId)) {
+      void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+    }
+    onBack?.();
+  }
   const track = queue?.browse_track;
   const current = track?.browse_id === browseId && queue?.current != null
     && songs[track.index]?.video_id === queue.songs[queue.current]?.video_id
@@ -99,13 +161,13 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
         if (controller.signal.aborted) return;
         if (!next.data) return;
         hasMore = next.hasNextPage;
-        allSongs = playlistSongs(next.data.pages);
+        allSongs = playlistRows(next.data.pages).map(({ song }) => song);
       }
       if (allSongs.length === 0) return;
       // A row beyond the IPC cap starts its own queue at that row.
       const offset = index < MAX_QUEUE_LENGTH ? 0 : index;
       const queued = allSongs.slice(offset, offset + MAX_QUEUE_LENGTH);
-      const start = shuffle ? Math.floor(Math.random() * queued.length) : index - offset;
+      const start = shuffle ? randomStartIndex(queued.length) : index - offset;
       await commands.playBrowseQueue(queued, start, { browse_id: browseId, offset, shuffle });
     } catch (cause) {
       if (!controller.signal.aborted) report(errorMessage(cause));
@@ -125,19 +187,20 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
         )}
         <span>{pageTitle}</span>
       </header>
-      {page.isPending && (
+      {deleted && <p role="status">Playlist deleted.</p>}
+      {!deleted && page.isPending && (
         <div className="browse-hero" role="status">
           <div className="browse-skeleton" aria-hidden="true" />
           <span className="hint">Loading…</span>
         </div>
       )}
-      {page.isError && !page.isFetchNextPageError && (
+      {!deleted && page.isError && !page.isFetchNextPageError && (
         <div className="screen-error" role="alert">
           <p>{errorMessage(page.error)}</p>
           <button type="button" onClick={() => void page.refetch()} disabled={page.isFetching}>Retry</button>
         </div>
       )}
-      {data && (
+      {!deleted && data && (
         <>
           <section className="browse-hero" aria-labelledby={headingId}>
             <Artwork url={data.thumbnail_url} size={200} />
@@ -160,6 +223,8 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
                   <ShuffleIcon />
                   Shuffle
                 </button>
+                {playlist && <PlaylistActions id={browseId} title={pageTitle} status={playlist}
+                  editing={editing} save={(saved) => save.mutate(saved)} onDeleted={leaveDeletedPlaylist} />}
               </div>
             </div>
           </section>
@@ -167,12 +232,15 @@ export function BrowsePageScreen({ browseId, title, onBack, onOpenArtist, isAlbu
             <p className="hint">No tracks to play.</p>
           ) : (
             <ol className="rows" aria-label="Tracks">
-              {songs.map((song, index) => (
-                <li key={`${index}-${song.video_id}`}>
+              {rows.map(({ song, setVideoId }, index) => (
+                <li key={setVideoId ?? `${index}-${song.video_id}`}>
                   <SongMenu
                     className={`item item-row browse-track item-with-links${index === current ? " is-current" : ""}`}
                     song={song}
                     onOpenArtist={onOpenArtist}
+                    onRemoveFromPlaylist={playlist?.can_delete && setVideoId && !editing
+                      ? () => removeTrack.mutate({ videoId: song.video_id, setVideoId })
+                      : undefined}
                     onOpenAlbum={isAlbum ? () => albumTitle.current?.focus() : undefined}
                   >
                     <button

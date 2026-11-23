@@ -1149,3 +1149,75 @@ button.top-card:hover {
 .lyrics-retry {
   margin-top: 8px;
 }
+
+.account-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 20px;
+  color: var(--text);
+  background: var(--sidebar-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+}
+
+.account-dialog::backdrop {
+  background: rgb(0 0 0 / 0.56);
+}
+
+.account-dialog h2 {
+  margin: 0 0 14px;
+}
+
+.account-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.account-dialog-form,
+.account-dialog-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.account-dialog-form input,
+.account-dialog-form textarea,
+.account-dialog-form select {
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--glass-line);
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+}
+
+.account-playlist-options {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.account-playlist-options button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: start;
+}
+
+.account-playlist-options button .hint {
+  margin-inline-start: auto;
+}
+
+.account-dialog .notice {
+  position: static;
+  margin-bottom: 12px;
+}
+
+.account-danger {
+  color: #ffb4b4;
+}

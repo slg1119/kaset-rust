@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-artist-subscribed"
+description = "Enables the set_artist_subscribed command without any pre-configured scope."
+commands.allow = ["set_artist_subscribed"]
+
+[[permission]]
+identifier = "deny-set-artist-subscribed"
+description = "Denies the set_artist_subscribed command without any pre-configured scope."
+commands.deny = ["set_artist_subscribed"]

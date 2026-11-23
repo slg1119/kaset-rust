@@ -96,6 +96,17 @@ impl Session {
         self.lock_state().epoch
     }
 
+    /// Snapshot the signed-in cookies and their identity together. Use the
+    /// blocking pool because a session transition may be writing the store.
+    pub(crate) fn cookies_for_epoch(&self, epoch: u64) -> Option<CookieJar> {
+        let _transition = self.lock_transition();
+        let state = self.lock_state();
+        if state.epoch != epoch || state.status != AuthStatus::SignedIn {
+            return None;
+        }
+        self.cookies.get()
+    }
+
     fn lock_state(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }

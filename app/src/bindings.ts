@@ -40,6 +40,16 @@ export const commands = {
 	playArtistMix: (playlistId: string | null, videoId: string | null, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_artist_mix", { playlistId, videoId, params }, options),
 	/**  Fetches synced or plain lyrics for the current track. */
 	getLyrics: (videoId: string, options?: InvokeOptions) => __TAURI_INVOKE<LyricsResult>("get_lyrics", { videoId }, options),
+	rateSong: (videoId: string, rating: LikeStatus, options?: InvokeOptions) => __TAURI_INVOKE<null>("rate_song", { videoId, rating }, options),
+	songMetadata: (videoId: string, options?: InvokeOptions) => __TAURI_INVOKE<SongActionStatus>("song_metadata", { videoId }, options),
+	editLibrary: (edit: LibraryEdit, options?: InvokeOptions) => __TAURI_INVOKE<null>("edit_library", { edit }, options),
+	addToPlaylistOptions: (videoId: string, options?: InvokeOptions) => __TAURI_INVOKE<AddToPlaylistMenu>("add_to_playlist_options", { videoId }, options),
+	addToPlaylist: (videoId: string, playlistId: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("add_to_playlist", { videoId, playlistId }, options),
+	removeFromPlaylist: (playlistId: string, videoId: string, setVideoId: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_from_playlist", { playlistId, videoId, setVideoId }, options),
+	createPlaylist: (title: string, description: string, privacy: PlaylistPrivacy, videoIds: string[], options?: InvokeOptions) => __TAURI_INVOKE<string>("create_playlist", { title, description, privacy, videoIds }, options),
+	deletePlaylist: (playlistId: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("delete_playlist", { playlistId }, options),
+	setArtistSubscribed: (channelId: string, subscribed: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_artist_subscribed", { channelId, subscribed }, options),
+	setPlaylistSaved: (playlistId: string, saved: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_playlist_saved", { playlistId, saved }, options),
 	/**  Fetches the podcast discovery feed. Further shelves use get_feed_continuation. */
 	getPodcasts: (options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_podcasts", undefined, options),
 	/**  Fetches a podcast show and its first page of episodes. */
@@ -118,6 +128,21 @@ export type Account = {
 	photo_url: string | null,
 };
 
+export type AddToPlaylistMenu = {
+	title: string | null,
+	options: AddToPlaylistOption[],
+	can_create_playlist: boolean,
+};
+
+export type AddToPlaylistOption = {
+	playlist_id: string,
+	title: string,
+	subtitle: string | null,
+	thumbnail_url: string | null,
+	is_selected: boolean,
+	privacy_status: PlaylistPrivacy | null,
+};
+
 /**
  *  Error returned by every command. Serializes as `{ kind, message }`.
  *  `message` is for display and never contains cookies or headers.
@@ -177,6 +202,9 @@ export type BrowseEndpoint = {
 };
 
 export type BrowsePage = {
+	playlist?: PlaylistActions | null,
+	/**  Playlist item IDs in the same order as songs, including duplicate videos. */
+	set_video_ids?: (string | null)[] | null,
 	title: string,
 	subtitle: string | null,
 	second_subtitle: string | null,
@@ -186,6 +214,7 @@ export type BrowsePage = {
 };
 
 export type BrowsePageContinuation = {
+	set_video_ids?: (string | null)[] | null,
 	songs: Song[],
 	continuation: string | null,
 };
@@ -238,9 +267,18 @@ export type HomeSection = {
 	more?: BrowseEndpoint | null,
 };
 
+export type LibraryAction = "add" | "remove";
+
 export type LibraryContent = { kind: "collection"; data: HomeSection[] } | { kind: "songs"; data: BrowsePage };
 
+export type LibraryEdit = {
+	video_id: string,
+	action: LibraryAction,
+};
+
 export type LibraryKind = "playlists" | "albums" | "artists" | "songs";
+
+export type LikeStatus = "LIKE" | "DISLIKE" | "INDIFFERENT";
 
 export type LyricLine = {
 	start_ms: number,
@@ -304,6 +342,13 @@ export type PlayerState = {
 export type PlayerStateChanged = {
 	state: PlayerState,
 };
+
+export type PlaylistActions = {
+	can_delete: boolean,
+	saved: boolean | null,
+};
+
+export type PlaylistPrivacy = "PUBLIC" | "UNLISTED" | "PRIVATE";
 
 export type PodcastEpisodesPage = {
 	episodes: Episode[],
@@ -398,6 +443,13 @@ export type Song = {
 	thumbnail_url: string | null,
 };
 
+export type SongActionStatus = {
+	like_status: LikeStatus | null,
+	in_library: boolean,
+	can_add: boolean,
+	can_remove: boolean,
+};
+
 /**
  *  A YouTube video id: exactly 11 characters from `[A-Za-z0-9_-]`. Checked
  *  before any id reaches a URL or the player, whether it came from the UI,
@@ -449,6 +501,16 @@ export type MockCommandHandlers = {
     getArtistMore: (args: { browseId: string; params: string | null }) => ShelfItem[] | Promise<ShelfItem[]>,
     playArtistMix: (args: { playlistId: string | null; videoId: string | null; params: string | null }) => null | Promise<null>,
     getLyrics: (args: { videoId: string }) => LyricsResult | Promise<LyricsResult>,
+    rateSong: (args: { videoId: string; rating: LikeStatus }) => null | Promise<null>,
+    songMetadata: (args: { videoId: string }) => SongActionStatus | Promise<SongActionStatus>,
+    editLibrary: (args: { edit: LibraryEdit }) => null | Promise<null>,
+    addToPlaylistOptions: (args: { videoId: string }) => AddToPlaylistMenu | Promise<AddToPlaylistMenu>,
+    addToPlaylist: (args: { videoId: string; playlistId: string }) => null | Promise<null>,
+    removeFromPlaylist: (args: { playlistId: string; videoId: string; setVideoId: string }) => null | Promise<null>,
+    createPlaylist: (args: { title: string; description: string; privacy: PlaylistPrivacy; videoIds: string[] }) => string | Promise<string>,
+    deletePlaylist: (args: { playlistId: string }) => null | Promise<null>,
+    setArtistSubscribed: (args: { channelId: string; subscribed: boolean }) => null | Promise<null>,
+    setPlaylistSaved: (args: { playlistId: string; saved: boolean }) => null | Promise<null>,
     getPodcasts: () => FeedPage | Promise<FeedPage>,
     getPodcastShow: (args: { browseId: string }) => PodcastShow | Promise<PodcastShow>,
     getPodcastEpisodesContinuation: (args: { token: string }) => PodcastEpisodesPage | Promise<PodcastEpisodesPage>,
@@ -514,6 +576,16 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_artist_more": return mockCommandHandler(mockHandlers.getArtistMore, "get_artist_more", args);
             case "play_artist_mix": return mockCommandHandler(mockHandlers.playArtistMix, "play_artist_mix", args);
             case "get_lyrics": return mockCommandHandler(mockHandlers.getLyrics, "get_lyrics", args);
+            case "rate_song": return mockCommandHandler(mockHandlers.rateSong, "rate_song", args);
+            case "song_metadata": return mockCommandHandler(mockHandlers.songMetadata, "song_metadata", args);
+            case "edit_library": return mockCommandHandler(mockHandlers.editLibrary, "edit_library", args);
+            case "add_to_playlist_options": return mockCommandHandler(mockHandlers.addToPlaylistOptions, "add_to_playlist_options", args);
+            case "add_to_playlist": return mockCommandHandler(mockHandlers.addToPlaylist, "add_to_playlist", args);
+            case "remove_from_playlist": return mockCommandHandler(mockHandlers.removeFromPlaylist, "remove_from_playlist", args);
+            case "create_playlist": return mockCommandHandler(mockHandlers.createPlaylist, "create_playlist", args);
+            case "delete_playlist": return mockCommandHandler(mockHandlers.deletePlaylist, "delete_playlist", args);
+            case "set_artist_subscribed": return mockCommandHandler(mockHandlers.setArtistSubscribed, "set_artist_subscribed", args);
+            case "set_playlist_saved": return mockCommandHandler(mockHandlers.setPlaylistSaved, "set_playlist_saved", args);
             case "get_podcasts": return mockCommandHandler(mockHandlers.getPodcasts, "get_podcasts", args);
             case "get_podcast_show": return mockCommandHandler(mockHandlers.getPodcastShow, "get_podcast_show", args);
             case "get_podcast_episodes_continuation": return mockCommandHandler(mockHandlers.getPodcastEpisodesContinuation, "get_podcast_episodes_continuation", args);

@@ -1,0 +1,15 @@
+{
+  "contents": {"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"contents":[
+    {"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{
+      "videoId":"song-id",
+      "menu":{"menuRenderer":{
+        "items":[{"toggleMenuServiceItemRenderer":{
+          "defaultIcon":{"iconType":"BOOKMARK"},
+          "defaultServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"test-remove"}},
+          "toggledServiceEndpoint":{"feedbackEndpoint":{"feedbackToken":"test-add"}}
+        }}],
+        "topLevelButtons":[{"likeButtonRenderer":{"likeStatus":"DISLIKE"}}]
+      }}
+    }}}}
+  ]}}}}}}]}}}}
+}

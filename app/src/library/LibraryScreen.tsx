@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { commands, type LibraryKind } from "../bindings";
+import type { LibraryKind } from "../bindings";
 import { errorMessage } from "../errors";
 import { FeedShelf, type CategoryItem } from "../home/FeedShelf";
 import { RefreshIcon } from "../icons";
 import type { PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { FEED_STALE_MS, queryKeys } from "../query";
+
+import { fetchLibraryCollection } from "./collection";
 
 type Props = {
   collection: Exclude<LibraryKind, "songs">;
@@ -17,11 +19,7 @@ type Props = {
 export function LibraryScreen({ collection, title, onOpenPage, onOpenCategory }: Props) {
   const query = useQuery({
     queryKey: queryKeys.library(collection),
-    queryFn: async () => {
-      const library = await commands.getLibrary(collection);
-      if (library.kind !== "collection") throw new Error("Could not read this library collection.");
-      return library.data.flatMap((section) => section.items);
-    },
+    queryFn: () => fetchLibraryCollection(collection),
     staleTime: FEED_STALE_MS,
   });
   const play = usePlayQueue();

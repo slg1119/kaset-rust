@@ -1,3 +1,4 @@
+pub mod account_actions;
 pub mod artist;
 pub mod feed;
 pub mod library;
@@ -253,14 +254,26 @@ where
     F: FnOnce(Arc<InnerTubeClient>) -> Fut,
     Fut: Future<Output = Result<T, AppError>>,
 {
+    signed_in_request_with_epoch(app, state, |client, _| request(client)).await
+}
+
+async fn signed_in_request_with_epoch<T, F, Fut>(
+    app: &AppHandle,
+    state: &AppState,
+    request: F,
+) -> Result<T, AppError>
+where
+    F: FnOnce(Arc<InnerTubeClient>, u64) -> Fut,
+    Fut: Future<Output = Result<T, AppError>>,
+{
     if !state.launch.wait(LAUNCH_REFRESH_TIMEOUT).await {
         tracing::warn!("launch cookie refresh did not finish in time");
     }
+    let epoch = state.session.epoch();
     if state.session.status() != AuthStatus::SignedIn {
         return Err(AppError::not_signed_in());
     }
-    let epoch = state.session.epoch();
-    let result = async { request(state.client().await?).await }.await;
+    let result = async { request(state.client().await?, epoch).await }.await;
     match result {
         Ok(value) => Ok(value),
         Err(error) => Err(on_error(app, epoch, error).await),

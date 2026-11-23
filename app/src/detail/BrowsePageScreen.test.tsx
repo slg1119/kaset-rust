@@ -225,3 +225,95 @@ test("marks only the playing occurrence of a repeated track", async () => {
   expect(rows[0]).not.toHaveAttribute("aria-current");
   expect(rows[1]).toHaveAttribute("aria-current", "true");
 });
+
+function renderPlaylist(handlers: Parameters<typeof mockCommands>[0]) {
+  renderDetailApp({
+    searchSuggestions: () => [],
+    search: () => ({
+      items: [{ kind: "playlist", browse_id: "VLPLtest", title: "Found playlist", subtitle: null, thumbnail_url: null }],
+      continuation: null,
+    }),
+    ...handlers,
+  });
+}
+
+async function openPlaylist() {
+  await userEvent.click(await screen.findByRole("button", { name: "Search" }));
+  await userEvent.type(screen.getByRole("combobox"), "playlist{Enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "Open Found playlist" }));
+}
+
+test("removes the selected occurrence of a duplicated song and rolls back on failure", async () => {
+  let reject!: (error: Error) => void;
+  const removeFromPlaylist = vi.fn(() => new Promise<null>((_, fail) => { reject = fail; }));
+  renderPlaylist({
+    getBrowsePage: () => ({
+      ...page, playlist: { can_delete: true, saved: null },
+      songs: [page.songs[0], page.songs[0]], set_video_ids: ["set-first", "set-second"],
+    }),
+    removeFromPlaylist,
+  });
+  await openPlaylist();
+  const tracks = within(await screen.findByRole("list", { name: "Tracks" }));
+  const menus = tracks.getAllByRole("button", { name: "More actions for Opening track" });
+  await userEvent.click(menus[1]);
+  await userEvent.click(screen.getByRole("menuitem", { name: "Remove from this playlist" }));
+  expect(removeFromPlaylist).toHaveBeenCalledWith({
+    playlistId: "VLPLtest", videoId: "test-vid-01", setVideoId: "set-second",
+  });
+  expect(tracks.getAllByRole("listitem")).toHaveLength(1);
+  await act(() => reject(new Error("Track removal failed")));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Track removal failed");
+  expect(tracks.getAllByRole("listitem")).toHaveLength(2);
+});
+
+test("requires in-app confirmation before deleting an owned playlist", async () => {
+  const deletePlaylist = vi.fn()
+    .mockRejectedValueOnce(new Error("Deletion failed"))
+    .mockResolvedValue(null);
+  renderPlaylist({
+    getBrowsePage: () => ({ ...page, playlist: { can_delete: true, saved: null } }),
+    deletePlaylist,
+  });
+  await openPlaylist();
+  const open = await screen.findByRole("button", { name: "Delete playlist" });
+  await userEvent.click(open);
+  const dialog = within(screen.getByRole("dialog", { name: "Delete playlist?" }));
+  expect(deletePlaylist).not.toHaveBeenCalled();
+  await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+  expect(open).toHaveFocus();
+  await userEvent.click(open);
+  const confirmation = within(screen.getByRole("dialog", { name: "Delete playlist?" }));
+  await userEvent.click(confirmation.getByRole("button", { name: "Delete playlist" }));
+  expect(await confirmation.findByRole("alert")).toHaveTextContent("Deletion failed");
+  await userEvent.click(confirmation.getByRole("button", { name: "Delete playlist" }));
+  expect(deletePlaylist).toHaveBeenLastCalledWith({ playlistId: "VLPLtest" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(await screen.findByRole("region", { name: "Top result" })).toBeInTheDocument();
+});
+
+test("loads saved state from the library and refreshes the playlist after saving", async () => {
+  let resolve!: (result: null) => void;
+  let saved = false;
+  const setPlaylistSaved = vi.fn(() => new Promise<null>((done) => { resolve = done; }));
+  const getBrowsePage = vi.fn(() => ({ ...page, playlist: { can_delete: false, saved: null } }));
+  const getLibrary = vi.fn(() => ({
+    kind: "collection" as const,
+    data: [{
+      title: "Playlists",
+      items: saved ? [{ kind: "playlist" as const, browse_id: "PLtest", title: page.title, subtitle: null, thumbnail_url: null }] : [],
+    }],
+  }));
+  renderPlaylist({ getBrowsePage, getLibrary, setPlaylistSaved });
+  await openPlaylist();
+  const save = await screen.findByRole("button", { name: "Save to library" });
+  await waitFor(() => expect(save).toBeEnabled());
+  await userEvent.click(save);
+  expect(await screen.findByRole("button", { name: "Remove from library" })).toBeDisabled();
+  expect(setPlaylistSaved).toHaveBeenCalledWith({ playlistId: "VLPLtest", saved: true });
+  saved = true;
+  await act(() => resolve(null));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Remove from library" })).toBeEnabled());
+  expect(getBrowsePage).toHaveBeenCalledTimes(2);
+  expect(getLibrary).toHaveBeenCalledTimes(2);
+});

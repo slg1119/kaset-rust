@@ -1,9 +1,13 @@
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { commands, type Song } from "../bindings";
+import { commands, type LibraryAction, type Song, type SongActionStatus } from "../bindings";
 import { errorMessage } from "../errors";
 import { MoreIcon } from "../icons";
 import { useNotice } from "../notices/NoticeProvider";
+import { queryKeys } from "../query";
+import { AddToPlaylistDialog } from "./AddToPlaylistDialog";
+import { songLibraryQueries, songMutationKey, useAccountMutation, useSongMetadata } from "./accountActions";
 import type { OpenArtist } from "./ArtistNames";
 
 type Props = {
@@ -12,13 +16,31 @@ type Props = {
   className?: string;
   onOpenArtist?: OpenArtist;
   onOpenAlbum?: () => void;
+  onRemoveFromPlaylist?: () => void;
 };
 
-export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum }: Props) {
+export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum, onRemoveFromPlaylist }: Props) {
   const { dismiss, report } = useNotice();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number; last?: boolean } | null>(null);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const metadata = useSongMetadata(song.video_id, !!anchor);
+  const key = queryKeys.songMetadata(song.video_id);
+  const mutationKey = songMutationKey(song.video_id);
+  const editingLibrary = useIsMutating({ mutationKey, exact: true }) > 0;
+  const client = useQueryClient();
+  const edit = useAccountMutation({
+    mutationKey,
+    request: (action: LibraryAction) => commands.editLibrary({ video_id: song.video_id, action }),
+    optimistic: {
+      key,
+      update: (data: SongActionStatus, action) => ({ ...data, in_library: action === "add" }),
+    },
+    invalidate: () => [key, ...songLibraryQueries],
+  });
+  const libraryAction: LibraryAction = metadata.data?.in_library ? "remove" : "add";
+  const canEdit = libraryAction === "add" ? metadata.data?.can_add : metadata.data?.can_remove;
   const label = `More actions for ${song.title}`;
   const artist = song.artists.find(({ browse_id }) => browse_id);
 
@@ -38,7 +60,7 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum 
     const margin = 8;
     popup.style.left = `${Math.max(margin, Math.min(anchor.x, window.innerWidth - popup.offsetWidth - margin))}px`;
     popup.style.top = `${Math.max(margin, Math.min(anchor.y, window.innerHeight - popup.offsetHeight - margin))}px`;
-    const items = popup.querySelectorAll<HTMLButtonElement>("button");
+    const items = popup.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
     items[anchor.last ? items.length - 1 : 0]?.focus({ preventScroll: true });
 
     function onPointerDown(event: PointerEvent) {
@@ -63,7 +85,7 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum 
       close(true);
       return;
     }
-    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
     const index = items.indexOf(document.activeElement as HTMLButtonElement);
     let next: number;
     switch (event.key) {
@@ -95,6 +117,7 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum 
     <div
       className={className ? `${className} song-menu-host` : "song-menu-host"}
       onContextMenu={(event) => {
+        if (event.target instanceof Element && event.target.closest("dialog")) return;
         event.preventDefault();
         setAnchor({ x: event.clientX, y: event.clientY });
       }}
@@ -134,9 +157,32 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum 
               onOpenAlbum();
             }}>Go to album</button>
           )}
+          <button type="button" role="menuitem" tabIndex={-1}
+            disabled={editingLibrary || metadata.isFetching || !canEdit}
+            onClick={() => {
+              close(true);
+              edit.mutate(libraryAction, { onError: () => { void client.invalidateQueries({ queryKey: key }); } });
+            }}>
+            {metadata.data?.in_library ? "Remove from library" : "Add to library"}
+          </button>
+          {metadata.isError && (
+            <button type="button" role="menuitem" tabIndex={-1} onClick={() => { void metadata.refetch(); }}>
+              Retry loading library status
+            </button>
+          )}
+          <button type="button" role="menuitem" tabIndex={-1}
+            onClick={() => { close(true); dismiss(); setPlaylistOpen(true); }}>
+            Add to playlist…
+          </button>
+          {onRemoveFromPlaylist && (
+            <button type="button" role="menuitem" tabIndex={-1} onClick={() => { close(true); onRemoveFromPlaylist(); }}>
+              Remove from this playlist
+            </button>
+          )}
         </div>,
         document.body,
       )}
+      {playlistOpen && <AddToPlaylistDialog song={song} onClose={() => setPlaylistOpen(false)} />}
     </div>
   );
 }

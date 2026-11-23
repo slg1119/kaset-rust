@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{OnceCell, watch};
+use tokio::sync::{Mutex, OnceCell, watch};
 use ytm_core::api_key::music_api_key;
 use ytm_core::client::{ClientConfig, InnerTubeClient};
 
+use crate::commands::account_actions::FeedbackCache;
 use crate::error::AppError;
 use crate::player::service::PlayerService;
 use crate::session::Session;
@@ -49,6 +50,7 @@ pub struct AppState {
     pub session: Session,
     pub launch: LaunchGate,
     pub player: PlayerService,
+    pub(crate) feedback: Mutex<FeedbackCache>,
     client: OnceCell<Arc<InnerTubeClient>>,
 }
 
@@ -58,6 +60,7 @@ impl AppState {
             session,
             launch: LaunchGate::new(),
             player: PlayerService::new(),
+            feedback: Mutex::default(),
             client: OnceCell::new(),
         }
     }

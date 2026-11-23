@@ -12,3 +12,9 @@ afterEach(async () => {
   // Spies on the generated `commands` / `events` objects must not leak into the next test.
   vi.restoreAllMocks();
 });
+
+// jsdom does not implement the native dialog top layer.
+if (!HTMLDialogElement.prototype.showModal) {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
+}

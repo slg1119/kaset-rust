@@ -137,3 +137,15 @@ tracks, and clearing upcoming tracks. Keyboard reordering keeps focus on the
 moved occurrence. The queue button exposes its position as
 an accessible description. Surfaces that use backdrop blur have a solid
 background fallback.
+
+## M5b account actions
+
+Track ratings and library status share the song-metadata query. Tauri keeps
+feedback tokens in an epoch-scoped cache and accepts only a video ID and a
+library action from React. Playlist removal uses the server’s occurrence ID
+so duplicate videos can be edited individually.
+
+Playlist creation and deletion use native HTML dialogs. The single action
+notice follows the open dialog. Rating, library, playlist, and subscription
+changes update the displayed state optimistically, restore it on failure,
+and invalidate the affected queries on success.
