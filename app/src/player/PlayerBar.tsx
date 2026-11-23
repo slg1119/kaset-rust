@@ -53,11 +53,15 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   const queueId = useId();
   const lyricsButton = useRef<HTMLButtonElement>(null);
   const lyricsId = useId();
+  const lyricsDock = useRef<HTMLDivElement>(null);
   const queuePositionId = useId();
   const queuePosition = queue?.current != null ? `${queue.current + 1} of ${queue.songs.length}` : null;
   const visible = state !== null && state.track !== null;
 
   function toggleLyrics() {
+    if (lyricsOpen && lyricsDock.current?.contains(document.activeElement)) {
+      lyricsButton.current?.focus({ preventScroll: true });
+    }
     setOpenPanel((panel) => panel === "lyrics" ? null : "lyrics");
   }
 
@@ -269,16 +273,20 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   return (
     <>
       {playerBar}
-      {lyricsOpen && (
-        <LyricsPanel
-          key={track.video_id}
-          id={lyricsId}
-          videoId={track.video_id}
-          position={state.is_ad ? null : settled ? state.position : seekTarget}
-          canSeek={!state.is_ad}
-          onSeek={seek}
-        />
-      )}
+      <div className="lyrics-dock" data-open={lyricsOpen} ref={lyricsDock}>
+        <div className="lyrics-slide">
+          {lyricsOpen && (
+            <LyricsPanel
+              key={track.video_id}
+              id={lyricsId}
+              videoId={track.video_id}
+              position={state.is_ad ? null : settled ? state.position : seekTarget}
+              canSeek={!state.is_ad}
+              onSeek={seek}
+            />
+          )}
+        </div>
+      </div>
     </>
   );
 }

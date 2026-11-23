@@ -67,7 +67,9 @@ afterwards.
 - **Artwork:** `img-src` allows `*.ytimg.com`, `*.ggpht.com`, and
   `*.googleusercontent.com`; the UI loads only https URLs on those hosts and
   shows a placeholder otherwise or on load failure.
-- **Lyrics panel:** the player opens a 360 px glass panel on the right.
+- **Lyrics panel:** the player docks a glass panel along the right edge, between
+  the window inset and the floating player bar. The panel takes up to 340 px
+  from the content area and slides in unless reduced motion is enabled.
   Opening it loads `get_lyrics` through TanStack Query with a ten-minute
   cache keyed by video ID. The panel shows timed lines, plain lyrics with
   attribution, an unavailable state, or a load error with Retry.

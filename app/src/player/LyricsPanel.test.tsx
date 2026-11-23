@@ -80,11 +80,14 @@ test.each([false, true])("centers the active line with reduced motion set to %s"
     const first = await screen.findByRole("button", { name: "First lyric" });
     const row = first.closest("li");
     if (!row) throw new Error("Expected a lyric list item");
-    row.scrollIntoView = vi.fn();
+    const panel = screen.getByRole("region", { name: "Lyrics" });
+    panel.scrollTo = vi.fn();
+    Object.defineProperty(panel, "clientHeight", { value: 200 });
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(DOMRect.fromRect({ y: 240, height: 40 }));
     await act(() => events.playerState.emit({ state: playingState({ position: 1 }) }));
     expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
-    expect(row.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
-      block: "center", behavior: reduced ? "instant" : "smooth",
+    expect(panel.scrollTo).toHaveBeenCalledExactlyOnceWith({
+      top: 160, behavior: reduced ? "instant" : "smooth",
     });
   } finally {
     vi.unstubAllGlobals();
