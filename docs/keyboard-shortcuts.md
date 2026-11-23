@@ -65,3 +65,10 @@ highlighted suggestion, and `Esc` closes the suggestions. `Return` with no
 highlight searches the typed text. When using a Korean input method, pressing
 `Return` to commit Hangul only finishes composition. Press `Return` again to
 search.
+
+On a track’s More actions button, `↓` opens the menu at the first action and
+`↑` opens it at the last. In the menu, `↑`/`↓` move between actions,
+`Home`/`End` jump to the first or last action, and `Esc` closes the menu and
+returns focus to More actions. In the queue panel, `Alt+↑`/`Alt+↓` move the
+focused upcoming track up or down. `Esc` closes the queue and returns focus to
+the Queue button.

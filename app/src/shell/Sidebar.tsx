@@ -9,7 +9,7 @@ import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 type FeedRoute = { kind: FeedKind };
 type SearchRoute = { kind: "search" };
 type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: Route };
-type PageRoute = { kind: "page"; browseId: string; title: string; from: Route };
+type PageRoute = { kind: "page"; browseId: string; title: string; isAlbum: boolean; from: Route };
 type ArtistRoute = { kind: "artist"; browseId: string; name: string; from: Route };
 type ArtistMoreRoute = { kind: "artist-more"; browseId: string; params: string | null; title: string; from: ArtistRoute };
 export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute | ArtistRoute | ArtistMoreRoute;

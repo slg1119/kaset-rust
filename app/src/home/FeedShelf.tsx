@@ -98,6 +98,8 @@ export function FeedShelf({
                   title={item.title}
                   subtitle={subtitleOf(item)}
                   thumbnailUrl={item.thumbnail_url}
+                  song={playable ? songs[start] : undefined}
+                  onOpenArtist={onOpenArtist}
                   artistCredits={playable && onOpenArtist && item.artists.some(({ browse_id }) => browse_id) ?
                     <ArtistNames artists={item.artists} onOpenArtist={onOpenArtist} /> : undefined}
                   onOpen={hasBrowsePage(item) ? () => onOpenPage(item) : undefined}

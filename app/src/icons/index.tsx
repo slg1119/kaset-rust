@@ -190,3 +190,19 @@ export function ClockIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function MoreIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth={3} />
+    </Icon>
+  );
+}
+
+export function RemoveIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </Icon>
+  );
+}

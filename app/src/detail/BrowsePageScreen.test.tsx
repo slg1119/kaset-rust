@@ -50,9 +50,13 @@ test("opens a Home album, displays its tracks, and queues playback from the clic
   expect(screen.getByText("Test artist · 2024")).toBeInTheDocument();
   expect(screen.getByText("2 songs")).toBeInTheDocument();
   const tracks = screen.getByRole("list", { name: "Tracks" });
-  expect(within(tracks).getByRole("button", { name: /Opening track/ })).toHaveAttribute("aria-current", "true");
-  await userEvent.click(within(tracks).getByRole("button", { name: /Final track/ }));
+  expect(within(tracks).getByRole("button", { name: "Opening track, Track artist" })).toHaveAttribute("aria-current", "true");
+  await userEvent.click(within(tracks).getByRole("button", { name: "Final track" }));
   expect(playQueue).toHaveBeenCalledWith({ songs: page.songs, startIndex: 1 });
+
+  await userEvent.click(within(tracks).getByRole("button", { name: "More actions for Final track" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Go to album" }));
+  expect(screen.getByRole("heading", { name: page.title, level: 1 })).toHaveFocus();
 
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
   expect(await screen.findByRole("heading", { name: "Home", level: 1 })).toBeInTheDocument();
@@ -124,6 +128,6 @@ test("Play caps the queue and Shuffle enables shuffle before playing", async () 
   expect(setShuffle).toHaveBeenCalledWith({ enabled: true });
   expect(setShuffle.mock.invocationCallOrder[0]).toBeLessThan(playQueue.mock.invocationCallOrder[1]);
   expect(playQueue).toHaveBeenLastCalledWith({ songs: songs.slice(0, 500), startIndex: expect.any(Number) });
-  await userEvent.click(screen.getByRole("button", { name: /Track 501/ }));
+  await userEvent.click(screen.getByRole("button", { name: "Track 501, Track artist" }));
   expect(playQueue).toHaveBeenLastCalledWith({ songs: songs.slice(500), startIndex: 0 });
 });

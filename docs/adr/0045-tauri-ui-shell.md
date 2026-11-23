@@ -103,3 +103,11 @@ Artist cards and linked track credits open reusable artist routes from feeds,
 search, detail pages, and Now Playing. The shell keeps the source route for
 Back. See all uses the shelf’s browse endpoint and caches results by ID and
 params. The hero reuses Artwork and the shelves reuse the feed components.
+
+## M5b track menus and queue editing
+
+Track rows and cards share an ellipsis menu that also opens on right-click.
+The queue panel supports jumping to a track, removing and reordering upcoming
+tracks, and clearing upcoming tracks. The queue button exposes its position as
+an accessible description. Surfaces that use backdrop blur have a solid
+background fallback.

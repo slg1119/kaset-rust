@@ -42,7 +42,7 @@ function ShellLayout() {
       openArtist(card.browse_id, card.title);
       return;
     }
-    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route });
+    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, isAlbum: card.kind === "album", from: route });
   }
 
   function openCategory(item: CategoryItem) {
@@ -104,6 +104,7 @@ function ShellLayout() {
             <BrowsePageScreen
               browseId={route.browseId}
               title={route.title}
+              isAlbum={route.isAlbum}
               onOpenArtist={openArtist}
               onBack={() => setRoute(route.from)}
             />

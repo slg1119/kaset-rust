@@ -6,6 +6,7 @@ import { Artwork } from "../music/Artwork";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { useNotice } from "../notices/NoticeProvider";
 import { formatTime } from "./format";
+import { QueuePanel } from "./QueuePanel";
 import { usePlayer } from "./usePlayer";
 
 const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
@@ -45,6 +46,8 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   const bar = useRef<HTMLElement>(null);
   const queueButton = useRef<HTMLButtonElement>(null);
   const queueId = useId();
+  const queuePositionId = useId();
+  const queuePosition = queue?.current != null ? `${queue.current + 1} of ${queue.songs.length}` : null;
   const visible = state !== null && state.track !== null;
 
   useEffect(() => () => clearTimeout(settleTimer.current), []);
@@ -67,12 +70,14 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
     if (!queueOpen || !visible) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest(".song-menu")) return;
       // Capture phase + preventDefault: closing the queue must not also trigger the Back shortcut.
       event.preventDefault();
       setQueueOpen(false);
       queueButton.current?.focus();
     }
     function onPointerDown(event: PointerEvent) {
+      if (event.target instanceof Element && event.target.closest(".song-menu")) return;
       if (event.target instanceof Node && !bar.current?.contains(event.target)) {
         setQueueOpen(false);
       }
@@ -138,7 +143,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
           className="icon-button"
           aria-label="Next"
           title="Next"
-          disabled={!state.has_next}
+          disabled={!state.has_next && state.status !== "ended"}
           onClick={() => run(() => commands.nextTrack())}
         >
           <NextIcon />
@@ -209,30 +214,23 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
           title="Queue"
           aria-expanded={queueOpen}
           aria-controls={queueId}
+          aria-describedby={queuePosition ? queuePositionId : undefined}
           onClick={() => setQueueOpen((open) => !open)}
         >
           <QueueIcon />
-          {queue && queue.current !== null && (
-            <span className="player-queue">
-              {queue.current + 1} of {queue.songs.length}
-            </span>
-          )}
+          {queuePosition && <span id={queuePositionId} className="player-queue">{queuePosition}</span>}
         </button>
       </div>
       {queueOpen && (
-        <section id={queueId} className="queue-panel" aria-label="Queue">
-          <ol>
-            {(queue?.songs ?? []).map((song, index) => (
-              <li key={`${index}-${song.video_id}`} aria-current={index === queue?.current ? "true" : undefined}>
-                <span className="item-title">{song.title}</span>
-                <span className="item-subtitle"><ArtistNames artists={song.artists} onOpenArtist={onOpenArtist && ((browseId, name) => {
-                  setQueueOpen(false);
-                  onOpenArtist(browseId, name);
-                })} /></span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <QueuePanel
+          id={queueId}
+          queue={queue}
+          run={run}
+          onOpenArtist={onOpenArtist && ((browseId, name) => {
+            setQueueOpen(false);
+            onOpenArtist(browseId, name);
+          })}
+        />
       )}
     </footer>
   );
