@@ -1,7 +1,7 @@
 import { skipToken, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { commands, type FeedKind, type FeedPage } from "../bindings";
-import { errorMessage } from "../errors";
+import { errorMessage, isAppError } from "../errors";
 import { ChevronLeftIcon, RefreshIcon } from "../icons";
 import type { OpenArtist } from "../music/ArtistNames";
 import { isPlayable, itemKey, type PageCard } from "../music/items";
@@ -21,6 +21,8 @@ type Props = {
   onOpenArtist?: OpenArtist;
   onOpenCategory: (item: CategoryItem) => void;
   active?: boolean;
+  podcastsUnavailable?: boolean;
+  onPodcastsUnavailable?: () => void;
   onBack?: () => void;
 };
 
@@ -32,7 +34,7 @@ function nextFeedPage(page: FeedPage, pages: FeedPage[], pageParam: string | nul
   );
 }
 
-function useFeed(source: FeedSource, chip: string | null) {
+function useFeed(source: FeedSource, chip: string | null, unavailable: boolean, onUnavailable?: () => void) {
   const isCategory = source.kind === "category";
   const base = useInfiniteQuery({
     queryKey: isCategory ? queryKeys.feedCategory(source.browseId, source.params) : queryKeys.feed(source.kind),
@@ -40,11 +42,15 @@ function useFeed(source: FeedSource, chip: string | null) {
     queryFn: ({ pageParam }) => {
       if (pageParam !== null) return commands.getFeedContinuation(pageParam);
       if (isCategory) return commands.getFeedCategory(source.browseId, source.params);
-      return source.kind === "podcasts" ? commands.getPodcasts() : commands.getFeed(source.kind);
+      if (source.kind !== "podcasts") return commands.getFeed(source.kind);
+      return commands.getPodcasts().catch((error: unknown) => {
+        if (isAppError(error) && error.kind === "podcasts_unavailable") onUnavailable?.();
+        throw error;
+      });
     },
     getNextPageParam: nextFeedPage,
     staleTime: source.kind === "history" ? 0 : FEED_STALE_MS,
-    enabled: chip === null,
+    enabled: chip === null && !unavailable,
   });
   const filtered = useInfiniteQuery({
     queryKey: queryKeys.feedChip(chip),
@@ -58,13 +64,17 @@ function useFeed(source: FeedSource, chip: string | null) {
   return { feed: chip === null ? base : filtered, chips: base.data?.pages[0].chips ?? [] };
 }
 
-export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenArtist, onBack, active = true }: Props) {
+export function FeedScreen({
+  source, title, onOpenPage, onOpenCategory, onOpenArtist, onBack, active = true,
+  podcastsUnavailable = false, onPodcastsUnavailable,
+}: Props) {
   const [chip, setChip] = useState<string | null>(null);
-  const { feed, chips } = useFeed(source, source.kind === "home" ? chip : null);
+  const unavailable = source.kind === "podcasts" && podcastsUnavailable;
+  const { feed, chips } = useFeed(source, source.kind === "home" ? chip : null, unavailable, onPodcastsUnavailable);
   const { fetchNextPage, hasNextPage, isFetching, isFetchNextPageError } = feed;
   const play = usePlayQueue();
   const sentinel = useLoadMore(
-    active && hasNextPage && !isFetching && !isFetchNextPageError,
+    active && !unavailable && hasNextPage && !isFetching && !isFetchNextPageError,
     feed.data?.pages.length ?? 0,
     fetchNextPage,
   );
@@ -77,6 +87,15 @@ export function FeedScreen({ source, title, onOpenPage, onOpenCategory, onOpenAr
   useEffect(() => {
     backButton.current?.focus();
   }, []);
+
+  if (unavailable) {
+    return (
+      <>
+        <header className="content-header"><h1>{title}</h1></header>
+        <p className="hint" role="status">Podcasts aren't available in your region.</p>
+      </>
+    );
+  }
 
   return (
     <>

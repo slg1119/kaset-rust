@@ -26,6 +26,7 @@ export function Shell() {
 }
 
 function ShellLayout() {
+  const [podcastsUnavailable, setPodcastsUnavailable] = useState(false);
   const [route, setRoute] = useState<Route>({ kind: "home" });
   // Kept here so leaving Search and coming back shows the same results.
   const [query, setQuery] = useState("");
@@ -85,7 +86,7 @@ function ShellLayout() {
 
   return (
     <div className="shell">
-      <Sidebar route={route} onNavigate={setRoute} />
+      <Sidebar route={route} onNavigate={setRoute} podcastsUnavailable={podcastsUnavailable} />
       <div className="content-column">
         {routeStack(route).map((entry, index) => {
           const active = entry === route;
@@ -98,6 +99,8 @@ function ShellLayout() {
                   title={entry.kind === "category" ? entry.title : FEED_TABS[entry.kind].label}
                   {...artistActions}
                   active={active}
+                  podcastsUnavailable={podcastsUnavailable}
+                  onPodcastsUnavailable={() => setPodcastsUnavailable(true)}
                   onBack={onBack}
                 />
               )}

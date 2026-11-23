@@ -6,8 +6,9 @@ use ytm_core::parsers::podcasts::{
 
 use super::feed::checked_feed_value;
 use super::{checked_browse_id, signed_in_request};
-use crate::error::AppError;
+use crate::error::{AppError, ErrorKind};
 use crate::state::AppState;
+use ytm_core::YtmError;
 
 /// Fetches the podcast discovery feed. Further shelves use get_feed_continuation.
 #[tauri::command]
@@ -17,9 +18,22 @@ pub async fn get_podcasts(
     state: State<'_, AppState>,
 ) -> Result<FeedPage, AppError> {
     signed_in_request(&app, &state, |client| async move {
-        Ok(parse_podcasts(&client.browse(PODCASTS_BROWSE_ID).await?)?)
+        let response = client
+            .browse(PODCASTS_BROWSE_ID)
+            .await
+            .map_err(podcasts_feed_error)?;
+        Ok(parse_podcasts(&response)?)
     })
     .await
+}
+
+fn podcasts_feed_error(error: YtmError) -> AppError {
+    match error {
+        YtmError::Http { status: 404 } => {
+            AppError::new(ErrorKind::PodcastsUnavailable, error.to_string())
+        }
+        other => other.into(),
+    }
 }
 
 /// Fetches a podcast show and its first page of episodes.
@@ -52,4 +66,25 @@ pub async fn get_podcast_episodes_continuation(
         )?)
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distinguishes_only_the_discovery_endpoint_404() {
+        assert_eq!(
+            podcasts_feed_error(YtmError::Http { status: 404 }).kind,
+            ErrorKind::PodcastsUnavailable
+        );
+        assert_eq!(
+            podcasts_feed_error(YtmError::Http { status: 500 }).kind,
+            ErrorKind::Http
+        );
+        assert_eq!(
+            AppError::from(YtmError::Http { status: 404 }).kind,
+            ErrorKind::Http
+        );
+    }
 }

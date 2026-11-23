@@ -1,7 +1,7 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { mockCommands, type Episode, type PodcastShow } from "../bindings";
+import { events, mockCommands, type Episode, type PodcastShow } from "../bindings";
 import { idleSnapshot } from "../player/testing";
 import { account, home } from "../test/fixtures";
 import { renderApp } from "../test/render";
@@ -139,4 +139,43 @@ test("keeps episodes playable and uses the route title when the show title is mi
     songs: [expect.objectContaining({ artists: [{ name: podcast.title, browse_id: null }] })],
     startIndex: 0,
   });
+});
+
+test("hides regional Podcasts for the session and resets on account replacement and sign-out", async () => {
+  const getPodcasts = vi.fn()
+    .mockImplementationOnce(() => { throw { kind: "podcasts_unavailable", message: "HTTP 404" }; })
+    .mockImplementationOnce(() => { throw { kind: "podcasts_unavailable", message: "HTTP 404" }; })
+    .mockReturnValue(feed);
+  renderPodcasts({ getPodcasts });
+  const nav = () => within(screen.getByRole("navigation", { name: "Main" }));
+  const expectUnavailable = async () => {
+    await userEvent.click(await screen.findByRole("button", { name: "Podcasts" }));
+    expect(await screen.findByText("Podcasts aren't available in your region.")).toBeInTheDocument();
+    expect(nav().queryByRole("button", { name: "Podcasts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  };
+
+  await expectUnavailable();
+  await userEvent.click(nav().getByRole("button", { name: "Home" }));
+  expect(nav().queryByRole("button", { name: "Podcasts" })).not.toBeInTheDocument();
+  await act(() => events.authChanged.emit({ status: "signed_in" }));
+  await expectUnavailable();
+  await act(() => events.authChanged.emit({ status: "signed_out" }));
+  await act(() => events.authChanged.emit({ status: "signed_in" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Podcasts" }));
+  expect(await screen.findByRole("heading", { name: "Recommended shows" })).toBeInTheDocument();
+  expect(getPodcasts).toHaveBeenCalledTimes(3);
+});
+
+test("keeps Podcasts visible and offers Retry on other feed errors", async () => {
+  const getPodcasts = vi.fn()
+    .mockImplementationOnce(() => { throw { kind: "http", message: "HTTP 500" }; })
+    .mockReturnValue(feed);
+  renderPodcasts({ getPodcasts });
+  await userEvent.click(await screen.findByRole("button", { name: "Podcasts" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 500");
+  expect(screen.getByRole("button", { name: "Podcasts" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByRole("heading", { name: "Recommended shows" })).toBeInTheDocument();
 });

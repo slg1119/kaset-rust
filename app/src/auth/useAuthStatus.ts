@@ -15,7 +15,7 @@ export type AuthView = {
  * change between the reply and the subscription cannot be lost. An event that
  * arrives before the reply wins.
  */
-export function useAuthStatus(): AuthView {
+export function useAuthStatus(onSessionChange?: () => void): AuthView {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -26,6 +26,7 @@ export function useAuthStatus(): AuthView {
     events.authChanged
       .listen((event) => {
         if (!active) return;
+        onSessionChange?.();
         setError(null);
         setStatus(event.payload.status);
       })
@@ -46,7 +47,7 @@ export function useAuthStatus(): AuthView {
       active = false;
       stop?.();
     };
-  }, [attempt]);
+  }, [attempt, onSessionChange]);
 
   const retry = useCallback(() => {
     setError(null);

@@ -11,6 +11,7 @@ pub enum ErrorKind {
     InvalidArgument,
     Network,
     Http,
+    PodcastsUnavailable,
     Parse,
     RateLimited,
     Internal,

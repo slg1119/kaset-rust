@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::player::engine::{PlayerState, QueueState};
 use crate::session::AuthStatus;
 
-/// Emitted on `auth://changed` whenever the sign-in state changes.
+/// Emitted on `auth://changed` when the sign-in state or account session changes.
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type, tauri_specta::Event,
 )]

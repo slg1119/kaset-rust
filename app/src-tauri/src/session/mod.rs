@@ -194,7 +194,9 @@ impl Session {
             tracing::warn!(%error, "signed in, but the session could not be saved");
         }
         self.cookies.set(Some(jar));
-        Ok(self.set_status(AuthStatus::SignedIn, true))
+        self.set_status(AuthStatus::SignedIn, true);
+        // A replacement login starts a new account session even if the status stays signed in.
+        Ok(Some(AuthStatus::SignedIn))
     }
 
     /// `sign_in_if` with the current epoch.
@@ -683,6 +685,18 @@ mod tests {
         });
         assert_eq!(session.status(), AuthStatus::SignedIn);
         assert_eq!(session.cookies().get(), Some(jar("test-sapisid-2")));
+    }
+
+    #[test]
+    fn replacement_sign_in_reports_a_new_signed_in_session() {
+        let session = session_with(MemoryStore::default());
+        session.sign_in(jar("test-first")).unwrap();
+        let epoch = session.epoch();
+        assert_eq!(
+            session.sign_in(jar("test-second")).unwrap(),
+            Some(AuthStatus::SignedIn)
+        );
+        assert!(session.epoch() > epoch);
     }
 
     #[test]

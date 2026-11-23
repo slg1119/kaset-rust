@@ -179,7 +179,7 @@ export type ArtistRef = {
 	browse_id: string | null,
 };
 
-/**  Emitted on `auth://changed` whenever the sign-in state changes. */
+/**  Emitted on `auth://changed` when the sign-in state or account session changes. */
 export type AuthChanged = {
 	status: AuthStatus,
 };
@@ -255,7 +255,7 @@ export type Episode = {
 /**  What went wrong, for the UI to branch on. */
 export type ErrorKind = "auth_expired" | "not_signed_in" | 
 /**  A command argument was rejected, such as an unplayable queue position. */
-"invalid_argument" | "network" | "http" | "parse" | "rate_limited" | "internal";
+"invalid_argument" | "network" | "http" | "podcasts_unavailable" | "parse" | "rate_limited" | "internal";
 
 export type FeedKind = "home" | "explore" | "charts" | "moods_and_genres" | "new_releases" | "history";
 

@@ -42,10 +42,11 @@ const ROUTES = [SEARCH, ...FEED_ORDER.map((route) => ({ route, ...FEED_TABS[rout
 
 type Props = {
   route: Route;
+  podcastsUnavailable?: boolean;
   onNavigate: (route: Route) => void;
 };
 
-export function Sidebar({ route, onNavigate }: Props) {
+export function Sidebar({ route, onNavigate, podcastsUnavailable = false }: Props) {
   const { report, dismiss } = useNotice();
   const queryClient = useQueryClient();
   // Display only; a failure falls back to a generic label instead of an alert.
@@ -82,7 +83,7 @@ export function Sidebar({ route, onNavigate }: Props) {
     <nav className="sidebar" aria-label="Main">
       <p className="app-name">Kaset</p>
       <ul className="nav">
-        {ROUTES.map(({ route: destination, label, Icon }) => (
+        {ROUTES.filter(({ route }) => !podcastsUnavailable || route !== "podcasts").map(({ route: destination, label, Icon }) => (
           <li key={destination}>
             <button
               type="button"
