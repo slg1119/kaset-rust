@@ -257,8 +257,11 @@ test("publishes its height for the scrolling content", async () => {
     await screen.findByRole("contentinfo", { name: "Player" });
     const column = container.querySelector(".content-column") as HTMLElement;
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(72);
-    act(() => observers.forEach((callback) => callback([], {} as ResizeObserver)));
-    expect(column.style.getPropertyValue("--player-space")).toBe("72px");
+    // The observer is created in an effect that can land after the bar first renders.
+    await waitFor(() => {
+      act(() => observers.forEach((callback) => callback([], {} as ResizeObserver)));
+      expect(column.style.getPropertyValue("--player-space")).toBe("72px");
+    });
     unmount();
     expect(column.style.getPropertyValue("--player-space")).toBe("");
   } finally {
@@ -415,10 +418,11 @@ test("rolls back a rejected rating after optimistically pressing Like", async ()
   const like = await screen.findByRole("button", { name: "Like" });
   await waitFor(() => expect(like).toBeEnabled());
   await userEvent.click(like);
-  expect(like).toHaveAttribute("aria-pressed", "true");
-  expect(rateSong).toHaveBeenCalledWith({ videoId: testSong.video_id, rating: "LIKE" });
+  // The optimistic update and the request run through an async mutation.
+  await waitFor(() => expect(like).toHaveAttribute("aria-pressed", "true"));
+  await waitFor(() => expect(rateSong).toHaveBeenCalledWith({ videoId: testSong.video_id, rating: "LIKE" }));
   await act(() => reject(new Error("Rating failed")));
-  expect(like).toHaveAttribute("aria-pressed", "false");
+  await waitFor(() => expect(like).toHaveAttribute("aria-pressed", "false"));
   expect(await screen.findByRole("alert")).toHaveTextContent("Rating failed");
 });
 

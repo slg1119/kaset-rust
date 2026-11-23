@@ -53,16 +53,16 @@ new issue using the "Prompt Request" issue template instead of a pull request.
 
 <!-- Describe how you tested these changes -->
 
-- [ ] Unit tests pass (`xcodebuild test -only-testing:KasetTests`)
+- [ ] Rust checks pass (`cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`)
+- [ ] App checks pass (`cd app && pnpm lint && pnpm typecheck && pnpm test`)
 - [ ] Manual testing performed
-- [ ] UI tested on macOS 26+
+- [ ] UI tested on macOS and/or Windows
 
 ## Checklist
 
 <!-- Mark completed items with an 'x' -->
 
 - [ ] My code follows the project's style guidelines
-- [ ] I have run `swiftlint --strict && swiftformat .`
 - [ ] I have added tests that prove my fix/feature works
 - [ ] New and existing unit tests pass locally
 - [ ] I have updated documentation if needed

@@ -44,14 +44,14 @@ body:
         The exact prompt to run with an AI coding assistant (GitHub Copilot, Claude, Cursor, etc.).
         Include all necessary context the AI would need.
       placeholder: |
-        Add graceful empty state handling to SearchView.swift.
+        Add graceful empty state handling to app/src/search/SearchScreen.tsx.
         
         Requirements:
         - Show an illustration when search returns no results
         - Display helpful message suggesting different search terms
-        - Follow existing empty state patterns in LibraryView
-        - Use SF Symbols for the illustration
-        - Ensure VoiceOver accessibility
+        - Follow existing empty state patterns in LibraryScreen
+        - Use an icon from app/src/icons for the illustration
+        - Ensure screen reader accessibility
     validations:
       required: true
 
@@ -74,8 +74,8 @@ body:
       label: Target Files (Optional)
       description: List specific files the prompt should modify, if known.
       placeholder: |
-        - Views/macOS/Search/SearchView.swift
-        - Views/macOS/Components/EmptyStateView.swift (new)
+        - app/src/search/SearchScreen.tsx
+        - app/src/music/EmptyState.tsx (new)
 
   - type: textarea
     id: acceptance
@@ -87,7 +87,7 @@ body:
         - [ ] Message is helpful and not generic
         - [ ] VoiceOver reads the empty state correctly
         - [ ] Unit tests pass
-        - [ ] No SwiftLint warnings
+        - [ ] No clippy or ESLint warnings
     validations:
       required: true
 
