@@ -2381,7 +2381,7 @@ dependencies = [
 name = "kaset"
 version = "0.1.0"
 dependencies = [
- "keyring",
+ "kaset-session",
  "serde",
  "serde_json",
  "souvlaki",
@@ -2391,13 +2391,37 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-notification",
  "tauri-specta",
- "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "window-vibrancy",
  "windows",
+ "ytm-core",
+]
+
+[[package]]
+name = "kaset-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "kaset-session",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "wiremock",
+ "ytm-core",
+]
+
+[[package]]
+name = "kaset-session"
+version = "0.1.0"
+dependencies = [
+ "keyring",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
  "ytm-core",
 ]
 

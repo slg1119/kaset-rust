@@ -15,6 +15,8 @@ use ytm_core::secret::Secret;
 pub const KEYRING_SERVICE: &str = "com.sertacozercan.kaset.desktop";
 /// Selects the session store in debug builds: `keyring` (default) or `file`.
 pub const STORE_ENV: &str = "KASET_SESSION_STORE";
+/// Explicit debug session file path for tools without an app data directory.
+pub const SESSION_FILE_ENV: &str = "KASET_SESSION_FILE";
 /// File name of the debug-only file store inside the app data directory.
 pub const DEV_FILE_NAME: &str = "dev-session.txt";
 /// Bytes per keyring entry. Windows Credential Manager caps a credential blob at
@@ -378,22 +380,32 @@ pub fn store_kind(env_value: Option<&str>, debug_build: bool) -> StoreKind {
     }
 }
 
+/// The app's existing debug session location within its app data directory.
+pub fn dev_session_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(DEV_FILE_NAME)
+}
+
+/// The OS store shared by the desktop app and CLI.
+pub fn keyring_store() -> ChunkedStore<KeyringBackend> {
+    ChunkedStore::new(KeyringBackend::new(KEYRING_SERVICE))
+}
+
 pub fn store_for(kind: StoreKind, app_data_dir: &Path) -> Box<dyn SessionStore> {
     match kind {
-        StoreKind::Keyring => Box::new(ChunkedStore::new(KeyringBackend::new(KEYRING_SERVICE))),
-        StoreKind::File => Box::new(FileStore::new(app_data_dir.join(DEV_FILE_NAME))),
+        StoreKind::Keyring => Box::new(keyring_store()),
+        StoreKind::File => Box::new(FileStore::new(dev_session_path(app_data_dir))),
     }
 }
 
 /// In-memory store for tests.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[derive(Default)]
 pub struct MemoryStore {
     value: std::sync::Mutex<Option<Secret>>,
     fail_saves: bool,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl MemoryStore {
     /// A store whose `save` always fails, like a locked Keychain.
     pub fn failing() -> Self {
@@ -404,7 +416,7 @@ impl MemoryStore {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl SessionStore for MemoryStore {
     fn load(&self) -> Result<Option<Secret>, StoreError> {
         Ok(self.value.lock().unwrap().clone())
@@ -744,6 +756,12 @@ mod tests {
             store.clear().unwrap();
             assert!(backend.names().is_empty(), "{case}: {:?}", backend.names());
         }
+    }
+
+    #[test]
+    fn app_data_path_uses_the_existing_debug_store_filename() {
+        let app_data = Path::new("app-data");
+        assert_eq!(dev_session_path(app_data), app_data.join("dev-session.txt"));
     }
 
     #[test]

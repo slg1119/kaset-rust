@@ -3,10 +3,18 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::YtmError;
-use crate::client::{CONNECT_TIMEOUT, REQUEST_TIMEOUT, USER_AGENT};
+use crate::client::{CONNECT_TIMEOUT, MUSIC_ORIGIN, REQUEST_TIMEOUT, USER_AGENT};
 
 /// Environment variable that overrides the fetched key.
 pub const API_KEY_ENV: &str = "KASET_YTMUSIC_API_KEY";
+
+/// Resolves the YouTube Music key exactly as the desktop app and CLI need it.
+pub async fn music_api_key() -> Result<String, YtmError> {
+    match std::env::var(API_KEY_ENV) {
+        Ok(key) if !key.trim().is_empty() => Ok(key),
+        _ => fetch_api_key(MUSIC_ORIGIN).await,
+    }
+}
 
 static KEY_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#""INNERTUBE_API_KEY"\s*:\s*"([^"]+)""#).expect("static regex is valid")
