@@ -9,6 +9,7 @@ import { useShortcuts } from "../shell/useShortcuts";
 import { LyricsPanel } from "./LyricsPanel";
 import { formatTime } from "./format";
 import { QueuePanel } from "./QueuePanel";
+import { TrackRating } from "./TrackRating";
 import { usePlayer } from "./usePlayer";
 
 const NEXT_REPEAT: Record<RepeatMode, RepeatMode> = { off: "all", all: "one", one: "off" };
@@ -82,14 +83,14 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
     if (openPanel === null || !visible) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
-      if (event.target instanceof Element && event.target.closest(".song-menu")) return;
+      if (event.target instanceof Element && event.target.closest(".song-menu, dialog[open]")) return;
       // Capture phase + preventDefault: closing a panel must not also trigger the Back shortcut.
       event.preventDefault();
       setOpenPanel(null);
       (openPanel === "queue" ? queueButton : lyricsButton).current?.focus();
     }
     function onPointerDown(event: PointerEvent) {
-      if (event.target instanceof Element && event.target.closest(".song-menu")) return;
+      if (event.target instanceof Element && event.target.closest(".song-menu, dialog[open]")) return;
       if (queueOpen && event.target instanceof Node && !bar.current?.contains(event.target)) {
         setOpenPanel(null);
       }
@@ -202,6 +203,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
         </div>
       </div>
       <div className="player-extras">
+        {!state.is_ad && <TrackRating key={track.video_id} videoId={track.video_id} />}
         <button
           type="button"
           className="icon-button"

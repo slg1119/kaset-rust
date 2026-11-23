@@ -224,3 +224,15 @@ export function RemoveIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function HeartIcon(props: IconProps) {
+  return <Icon {...props}><path d="M12 21 3.9 13a5.4 5.4 0 0 1 7.7-7.6l.4.5.4-.5a5.4 5.4 0 0 1 7.7 7.6Z" /></Icon>;
+}
+
+export function HeartFilledIcon(props: IconProps) {
+  return <Icon {...props} filled><path d="M12 22 3.2 13.4a6 6 0 0 1 8.5-8.5l.3.3.3-.3a6 6 0 0 1 8.5 8.5Z" /></Icon>;
+}
+
+export function ThumbDownIcon(props: IconProps) {
+  return <Icon {...props}><path d="M7 13V4H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1Zm0-9h10a2 2 0 0 1 2 1.6l1.5 6A2 2 0 0 1 18.6 14H14l1 4.5a2 2 0 0 1-3.6 1.6L7 13" /></Icon>;
+}

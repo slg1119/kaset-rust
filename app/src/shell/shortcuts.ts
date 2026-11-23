@@ -32,7 +32,7 @@ export function isMac(): boolean {
  * is open. ⌘Q, ⌘W, ⌘H, ⌘M, and ⌘, are never taken.
  */
 export function shortcutFor(event: KeyInput, mac: boolean = isMac(), focusVisible?: boolean): Shortcut | null {
-  if (event.defaultPrevented || event.isComposing) return null;
+  if (event.defaultPrevented || event.isComposing || matches(event.target, "dialog[open]")) return null;
   const anyModifier = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey;
   if (event.key === " " && !anyModifier) {
     return event.repeat || matches(event.target, SPACE_CONTROLS) || (focusVisible ?? hasKeyboardFocus(event.target))

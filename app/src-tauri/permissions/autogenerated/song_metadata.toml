@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-song-metadata"
+description = "Enables the song_metadata command without any pre-configured scope."
+commands.allow = ["song_metadata"]
+
+[[permission]]
+identifier = "deny-song-metadata"
+description = "Denies the song_metadata command without any pre-configured scope."
+commands.deny = ["song_metadata"]

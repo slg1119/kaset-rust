@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { mockCommands } from "../bindings";
@@ -54,4 +54,64 @@ test("routes through known artist and album destinations", async () => {
   await userEvent.click(trigger);
   await userEvent.click(screen.getByRole("menuitem", { name: "Go to album" }));
   expect(openAlbum).toHaveBeenCalledTimes(1);
+});
+
+test("uses only the song and action for library feedback, then rolls back a rejection", async () => {
+  let reject!: (error: Error) => void;
+  const editLibrary = vi.fn(() => new Promise<null>((_, fail) => { reject = fail; }));
+  mockCommands({
+    songMetadata: () => ({ like_status: null, in_library: false, can_add: true, can_remove: true }),
+    editLibrary,
+  });
+  renderWithProviders(<SongMenu song={testSong}>Track</SongMenu>);
+  const trigger = screen.getByRole("button", { name: "More actions for Test song" });
+  await userEvent.click(trigger);
+  const add = screen.getByRole("menuitem", { name: "Add to library" });
+  await waitFor(() => expect(add).toBeEnabled());
+  await userEvent.click(add);
+  expect(editLibrary).toHaveBeenCalledWith({ edit: { video_id: testSong.video_id, action: "add" } });
+  await userEvent.click(trigger);
+  expect(screen.getByRole("menuitem", { name: "Remove from library" })).toBeDisabled();
+  await act(() => reject(new Error("Library edit failed")));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Library edit failed");
+  await waitFor(() => expect(screen.getByRole("menuitem", { name: "Add to library" })).toBeEnabled());
+});
+
+test("lists playlist targets, rolls back an unsuccessful add, and seeds a new playlist", async () => {
+  let reject!: (error: Error) => void;
+  const addToPlaylist = vi.fn(() => new Promise<null>((_, fail) => { reject = fail; }));
+  const createPlaylist = vi.fn(() => "PLcreated");
+  mockCommands({
+    songMetadata: () => ({ like_status: null, in_library: false, can_add: true, can_remove: false }),
+    addToPlaylistOptions: () => ({
+      title: "Add to playlist", can_create_playlist: true,
+      options: [{ playlist_id: "PLmix", title: "Mix", subtitle: null, thumbnail_url: null, is_selected: false, privacy_status: null }],
+    }),
+    addToPlaylist,
+    createPlaylist,
+  });
+  renderWithProviders(<SongMenu song={testSong}>Track</SongMenu>);
+  const trigger = screen.getByRole("button", { name: "More actions for Test song" });
+  await userEvent.click(trigger);
+  await userEvent.click(screen.getByRole("menuitem", { name: "Add to playlist…" }));
+  const dialog = within(screen.getByRole("dialog", { name: "Add to playlist" }));
+  await userEvent.click(await dialog.findByRole("button", { name: "Mix" }));
+  expect(addToPlaylist).toHaveBeenCalledWith({ videoId: testSong.video_id, playlistId: "PLmix" });
+  expect(await dialog.findByRole("button", { name: "Mix, added" })).toBeDisabled();
+  await act(() => reject(new Error("Playlist edit failed")));
+  expect(await dialog.findByRole("alert")).toHaveTextContent("Playlist edit failed");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(await dialog.findByRole("button", { name: "Mix" })).toBeEnabled();
+
+  await userEvent.click(dialog.getByRole("button", { name: "New playlist" }));
+  expect(screen.getByRole("dialog", { name: "New playlist" })).toBeInTheDocument();
+  await userEvent.type(dialog.getByRole("textbox", { name: "Title" }), "Test playlist");
+  await userEvent.type(dialog.getByRole("textbox", { name: "Description" }), "Test description");
+  await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Privacy" }), "UNLISTED");
+  await userEvent.click(dialog.getByRole("button", { name: "Create playlist" }));
+  expect(createPlaylist).toHaveBeenCalledWith({
+    title: "Test playlist", description: "Test description", privacy: "UNLISTED", videoIds: [testSong.video_id],
+  });
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
 });

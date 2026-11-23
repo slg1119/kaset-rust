@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { commands, type ArtistPage, type BrowseEndpoint, type Song } from "../bindings";
 import { errorMessage } from "../errors";
 import { FeedShelf, type CategoryItem } from "../home/FeedShelf";
 import { ChevronLeftIcon, PlayIcon } from "../icons";
 import type { OpenArtist } from "../music/ArtistNames";
+import { useAccountMutation } from "../music/accountActions";
 import { Artwork } from "../music/Artwork";
 import { isPlayable, toSong, type PageCard } from "../music/items";
 import { useNotice } from "../notices/NoticeProvider";
@@ -32,6 +33,13 @@ export function ArtistScreen({ browseId, name, onBack, onOpenMore, ...navigation
   });
   const play = usePlayQueue();
   const artist = page.data;
+  const key = queryKeys.artist(browseId);
+  const subscription = useAccountMutation({
+    request: ({ channelId, subscribed }: { channelId: string; subscribed: boolean }) =>
+      commands.setArtistSubscribed(channelId, subscribed),
+    optimistic: { key, update: (data: ArtistPage, { subscribed }) => ({ ...data, subscribed }) },
+    invalidate: () => [key, queryKeys.library("artists")],
+  });
   const topSongs = artist && artist.top_songs_section !== null ? artist.sections[artist.top_songs_section] : undefined;
 
   return (
@@ -43,7 +51,16 @@ export function ArtistScreen({ browseId, name, onBack, onOpenMore, ...navigation
       )}
       {artist && (
         <>
-          <ArtistHero artist={artist} play={play} topSongs={topSongs?.items.filter(isPlayable).map(toSong) ?? []} />
+          <ArtistHero artist={artist} play={play} topSongs={topSongs?.items.filter(isPlayable).map(toSong) ?? []}
+            subscription={artist.channel_id && artist.subscribed != null && (
+              <button type="button" className="ghost" aria-pressed={artist.subscribed} disabled={subscription.isPending}
+                onClick={() => {
+                  if (artist.channel_id) subscription.mutate({ channelId: artist.channel_id, subscribed: !artist.subscribed });
+                }}>
+                {artist.subscribed ? "Unsubscribe" : "Subscribe"}
+              </button>
+            )}
+          />
           {artist.sections.map((section, index) => (
             <FeedShelf key={`${index}-${section.title}`} section={section} onPlay={play}
               layout={section === topSongs ? "quick-picks" : "carousel"} onOpenMore={onOpenMore} {...navigation} />
@@ -54,10 +71,11 @@ export function ArtistScreen({ browseId, name, onBack, onOpenMore, ...navigation
   );
 }
 
-function ArtistHero({ artist, play, topSongs }: {
+function ArtistHero({ artist, play, topSongs, subscription }: {
   artist: ArtistPage;
   play: ReturnType<typeof usePlayQueue>;
   topSongs: Song[];
+  subscription: ReactNode;
 }) {
   const { report, dismiss } = useNotice();
   const headingId = useId();
@@ -95,6 +113,7 @@ function ArtistHero({ artist, play, topSongs }: {
           <PlayIcon size={18} />
           {starting ? "Starting…" : "Play"}
         </button>
+        {subscription}
       </div>
     </section>
   );

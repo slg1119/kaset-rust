@@ -1,4 +1,4 @@
-import { act, fireEvent, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { events, mockCommands } from "../bindings";
@@ -356,4 +356,23 @@ test("queue exposes its position and lets the user edit upcoming songs", async (
   await userEvent.keyboard("{Escape}");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Queue" })).toBeInTheDocument();
+});
+
+test("rolls back a rejected rating after optimistically pressing Like", async () => {
+  let reject!: (error: Error) => void;
+  const rateSong = vi.fn(() => new Promise<null>((_, fail) => { reject = fail; }));
+  mockCommands({
+    playerSnapshot: () => ({ state: playingState(), queue: idleSnapshot.queue }),
+    songMetadata: () => ({ like_status: "INDIFFERENT", in_library: false, can_add: true, can_remove: false }),
+    rateSong,
+  });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  const like = await screen.findByRole("button", { name: "Like" });
+  await waitFor(() => expect(like).toBeEnabled());
+  await userEvent.click(like);
+  expect(like).toHaveAttribute("aria-pressed", "true");
+  expect(rateSong).toHaveBeenCalledWith({ videoId: testSong.video_id, rating: "LIKE" });
+  await act(() => reject(new Error("Rating failed")));
+  expect(like).toHaveAttribute("aria-pressed", "false");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Rating failed");
 });
