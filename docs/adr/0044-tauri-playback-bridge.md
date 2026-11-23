@@ -128,3 +128,11 @@ starts the returned tracks through the existing queue engine. The engine keeps
 the continuation for autoplay. A changed session or replaced queue prevents a
 late response from starting playback. When there is no mix endpoint, the hero
 queues the page’s top songs.
+
+## M5b playlist and album queues
+
+Detail screens and the player bar share one snapshot and event subscription
+through the signed-in shell. Detail playback associates each queued song with
+its original browse row. Queue events identify that row through shuffle and
+when a track occurs more than once. Starting a detail shuffle sets shuffle
+and replaces the queue under the same player lock.

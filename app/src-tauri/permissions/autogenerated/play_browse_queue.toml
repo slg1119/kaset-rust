@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-play-browse-queue"
+description = "Enables the play_browse_queue command without any pre-configured scope."
+commands.allow = ["play_browse_queue"]
+
+[[permission]]
+identifier = "deny-play-browse-queue"
+description = "Denies the play_browse_queue command without any pre-configured scope."
+commands.deny = ["play_browse_queue"]

@@ -28,7 +28,7 @@ export function ItemCard({ title, subtitle, thumbnailUrl, layout, shape = "squar
   const className = `item item-${layout}`;
   const onClick = onOpen ?? onPlay;
   if (onClick === undefined) return <div className={className}>{body}</div>;
-  const label = onOpen ? `Open ${title}` : subtitle ? `Play ${title}, ${subtitle}` : `Play ${title}`;
+  const label = itemActionLabel(onOpen ? "Open" : "Play", title, subtitle);
   if (artistCredits) {
     return (
       <div className={`${className} item-with-links`}>
@@ -47,4 +47,8 @@ export function ItemCard({ title, subtitle, thumbnailUrl, layout, shape = "squar
       {body}
     </button>
   );
+}
+
+export function itemActionLabel(action: "Open" | "Play", title: string, subtitle: string | null) {
+  return `${action} ${[title, subtitle].filter(Boolean).join(", ")}`;
 }

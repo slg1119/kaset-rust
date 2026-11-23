@@ -176,6 +176,12 @@ button {
   font-weight: 700;
 }
 
+.nav-heading {
+  margin: 12px 12px 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .nav {
   display: grid;
   gap: 2px;
@@ -248,6 +254,15 @@ button {
   height: 100%;
   padding: 0 32px calc(var(--player-space, 0px) + 2 * var(--inset));
   overflow-y: auto;
+}
+
+.content-frame {
+  position: absolute;
+  inset: 0;
+}
+
+.content-frame[aria-hidden="true"] {
+  visibility: hidden;
 }
 
 .content-header {

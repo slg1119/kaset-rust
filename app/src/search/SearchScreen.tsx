@@ -4,7 +4,7 @@ import { commands, type SearchItem } from "../bindings";
 import { errorMessage } from "../errors";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { Artwork } from "../music/Artwork";
-import { ItemCard } from "../music/ItemCard";
+import { ItemCard, itemActionLabel } from "../music/ItemCard";
 import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
 import { queryKeys, SEARCH_STALE_MS } from "../query";
@@ -117,7 +117,7 @@ function TopResult({ item, onPlay, onOpenPage, onOpenArtist }: { item: SearchIte
     <section className="top-result" aria-labelledby={headingId}>
       <h2 id={headingId}>Top result</h2>
       {hasBrowsePage(item) ? (
-        <button type="button" className="top-card" aria-label={`Open ${item.title}`} onClick={() => onOpenPage(item)}>
+        <button type="button" className="top-card" aria-label={itemActionLabel("Open", item.title, subtitle)} onClick={() => onOpenPage(item)}>
           {artwork}
           <span className="top-text">{title}{metadata}</span>
         </button>

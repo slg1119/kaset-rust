@@ -30,6 +30,10 @@ test("signed in shows the shell with the home feed and the account", async () =>
     "Moods & Genres",
     "New releases",
     "History",
+    "Playlists",
+    "Liked songs",
+    "Albums",
+    "Artists",
     "Sign out",
   ]);
   expect(within(nav).getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page");

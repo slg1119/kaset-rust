@@ -85,8 +85,7 @@ afterwards.
 - Search shape changes on YouTube's side surface as missing results, not
   errors; the parser logs skipped items at debug level and the explorer is the
   first tool to check.
-- Detail screens load the first album or playlist page. Continuation requests
-  and routes for profiles and podcasts are later work.
+- Routes for profiles and podcasts are later work.
 - Shortcuts work only while the window has focus; global media keys still go
   through souvlaki (ADR-0044). A native menu bar with accelerators is later
   work.
@@ -103,3 +102,16 @@ Artist cards and linked track credits open reusable artist routes from feeds,
 search, detail pages, and Now Playing. The shell keeps the source route for
 Back. See all uses the shelf’s browse endpoint and caches results by ID and
 params. The hero reuses Artwork and the shelves reuse the feed components.
+
+## M5b library and playlist detail
+
+The Library sidebar opens saved playlists, saved albums, followed artists, and
+the shared playlist detail for Liked songs (`VLLM`). Collection cards reuse
+the feed grid. Detail uses TanStack Query to append tracks as the user scrolls.
+Play and Shuffle fetch through the final page or the 500-song queue limit.
+Repeated cursors end pagination.
+
+Routes covered by a detail stay mounted with their own scroll containers.
+The covered screen is inert and hidden from assistive technology. Back
+reuses its scroll container and returns focus to the control that opened
+the detail.

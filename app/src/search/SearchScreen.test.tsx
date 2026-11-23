@@ -42,7 +42,7 @@ test("submitting shows the top result, then results grouped by type", async () =
   const top = screen.getByRole("region", { name: "Top result" });
   expect(within(top).getByText("Test artist")).toBeInTheDocument();
   expect(within(top).getByText("Artist • 42K subscribers")).toBeInTheDocument();
-  expect(within(top).getByRole("button", { name: "Open Test artist" })).toBeInTheDocument();
+  expect(within(top).getByRole("button", { name: "Open Test artist, 42K subscribers" })).toBeInTheDocument();
 
   const songs = screen.getByRole("region", { name: "Songs" });
   expect(within(songs).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
@@ -50,7 +50,7 @@ test("submitting shows the top result, then results grouped by type", async () =
     "Play Another song",
   ]);
   const albums = screen.getByRole("region", { name: "Albums" });
-  expect(within(albums).getByRole("button", { name: "Open Found album" })).toBeInTheDocument();
+  expect(within(albums).getByRole("button", { name: "Open Found album, Test artist • 2024" })).toBeInTheDocument();
   expect(within(albums).getByText("Test artist • 2024")).toBeInTheDocument();
 });
 

@@ -19,7 +19,7 @@ export const idleSnapshot: PlayerSnapshot = {
     has_previous: false,
     has_next: false,
   },
-  queue: { songs: [], current: null },
+  queue: { songs: [], current: null, browse_track: null },
 };
 
 export function playingState(overrides: Partial<PlayerState> = {}): PlayerState {

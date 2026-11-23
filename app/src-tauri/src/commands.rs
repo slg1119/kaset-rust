@@ -1,5 +1,6 @@
 pub mod artist;
 pub mod feed;
+pub mod library;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -8,7 +9,7 @@ use tauri::{AppHandle, Manager, State};
 use ytm_core::client::{InnerTubeClient, playlist_browse_id};
 use ytm_core::models::{Account, BrowsePage, SearchResults};
 use ytm_core::parsers::account::parse_account;
-use ytm_core::parsers::browse_page::parse_browse_page;
+use ytm_core::parsers::browse_page::parse_browse_page_for_id;
 use ytm_core::parsers::search::parse_search;
 use ytm_core::parsers::search_suggestions::parse_search_suggestions;
 
@@ -73,13 +74,16 @@ pub async fn get_browse_page(
     checked_browse_id(&browse_id)?;
     let browse_id = playlist_browse_id(&browse_id);
     signed_in_request(&app, &state, |client| async move {
-        Ok(parse_browse_page(&client.browse(&browse_id).await?)?)
+        Ok(parse_browse_page_for_id(
+            &client.browse(&browse_id).await?,
+            &browse_id,
+        )?)
     })
     .await
 }
 
-fn checked_browse_id(id: &str) -> Result<(), AppError> {
-    checked_browse_value(id, 2..=128, b"", "Invalid browse ID.")
+pub(crate) fn checked_browse_id(id: &str) -> Result<(), AppError> {
+    checked_browse_value(id, 1..=256, b"", "Invalid browse ID.")
 }
 
 fn checked_browse_value(
@@ -229,15 +233,13 @@ mod tests {
 
     #[test]
     fn checked_browse_id_enforces_ascii_and_length() {
-        let max = "a".repeat(128);
-        for id in ["LL", "MPREb_test-id", &max] {
+        let max = "a".repeat(256);
+        for id in ["A", "LL", "MPREb_test-id", &max] {
             assert!(checked_browse_id(id).is_ok());
         }
 
-        let over = "a".repeat(129);
-        for id in [
-            "", "A", " VLtest", "VLtest\n", "a.b", "a/b", "a?b", "가a", &over,
-        ] {
+        let over = "a".repeat(257);
+        for id in ["", " VLtest", "VLtest\n", "a.b", "a/b", "a?b", "가a", &over] {
             assert_eq!(
                 checked_browse_id(id).unwrap_err().kind,
                 ErrorKind::InvalidArgument

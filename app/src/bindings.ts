@@ -30,6 +30,8 @@ export const commands = {
 	getFeedContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<FeedPage>("get_feed_continuation", { token }, options),
 	/**  Fetches the first page of an album or playlist for the signed-in session. */
 	getBrowsePage: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePage>("get_browse_page", { browseId }, options),
+	getLibrary: (kind: LibraryKind, options?: InvokeOptions) => __TAURI_INVOKE<LibraryContent>("get_library", { kind }, options),
+	getBrowsePageContinuation: (token: string, options?: InvokeOptions) => __TAURI_INVOKE<BrowsePageContinuation>("get_browse_page_continuation", { token }, options),
 	/**  Fetches the artist header and shelves. */
 	getArtist: (browseId: string, options?: InvokeOptions) => __TAURI_INVOKE<ArtistPage>("get_artist", { browseId }, options),
 	/**  Fetches the grid or track list behind an artist shelf's See all button. */
@@ -58,6 +60,8 @@ export const commands = {
 	windowVibrancy: (options?: InvokeOptions) => __TAURI_INVOKE<boolean>("window_vibrancy", undefined, options),
 	/**  Replaces the queue with `songs` and plays `songs[start_index]`. */
 	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
+	/**  Plays tracks from a detail page, retaining the original row through shuffle. */
+	playBrowseQueue: (songs: Song[], startIndex: number, playback: BrowsePlayback, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_browse_queue", { songs, startIndex, playback }, options),
 	/**  Pauses when playing or loading; otherwise plays. */
 	togglePlayback: (options?: InvokeOptions) => __TAURI_INVOKE<null>("toggle_playback", undefined, options),
 	nextTrack: (options?: InvokeOptions) => __TAURI_INVOKE<null>("next_track", undefined, options),
@@ -159,6 +163,22 @@ export type BrowsePage = {
 	continuation: string | null,
 };
 
+export type BrowsePageContinuation = {
+	songs: Song[],
+	continuation: string | null,
+};
+
+export type BrowsePlayback = {
+	browse_id: string,
+	offset: number,
+	shuffle: boolean,
+};
+
+export type BrowseTrack = {
+	browse_id: string,
+	index: number,
+};
+
 export type Chip = {
 	title: string,
 	params: string,
@@ -182,6 +202,10 @@ export type HomeSection = {
 	items: ShelfItem[],
 	more?: BrowseEndpoint | null,
 };
+
+export type LibraryContent = { kind: "collection"; data: HomeSection[] } | { kind: "songs"; data: BrowsePage };
+
+export type LibraryKind = "playlists" | "albums" | "artists" | "songs";
 
 /**
  *  Sent by the init script in the player window through `playback_event`.
@@ -245,6 +269,7 @@ export type QueueChanged = {
 export type QueueState = {
 	songs: Song[],
 	current: number | null,
+	browse_track: BrowseTrack | null,
 };
 
 export type RepeatMode = "off" | 
@@ -349,6 +374,8 @@ export type MockCommandHandlers = {
     getFeedChip: (args: { params: string }) => FeedPage | Promise<FeedPage>,
     getFeedContinuation: (args: { token: string }) => FeedPage | Promise<FeedPage>,
     getBrowsePage: (args: { browseId: string }) => BrowsePage | Promise<BrowsePage>,
+    getLibrary: (args: { kind: LibraryKind }) => LibraryContent | Promise<LibraryContent>,
+    getBrowsePageContinuation: (args: { token: string }) => BrowsePageContinuation | Promise<BrowsePageContinuation>,
     getArtist: (args: { browseId: string }) => ArtistPage | Promise<ArtistPage>,
     getArtistMore: (args: { browseId: string; params: string | null }) => ShelfItem[] | Promise<ShelfItem[]>,
     playArtistMix: (args: { playlistId: string | null; videoId: string | null; params: string | null }) => null | Promise<null>,
@@ -357,6 +384,7 @@ export type MockCommandHandlers = {
     getAccount: () => Account | null | Promise<Account | null>,
     windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
+    playBrowseQueue: (args: { songs: Song[]; startIndex: number; playback: BrowsePlayback }) => null | Promise<null>,
     togglePlayback: () => null | Promise<null>,
     nextTrack: () => null | Promise<null>,
     previousTrack: () => null | Promise<null>,
@@ -399,6 +427,8 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_feed_chip": return mockCommandHandler(mockHandlers.getFeedChip, "get_feed_chip", args);
             case "get_feed_continuation": return mockCommandHandler(mockHandlers.getFeedContinuation, "get_feed_continuation", args);
             case "get_browse_page": return mockCommandHandler(mockHandlers.getBrowsePage, "get_browse_page", args);
+            case "get_library": return mockCommandHandler(mockHandlers.getLibrary, "get_library", args);
+            case "get_browse_page_continuation": return mockCommandHandler(mockHandlers.getBrowsePageContinuation, "get_browse_page_continuation", args);
             case "get_artist": return mockCommandHandler(mockHandlers.getArtist, "get_artist", args);
             case "get_artist_more": return mockCommandHandler(mockHandlers.getArtistMore, "get_artist_more", args);
             case "play_artist_mix": return mockCommandHandler(mockHandlers.playArtistMix, "play_artist_mix", args);
@@ -407,6 +437,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_account": return mockCommandHandler(mockHandlers.getAccount, "get_account", args);
             case "window_vibrancy": return mockCommandHandler(mockHandlers.windowVibrancy, "window_vibrancy", args);
             case "play_queue": return mockCommandHandler(mockHandlers.playQueue, "play_queue", args);
+            case "play_browse_queue": return mockCommandHandler(mockHandlers.playBrowseQueue, "play_browse_queue", args);
             case "toggle_playback": return mockCommandHandler(mockHandlers.togglePlayback, "toggle_playback", args);
             case "next_track": return mockCommandHandler(mockHandlers.nextTrack, "next_track", args);
             case "previous_track": return mockCommandHandler(mockHandlers.previousTrack, "previous_track", args);

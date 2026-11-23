@@ -28,7 +28,7 @@ const SEEK_SETTLE_MS = 2000;
  */
 export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   const { report, dismiss } = useNotice();
-  const { state, queue } = usePlayer(report);
+  const { state, queue } = usePlayer();
   // While the user drags the seek slider, show the drag position.
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   // After a seek, progress sampled before the page applied it must not snap the slider back.

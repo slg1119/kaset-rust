@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { commands, events, type PlayerState, type QueueState } from "../bindings";
 import { errorMessage } from "../errors";
 
@@ -7,13 +7,24 @@ export type PlayerView = {
   queue: QueueState | null;
 };
 
+export const PlayerStateContext = createContext<PlayerView["state"]>(null);
+export const PlayerQueueContext = createContext<PlayerView["queue"]>(null);
+
+export function usePlayerQueue() {
+  return useContext(PlayerQueueContext);
+}
+
+export function usePlayer(): PlayerView {
+  return { state: useContext(PlayerStateContext), queue: usePlayerQueue() };
+}
+
 /**
  * The player state and queue: `null` until known, then kept current by
  * `player://state` and `player://queue`. Events that arrive before the
  * initial `playerSnapshot` reply win. Pass a stable `onError` for listener
  * and snapshot failures.
  */
-export function usePlayer(onError: (message: string) => void): PlayerView {
+export function usePlayerSubscription(onError: (message: string) => void): PlayerView {
   const [state, setState] = useState<PlayerState | null>(null);
   const [queue, setQueue] = useState<QueueState | null>(null);
 
