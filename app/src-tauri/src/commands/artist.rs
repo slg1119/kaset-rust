@@ -3,7 +3,7 @@ use ytm_core::models::{ArtistPage, ShelfItem};
 use ytm_core::parsers::artist::{parse_artist, parse_artist_items};
 use ytm_core::parsers::radio::parse_radio;
 
-use super::{checked_browse_value, signed_in_request};
+use super::{checked_browse_value, checked_token, signed_in_request};
 use crate::error::{AppError, ErrorKind};
 use crate::player::commands::validate_queue;
 use crate::player::queue::MAX_QUEUE_LEN;
@@ -109,7 +109,7 @@ fn checked_artist_browse(browse_id: &str, params: Option<&str>) -> Result<(), Ap
 
 fn checked_artist_params(params: Option<&str>) -> Result<(), AppError> {
     if let Some(params) = params {
-        checked_browse_value(params, 1..=4096, b"%=", "Invalid artist parameter.")?;
+        checked_token(params, "Invalid artist parameter.")?;
     }
     Ok(())
 }
@@ -152,7 +152,7 @@ mod tests {
                 ErrorKind::InvalidArgument
             );
         }
-        for params in ["", "a+b", "a/b", "a b", "a\n", "é", &"a".repeat(4097)] {
+        for params in ["", "a b", "a\n", "é", &"a".repeat(4097)] {
             assert_eq!(
                 checked_artist_browse("UC-test", Some(params))
                     .unwrap_err()
@@ -170,7 +170,7 @@ mod tests {
             (None, None, None),
             (Some("RD/test"), None, None),
             (None, Some("a"), None),
-            (Some("RD-test"), None, Some("a+b")),
+            (Some("RD-test"), None, Some("a b")),
         ] {
             assert_eq!(
                 checked_artist_mix(arguments.0, arguments.1, arguments.2)

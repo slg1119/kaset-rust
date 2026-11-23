@@ -98,6 +98,13 @@ fn checked_browse_id(id: &str) -> Result<(), AppError> {
     checked_browse_value(id, 2..=128, b"", "Invalid browse ID.")
 }
 
+/// The one validator for opaque server values (continuation tokens, browse
+/// `params`): base64, standard or URL-safe, possibly percent-encoded. They are
+/// only ever sent inside a JSON request body, never in a URL or script.
+pub(super) fn checked_token(value: &str, message: &'static str) -> Result<(), AppError> {
+    checked_browse_value(value, 1..=4096, b"%=+/.", message)
+}
+
 fn checked_browse_value(
     value: &str,
     length: std::ops::RangeInclusive<usize>,
@@ -179,7 +186,7 @@ pub async fn search_continuation(
 }
 
 fn checked_search_token(token: &str) -> Result<(), AppError> {
-    checked_browse_value(token, 1..=4096, b"%=+/.", "Invalid search continuation.")
+    checked_token(token, "Invalid search continuation.")
 }
 
 /// Autocomplete suggestions for `input`. An empty input returns none

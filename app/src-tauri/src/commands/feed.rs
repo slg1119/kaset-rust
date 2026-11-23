@@ -3,7 +3,7 @@ use tauri::{AppHandle, State};
 use ytm_core::models::FeedPage;
 use ytm_core::parsers::home::{parse_feed, parse_feed_continuation};
 
-use super::{checked_browse_value, signed_in_request};
+use super::{checked_browse_value, checked_token, signed_in_request};
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -111,14 +111,7 @@ pub(super) fn checked_feed_browse_id(value: &str) -> Result<(), AppError> {
 }
 
 pub(super) fn checked_feed_value(value: &str) -> Result<(), AppError> {
-    checked_browse_value(
-        value,
-        1..=4096,
-        // Base64 (standard or URL-safe, possibly percent-encoded); the value is
-        // only ever sent inside the JSON body, never in a URL or script.
-        b"%=+/.",
-        "Invalid browse parameter or continuation.",
-    )
+    checked_token(value, "Invalid feed parameter or continuation.")
 }
 
 #[cfg(test)]
