@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { type CSSProperties, useId, useRef } from "react";
 import type { BrowseEndpoint, HomeSection, ShelfItem, Song } from "../bindings";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
@@ -24,7 +24,7 @@ export function CategoryGrid({ title, items, onOpen }: { title: string; items: C
 
 function CategoryTile({ item, onOpen }: { item: CategoryItem; onOpen: (item: CategoryItem) => void }) {
   return (
-    <button type="button" className="category-tile" style={{ borderInlineStartColor: item.color ?? undefined }} onClick={() => onOpen(item)}>
+    <button type="button" className="category-tile" style={item.color ? ({ "--tile-color": item.color } as CSSProperties) : undefined} onClick={() => onOpen(item)}>
       {item.title}
     </button>
   );

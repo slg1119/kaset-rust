@@ -80,7 +80,7 @@ test("a category tile opens its feed and Back returns to Moods & Genres", async 
 
   await userEvent.click(await screen.findByRole("button", { name: "Moods & Genres" }));
   const category = await screen.findByRole("button", { name: "Jazz" });
-  expect(category).toHaveStyle({ borderInlineStartColor: "#112233" });
+  expect(category.style.getPropertyValue("--tile-color")).toBe("#112233");
   await userEvent.click(category);
   expect(await screen.findByRole("heading", { name: "Jazz" })).toBeInTheDocument();
   expect(getFeedCategory).toHaveBeenCalledWith({ browseId: "test-category", params: "test-jazz" });

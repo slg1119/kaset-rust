@@ -401,15 +401,22 @@ button {
   overflow-wrap: anywhere;
   text-align: start;
   font-weight: 600;
-  background: var(--surface);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tile-color, var(--accent)) 38%, var(--surface)),
+    color-mix(in srgb, var(--tile-color, var(--accent)) 10%, var(--surface))
+  );
   border: 1px solid var(--line);
-  border-inline-start: 5px solid var(--accent);
   border-radius: var(--radius);
   cursor: pointer;
 }
 
 .category-tile:hover {
-  background: var(--surface-hover);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tile-color, var(--accent)) 50%, var(--surface-hover)),
+    color-mix(in srgb, var(--tile-color, var(--accent)) 18%, var(--surface-hover))
+  );
 }
 
 .feed-more {
