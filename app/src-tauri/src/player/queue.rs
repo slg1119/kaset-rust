@@ -93,17 +93,26 @@ impl Queue {
         self.position = None;
     }
 
-    /// Adds new tracks at the end of play order. Only tracks before the
-    /// current position can be dropped to make room.
+    /// Adds radio tracks that are absent from the entire queue.
     pub fn append(&mut self, songs: Vec<Song>) -> usize {
+        self.append_unique(songs, 0)
+    }
+
+    /// Current and played tracks can be queued again unless already upcoming.
+    pub fn enqueue(&mut self, songs: Vec<Song>) -> usize {
+        self.position
+            .map_or(0, |position| self.append_unique(songs, position + 1))
+    }
+
+    /// Only tracks before the current position can be dropped to make room.
+    fn append_unique(&mut self, songs: Vec<Song>, dedupe_from: usize) -> usize {
         let Some(position) = self.position else {
             return 0;
         };
         let capacity = MAX_QUEUE_LEN.saturating_sub(self.songs.len() - position);
-        let mut known: HashSet<_> = self
-            .songs
+        let mut known: HashSet<_> = self.order[dedupe_from..]
             .iter()
-            .map(|song| song.video_id.clone())
+            .map(|&index| self.songs[index].video_id.clone())
             .collect();
         let added: Vec<_> = songs
             .into_iter()
@@ -125,7 +134,7 @@ impl Queue {
         count
     }
 
-    /// New songs share append's deduplication and capacity rules. A song
+    /// New occurrences share enqueue's deduplication and capacity rules. A song
     /// already upcoming moves into the requested block with its metadata intact.
     pub fn insert_next(&mut self, songs: Vec<Song>) -> bool {
         let mut seen = HashSet::new();
@@ -134,7 +143,7 @@ impl Queue {
             .filter(|song| seen.insert(song.video_id.clone()))
             .collect();
         let ids: Vec<_> = songs.iter().map(|song| song.video_id.clone()).collect();
-        let mut changed = self.append(songs) > 0;
+        let mut changed = self.enqueue(songs) > 0;
         let Some(position) = self.position else {
             return false;
         };
@@ -165,24 +174,22 @@ impl Queue {
             return false;
         };
         self.drop_range(index..=index);
-        self.position = self
-            .len()
-            .checked_sub(1)
-            .map(|last| (current - usize::from(index < current)).min(last));
+        let next = current - usize::from(index < current);
+        self.position = (next < self.len()).then_some(next);
         true
     }
 
-    /// The destination is the final index in play order.
+    /// Moves an upcoming song to another upcoming index in play order.
     pub fn move_item(&mut self, from: usize, to: usize) -> bool {
-        let Some(current) = self.position.filter(|&current| {
-            from != current && from != to && from < self.len() && to < self.len()
-        }) else {
+        let Some(current) = self.position else {
             return false;
         };
-        let active = self.order[current];
+        if from <= current || to <= current || from == to || from >= self.len() || to >= self.len()
+        {
+            return false;
+        }
         let entry = self.order.remove(from);
         self.order.insert(to, entry);
-        self.position = self.order.iter().position(|&index| index == active);
         self.commit_unshuffled_order();
         true
     }

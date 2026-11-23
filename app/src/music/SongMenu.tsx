@@ -81,10 +81,14 @@ export function SongMenu({ song, children, className, onOpenArtist, onOpenAlbum 
     items[next]?.focus();
   }
 
-  function run(action: () => Promise<unknown>) {
+  function run(action: () => Promise<boolean | null>) {
     close(true);
     dismiss();
-    action().catch((cause: unknown) => report(errorMessage(cause)));
+    action()
+      .then((changed) => {
+        if (changed === false) report("Already in the queue");
+      })
+      .catch((cause: unknown) => report(errorMessage(cause)));
   }
 
   return (

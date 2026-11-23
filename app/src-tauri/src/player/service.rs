@@ -147,7 +147,7 @@ fn start_autoplay(app: &AppHandle, inner: &mut Inner) {
         return;
     };
     let ticket = Ticket {
-        generation: inner.player.queue_position().0,
+        generation: inner.player.radio_generation(),
         epoch,
     };
     tauri::async_runtime::spawn(fetch_autoplay(app.clone(), seed, ticket));
@@ -165,7 +165,7 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, ticket: Ticket) {
 
     let mut inner = state.player.inner.lock().await;
     let current = Ticket {
-        generation: inner.player.queue_position().0,
+        generation: inner.player.radio_generation(),
         epoch: state.session.epoch(),
     };
     let mut notification = None;

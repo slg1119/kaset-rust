@@ -125,29 +125,43 @@ pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Moves songs to play next. Returns whether the queue changed.
 #[tauri::command]
 #[specta::specta]
 pub async fn insert_next(
     app: AppHandle,
     state: State<'_, AppState>,
     songs: Vec<Song>,
-) -> Result<(), AppError> {
+) -> Result<bool, AppError> {
     validate_queue(&songs)?;
-    edit_queue(&app, &state, |player, now| {
-        Ok(player.insert_next(songs, now))
-    })
-    .await
+    add_to_queue(&app, &state, |player, now| player.insert_next(songs, now)).await
 }
 
+/// Appends songs to the queue. Returns whether the queue changed.
 #[tauri::command]
 #[specta::specta]
 pub async fn enqueue(
     app: AppHandle,
     state: State<'_, AppState>,
     songs: Vec<Song>,
-) -> Result<(), AppError> {
+) -> Result<bool, AppError> {
     validate_queue(&songs)?;
-    edit_queue(&app, &state, |player, now| Ok(player.enqueue(songs, now))).await
+    add_to_queue(&app, &state, |player, now| player.enqueue(songs, now)).await
+}
+
+async fn add_to_queue(
+    app: &AppHandle,
+    state: &AppState,
+    add: impl FnOnce(&mut Player, Instant) -> Outcome,
+) -> Result<bool, AppError> {
+    let mut changed = false;
+    edit_queue(app, state, |player, now| {
+        let outcome = add(player, now);
+        changed = outcome.queue.is_some();
+        Ok(outcome)
+    })
+    .await?;
+    Ok(changed)
 }
 
 #[tauri::command]

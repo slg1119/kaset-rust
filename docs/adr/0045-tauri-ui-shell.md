@@ -133,6 +133,7 @@ the detail.
 
 Track rows and cards share an ellipsis menu that also opens on right-click.
 The queue panel supports jumping to a track, removing and reordering upcoming
-tracks, and clearing upcoming tracks. The queue button exposes its position as
+tracks, and clearing upcoming tracks. Keyboard reordering keeps focus on the
+moved occurrence. The queue button exposes its position as
 an accessible description. Surfaces that use backdrop blur have a solid
 background fallback.

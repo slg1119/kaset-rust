@@ -357,3 +357,31 @@ test("queue exposes its position and lets the user edit upcoming songs", async (
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(screen.getByRole("region", { name: "Queue" })).toBeInTheDocument();
 });
+
+test("queue keeps focus on the moved occurrence after Alt+Down and Alt+Up", async () => {
+  const second = { ...testSong, title: "Second" };
+  const third = { ...testSong, title: "Third" };
+  const initial = [testSong, second, third];
+  const queue = { songs: initial, current: 0, browse_track: null };
+  const moveQueueItem = vi.fn(async ({ from, to }: { from: number; to: number }) => {
+    const songs = [...queue.songs];
+    const [moved] = songs.splice(from, 1);
+    songs.splice(to, 0, moved);
+    queue.songs = songs;
+    await events.playerQueue.emit({ queue: { ...queue } });
+    return null;
+  });
+  mockCommands({ playerSnapshot: () => ({ state: playingState(), queue: { ...queue } }), moveQueueItem });
+  renderWithProviders(<PlayerProvider><PlayerBar /></PlayerProvider>);
+  await userEvent.click(await screen.findByRole("button", { name: "Queue" }));
+  const panel = within(screen.getByRole("region", { name: "Queue" }));
+  await userEvent.click(panel.getByRole("button", { name: "Second" }));
+
+  await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+  expect(moveQueueItem).toHaveBeenLastCalledWith({ from: 1, to: 2 });
+  expect(panel.getByRole("button", { name: "Second" })).toHaveFocus();
+
+  await userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}");
+  expect(moveQueueItem).toHaveBeenLastCalledWith({ from: 2, to: 1 });
+  expect(panel.getByRole("button", { name: "Second" })).toHaveFocus();
+});

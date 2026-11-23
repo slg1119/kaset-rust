@@ -75,8 +75,10 @@ export const commands = {
 	playQueue: (songs: Song[], startIndex: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_queue", { songs, startIndex }, options),
 	/**  Plays tracks from a detail page, retaining the original row through shuffle. */
 	playBrowseQueue: (songs: Song[], startIndex: number, playback: BrowsePlayback, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_browse_queue", { songs, startIndex, playback }, options),
-	insertNext: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<null>("insert_next", { songs }, options),
-	enqueue: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<null>("enqueue", { songs }, options),
+	/**  Moves songs to play next. Returns whether the queue changed. */
+	insertNext: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<boolean>("insert_next", { songs }, options),
+	/**  Appends songs to the queue. Returns whether the queue changed. */
+	enqueue: (songs: Song[], options?: InvokeOptions) => __TAURI_INVOKE<boolean>("enqueue", { songs }, options),
 	removeQueueItem: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("remove_queue_item", { index }, options),
 	moveQueueItem: (from: number, to: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("move_queue_item", { from, to }, options),
 	jumpTo: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("jump_to", { index }, options),
@@ -457,8 +459,8 @@ export type MockCommandHandlers = {
     windowVibrancy: () => boolean | Promise<boolean>,
     playQueue: (args: { songs: Song[]; startIndex: number }) => null | Promise<null>,
     playBrowseQueue: (args: { songs: Song[]; startIndex: number; playback: BrowsePlayback }) => null | Promise<null>,
-    insertNext: (args: { songs: Song[] }) => null | Promise<null>,
-    enqueue: (args: { songs: Song[] }) => null | Promise<null>,
+    insertNext: (args: { songs: Song[] }) => boolean | Promise<boolean>,
+    enqueue: (args: { songs: Song[] }) => boolean | Promise<boolean>,
     removeQueueItem: (args: { index: number }) => null | Promise<null>,
     moveQueueItem: (args: { from: number; to: number }) => null | Promise<null>,
     jumpTo: (args: { index: number }) => null | Promise<null>,

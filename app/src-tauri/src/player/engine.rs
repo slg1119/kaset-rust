@@ -159,6 +159,7 @@ pub struct Player {
     browse_queue: Option<BrowseQueue>,
     radio_continuation: Option<String>,
     radio_seed: Option<VideoId>,
+    radio_generation: u64,
     autoplay_suspended: bool,
     autoplay_revision: u64,
     status: PlaybackStatus,
@@ -176,6 +177,7 @@ impl Player {
             browse_queue: None,
             radio_continuation: None,
             radio_seed: None,
+            radio_generation: 0,
             autoplay_suspended: false,
             autoplay_revision: 0,
             status: PlaybackStatus::Idle,
@@ -221,8 +223,16 @@ impl Player {
         (self.queue_generation, self.queue.position())
     }
 
-    pub(super) fn autoplay_trigger(&self) -> ((u64, Option<usize>), u64) {
-        (self.queue_position(), self.autoplay_revision)
+    pub(super) fn radio_generation(&self) -> u64 {
+        self.radio_generation
+    }
+
+    pub(super) fn autoplay_trigger(&self) -> (u64, Option<usize>, u64) {
+        (
+            self.radio_generation,
+            self.queue.position(),
+            self.autoplay_revision,
+        )
     }
 
     fn retry_autoplay(&mut self) {
@@ -232,6 +242,7 @@ impl Player {
 
     fn invalidate_radio_tail(&mut self) {
         self.queue_generation += 1;
+        self.radio_generation += 1;
         self.radio_continuation = None;
         self.autoplay_suspended = false;
     }
@@ -245,10 +256,11 @@ impl Player {
         if self.status == PlaybackStatus::Idle || self.autoplay_suspended {
             return None;
         }
+        let remaining = self.queue.remaining()?;
         if let Some(seed) = &self.radio_seed {
             return Some(Seed::Video(seed.clone()));
         }
-        if self.queue.repeat() != RepeatMode::Off || self.queue.remaining()? >= 3 {
+        if self.queue.repeat() != RepeatMode::Off || remaining >= 3 {
             return None;
         }
         match &self.radio_continuation {
@@ -393,6 +405,7 @@ impl Player {
                 return Outcome::default();
             }
             self.queue.replace(songs, 0);
+            self.status = PlaybackStatus::Idle;
             self.browse_queue = None;
             self.reset_radio();
             return self.publish_queue(now);
@@ -400,7 +413,7 @@ impl Player {
         let changed = if next {
             self.queue.insert_next(songs)
         } else {
-            self.queue.append(songs) > 0
+            self.queue.enqueue(songs) > 0
         };
         self.queue_edited(changed, now)
     }
@@ -410,12 +423,22 @@ impl Player {
         if !self.queue.remove(index) {
             return Outcome::default();
         }
-        self.browse_queue = None;
-        if was_current && self.status != PlaybackStatus::Idle {
-            self.reset_radio();
-            return self.load_current(now);
+        self.record_queue_edit();
+        if was_current {
+            if self.queue.current().is_none() {
+                self.status = PlaybackStatus::Ended;
+                self.position = 0.0;
+                self.duration = 0.0;
+                self.is_ad = false;
+                let mut outcome = self.publish_queue(now);
+                outcome.command = Some(WebCommand::Stop);
+                return outcome;
+            }
+            if self.status != PlaybackStatus::Idle {
+                return self.load_current(now);
+            }
         }
-        self.queue_edited(true, now)
+        self.publish_queue(now)
     }
 
     pub fn move_item(&mut self, from: usize, to: usize, now: Instant) -> Outcome {
@@ -448,10 +471,16 @@ impl Player {
         if !changed {
             return Outcome::default();
         }
-        // Edits reindex the original order the detail-row mapping relies on.
-        self.browse_queue = None;
-        self.invalidate_radio_tail();
+        self.record_queue_edit();
         self.publish_queue(now)
+    }
+
+    fn record_queue_edit(&mut self) {
+        // Edits reindex the detail-row mapping and supersede pending page playback.
+        // The radio continuation still belongs to the same radio session.
+        self.browse_queue = None;
+        self.queue_generation += 1;
+        self.retry_autoplay();
     }
 
     fn publish_queue(&mut self, now: Instant) -> Outcome {
@@ -465,7 +494,9 @@ impl Player {
     pub fn play(&mut self, now: Instant) -> Outcome {
         match self.status {
             PlaybackStatus::Playing => Outcome::default(),
-            PlaybackStatus::Idle if self.queue.current().is_none() => Outcome::default(),
+            PlaybackStatus::Idle | PlaybackStatus::Ended if self.queue.current().is_none() => {
+                Outcome::default()
+            }
             PlaybackStatus::Idle => self.load_current(now),
             // The page holds playback after the last song; start it again.
             PlaybackStatus::Ended => {
@@ -560,6 +591,7 @@ impl Player {
             self.queue.set_shuffle(shuffle);
             if tail.as_ref() != self.queue.last().map(|song| &song.video_id) {
                 self.queue_generation += 1;
+                self.radio_generation += 1;
                 self.radio_continuation = None;
             }
             self.autoplay_revision += 1;
@@ -696,6 +728,114 @@ mod tests {
             .unwrap();
         player.handle_event(progress(ids[start], true, 0.0), now);
         (player, now + STATE_INTERVAL)
+    }
+
+    #[test]
+    fn queue_review_play_next_replays_current_and_played_songs() {
+        let (mut player, now) = playing(&[A, B, C], 1);
+        let edits = player.insert_next(vec![song(B), song(A), song(C), song(B)], now);
+        assert_eq!(edits.command, None);
+        assert_eq!(
+            edits.queue.unwrap().songs,
+            vec![song(A), song(B), song(B), song(A), song(C)]
+        );
+        assert_eq!(player.queue_state().current, Some(1));
+        assert_eq!(player.insert_next(vec![song(B)], now), Outcome::default());
+        assert!(player.insert_next(vec![song(C)], now).queue.is_some());
+        assert_eq!(player.queue_state().songs[2], song(C));
+    }
+
+    #[test]
+    fn queue_review_enqueue_replays_current_and_played_songs_but_skips_upcoming() {
+        let (mut player, now) = playing(&[A, B, C], 1);
+        let edits = player.enqueue(vec![song(B), song(A), song(C), song(A)], now);
+        assert_eq!(edits.command, None);
+        assert_eq!(
+            edits.queue.unwrap().songs,
+            vec![song(A), song(B), song(C), song(B), song(A)]
+        );
+        assert_eq!(player.queue_state().current, Some(1));
+        assert_eq!(
+            player.enqueue(vec![song(C), song(B)], now),
+            Outcome::default()
+        );
+    }
+
+    #[test]
+    fn queue_review_removing_current_in_the_middle_loads_the_next_song() {
+        let (mut player, now) = playing(&[A, B, C], 1);
+        let edits = player.remove(1, now);
+        assert_eq!(edits.command, Some(WebCommand::Load(id(C))));
+        let queue = edits.queue.unwrap();
+        assert_eq!(queue.songs, vec![song(A), song(C)]);
+        assert_eq!(queue.current, Some(1));
+    }
+
+    #[test]
+    fn queue_review_removing_current_at_the_end_stops_and_keeps_history() {
+        for (tracks, current) in [(&[A, B][..], 1), (&[A][..], 0)] {
+            let (mut player, now) = playing(tracks, current);
+            let edits = player.remove(current, now);
+            assert_eq!(edits.command, Some(WebCommand::Stop));
+            let state = edits.state.unwrap();
+            assert_eq!(state.status, PlaybackStatus::Ended);
+            assert_eq!(state.track, None);
+            let queue = edits.queue.unwrap();
+            assert_eq!(
+                queue.songs,
+                tracks[..current]
+                    .iter()
+                    .map(|value| song(value))
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(queue.current, None);
+            assert_eq!(player.play(now), Outcome::default());
+        }
+    }
+
+    #[test]
+    fn queue_review_removing_played_song_decrements_the_current_position() {
+        let (mut player, now) = playing(&[A, B, C], 1);
+        let edits = player.remove(0, now);
+        assert_eq!(edits.command, None);
+        let queue = edits.queue.unwrap();
+        assert_eq!(queue.songs, vec![song(B), song(C)]);
+        assert_eq!(queue.current, Some(0));
+        assert_eq!(player.state().track, Some(song(B)));
+    }
+
+    #[test]
+    fn queue_review_moves_upcoming_with_history_but_rejects_moves_across_current() {
+        const D: &str = "test-vid-0D";
+        let (mut player, now) = playing(&[A, B, C, D], 1);
+        let edits = player.move_item(3, 2, now);
+        assert_eq!(edits.command, None);
+        let queue = edits.queue.unwrap();
+        assert_eq!(queue.songs, vec![song(A), song(B), song(D), song(C)]);
+        assert_eq!(queue.current, Some(1));
+        for (from, to) in [(2, 0), (2, 1), (0, 2), (1, 2)] {
+            assert_eq!(player.move_item(from, to, now), Outcome::default());
+            assert_eq!(player.queue_state(), queue);
+        }
+    }
+
+    #[test]
+    fn queue_review_enqueue_keeps_the_radio_continuation() {
+        let (mut player, now) = playing(&[A], 0);
+        player.set_radio_continuation(Some("test-continuation".into()));
+        let before_edit = player.queue_position().0;
+        let radio_generation = player.radio_generation();
+
+        assert!(player.enqueue(vec![song(B)], now).queue.is_some());
+        assert_ne!(player.queue_position().0, before_edit);
+        assert_eq!(player.radio_generation(), radio_generation);
+        assert_eq!(
+            player.needs_more(),
+            Some(Seed::Continuation("test-continuation".into()))
+        );
+        player.clear_upcoming(now);
+        assert_ne!(player.radio_generation(), radio_generation);
+        assert!(player.radio_continuation.is_none());
     }
 
     #[test]
