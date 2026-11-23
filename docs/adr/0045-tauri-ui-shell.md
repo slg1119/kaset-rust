@@ -121,7 +121,8 @@ The Library sidebar opens saved playlists, saved albums, followed artists, and
 the shared playlist detail for Liked songs (`VLLM`). Collection cards reuse
 the feed grid. Detail uses TanStack Query to append tracks as the user scrolls.
 Play and Shuffle fetch through the final page or the 500-song queue limit.
-Repeated cursors end pagination.
+Repeated cursors end pagination. Library collections load up to 50 pages and
+keep their loaded cards if a later page fails.
 
 Routes covered by a detail stay mounted with their own scroll containers.
 The covered screen is inert and hidden from assistive technology. Back
