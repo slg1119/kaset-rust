@@ -44,17 +44,21 @@ pub fn parse_podcast_show(value: &Value) -> Result<PodcastShow, YtmError> {
                     .and_then(runs_text)
             })
     };
-    let title = text("title").ok_or_else(|| parse_error("header.title.runs"))?;
     let secondary =
         two_column.and_then(|column| at(column, &["secondaryContents", "sectionListRenderer"]));
+    let single = at(value, SECTION_LIST);
+    if header.or(legacy).or(secondary).or(single).is_none() {
+        return Err(parse_error("header.title.runs"));
+    }
     let mut page = episode_sections(secondary);
     if page.episodes.is_empty() {
-        let single = episode_sections(at(value, SECTION_LIST));
+        let single = episode_sections(single);
         page.episodes = single.episodes;
         page.continuation = page.continuation.or(single.continuation);
     }
     Ok(PodcastShow {
-        title,
+        // The caller already has the show title from its route.
+        title: text("title").unwrap_or_default(),
         author: text("subtitle"),
         description: text("description"),
         thumbnail_url: header

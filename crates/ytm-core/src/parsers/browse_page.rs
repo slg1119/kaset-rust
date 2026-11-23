@@ -92,7 +92,9 @@ fn parse_page(value: &Value, browse_id: Option<&str>) -> Result<BrowsePage, YtmE
     let track_shelves: Vec<_> = if has_playlist_shelf {
         playlist_shelves.collect()
     } else if is_album {
-        shelves("musicShelfRenderer").collect()
+        shelves("musicShelfRenderer")
+            .filter(|shelf| !is_suggested_shelf(shelf))
+            .collect()
     } else {
         Vec::new()
     };
@@ -124,6 +126,37 @@ fn parse_page(value: &Value, browse_id: Option<&str>) -> Result<BrowsePage, YtmE
         songs,
         continuation,
     })
+}
+
+fn is_suggested_shelf(shelf: &Value) -> bool {
+    [
+        shelf.get("title").and_then(shelf_text),
+        shelf.get("header").and_then(shelf_text),
+        shelf.get("strapline").and_then(first_shelf_text),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|text| {
+        let title = text.trim().to_lowercase();
+        title == "suggested" || title.contains("suggestion")
+    })
+}
+
+fn shelf_text(value: &Value) -> Option<String> {
+    str_at(value, &["simpleText"])
+        .or_else(|| str_at(value, &["content"]))
+        .map(str::to_owned)
+        .or_else(|| runs_text(value))
+}
+
+fn first_shelf_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(fields) => {
+            shelf_text(value).or_else(|| fields.values().find_map(first_shelf_text))
+        }
+        Value::Array(values) => values.iter().find_map(first_shelf_text),
+        _ => None,
+    }
 }
 
 fn sections(container: Option<&Value>) -> &[Value] {

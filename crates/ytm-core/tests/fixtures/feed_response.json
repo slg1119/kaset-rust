@@ -30,7 +30,7 @@
                   }, {
                     "musicNavigationButtonRenderer": {
                       "buttonText": {"runs": [{"text": "Blues"}]},
-                      "clickCommand": {"browseEndpoint": {"browseId": "test-category"}}
+                      "clickCommand": {"browseEndpoint": {"browseId": "test-category", "params": ""}}
                     }
                   }]
                 }

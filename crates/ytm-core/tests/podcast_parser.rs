@@ -119,3 +119,16 @@ fn parses_responsive_episode_fallback_and_ignores_show_cards_in_the_episode_list
     assert_eq!(page.episodes[0].show_title.as_deref(), Some("Test show"));
     assert_eq!(page.episodes[0].progress, None);
 }
+
+#[test]
+fn task12_show_without_a_title_still_parses_episodes() {
+    let mut value: Value =
+        serde_json::from_str(include_str!("fixtures/podcast_show.json")).unwrap();
+    let header = &mut value["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]
+        ["content"]["sectionListRenderer"]["contents"][0]["musicResponsiveHeaderRenderer"];
+    header.as_object_mut().unwrap().remove("title");
+    let page = parse_podcast_show(&value).unwrap();
+    assert!(page.title.is_empty());
+    assert_eq!(page.episodes[0].title, "Test episode");
+    assert_eq!(page.continuation.as_deref(), Some("test-continuation"));
+}

@@ -167,3 +167,24 @@ fn album_playlist_without_a_header_uses_the_route_title() {
     assert_eq!(page.songs[0].title, "Album track");
     assert!(parse_browse_page_for_id(&value, "VLPLtest").is_err());
 }
+
+#[test]
+fn task12_album_fallback_excludes_suggested_shelves() {
+    let response = two_column(
+        json!({"title": {"runs": [{"text": "Test album"}]}}),
+        json!([
+            {"musicShelfRenderer": {"title": {"simpleText": " Suggestions "}, "contents": [track("test-video1", "Suggested", None)]}},
+            {"musicShelfRenderer": {"header": {"content": "More Suggestions"}, "contents": [track("test-video2", "Suggested", None)]}},
+            {"musicShelfRenderer": {"strapline": [{"text": {"runs": [{"text": "Suggested"}]}}], "contents": [track("test-video3", "Suggested", None)]}},
+            {"musicShelfRenderer": {"title": {"simpleText": "Album Tracks"}, "contents": [track("test-video4", "Album track", None)]}}
+        ]),
+    );
+    let page = parse_browse_page_for_id(&response, "MPREtest").unwrap();
+    assert_eq!(
+        page.songs
+            .into_iter()
+            .map(|song| song.title)
+            .collect::<Vec<_>>(),
+        ["Album track"]
+    );
+}

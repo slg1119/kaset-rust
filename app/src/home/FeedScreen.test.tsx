@@ -1,4 +1,4 @@
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { mockCommands, type FeedPage } from "../bindings";
@@ -88,4 +88,17 @@ test("a category tile opens its feed and Back returns to Moods & Genres", async 
   await userEvent.click(screen.getByRole("button", { name: "Back" }));
   expect(await screen.findByRole("heading", { name: "Moods & Genres" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Moods & Genres" })).toHaveAttribute("aria-current", "page");
+});
+
+test.each([false, true])("stops feed paging when a fresh token adds nothing (empty: %s)", async (empty) => {
+  const getFeedContinuation = vi.fn(() => ({
+    ...nextPage,
+    sections: empty ? [] : nextPage.sections,
+    continuation: "test-fresh-token",
+  }));
+  mockCommands({ getFeed: () => firstPage, getFeedContinuation });
+  renderWithProviders(<FeedScreen source={{ kind: "home" }} title="Home" onOpenPage={() => {}} onOpenCategory={() => {}} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Load more" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument());
+  expect(getFeedContinuation).toHaveBeenCalledExactlyOnceWith({ token: "test-continuation" });
 });

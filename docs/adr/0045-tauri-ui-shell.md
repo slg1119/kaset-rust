@@ -149,3 +149,8 @@ Playlist creation and deletion use native HTML dialogs. The single action
 notice follows the open dialog. Rating, library, playlist, and subscription
 changes update the displayed state optimistically, restore it on failure,
 and invalidate the affected queries on success.
+
+## M5b feed and search pagination
+
+Feed and search stop requesting more pages when the latest page has no new
+item identities, even if the server supplies a new continuation token.

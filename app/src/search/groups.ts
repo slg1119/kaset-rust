@@ -51,7 +51,7 @@ export function mergeSearchPages(pages: SearchResults[]): SearchItem[] {
   return [...items.values()];
 }
 
-function searchIdentity(item: SearchItem): string {
+export function searchIdentity(item: SearchItem): string {
   if (isPlayable(item)) return `video:${item.video_id}`;
   if (item.kind === "profile") return `artist:${item.browse_id}`;
   if (item.kind === "playlist") return `playlist:${item.browse_id.replace(/^VL/, "")}`;

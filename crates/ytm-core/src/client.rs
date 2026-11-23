@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 use crate::YtmError;
 use crate::auth::{CookieJar, SharedCookies, sapisid_hash};
 use crate::models::{Lyrics, LyricsResult, SearchFilter};
-use crate::parsers::lyrics::{parse_lrc, parse_lyrics, parse_lyrics_browse_id, parse_timed_lyrics};
+use crate::parsers::lyrics::{parse_lyrics, parse_lyrics_browse_id, parse_timed_lyrics};
 
 pub const MUSIC_ORIGIN: &str = "https://music.youtube.com";
 pub const CLIENT_VERSION: &str = "1.20231204.01.00";
@@ -272,7 +272,7 @@ impl InnerTubeClient {
         }
     }
 
-    /// Prefers native line timing, then LRC timing or plain text from the browse tab.
+    /// Prefers native line timing, then plain text from the browse tab.
     pub async fn get_timed_lyrics(&self, video_id: &str) -> Result<LyricsResult, YtmError> {
         let next = self.lyrics_next(video_id).await?;
         let (lines, text, source) = if let Some(lines) = parse_timed_lyrics(&next) {
@@ -283,9 +283,10 @@ impl InnerTubeClient {
                 (Some(lines), None, Some("YTMusic".into()))
             } else {
                 let Lyrics { text, source } = parse_lyrics(&browse);
-                let lines = parse_lrc(&text);
-                let text = (lines.is_none() && !text.is_empty()).then_some(text);
-                (lines, text, source)
+                if text.trim().is_empty() {
+                    return Ok(LyricsResult::default());
+                }
+                (None, Some(text), source)
             }
         } else {
             return Ok(LyricsResult::default());

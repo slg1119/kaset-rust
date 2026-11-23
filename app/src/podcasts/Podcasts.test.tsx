@@ -129,3 +129,14 @@ test("offers in-screen retries for show and continuation failures", async () => 
   await userEvent.click(screen.getByRole("button", { name: "Retry loading episodes" }));
   expect(getPodcastEpisodesContinuation).toHaveBeenCalledTimes(2);
 });
+
+test("keeps episodes playable and uses the route title when the show title is missing", async () => {
+  const playQueue = vi.fn(() => null);
+  renderPodcasts({ getPodcastShow: () => ({ ...show, title: "" }), playQueue });
+  await openShow();
+  await userEvent.click(screen.getByRole("button", { name: "Play First episode" }));
+  expect(playQueue).toHaveBeenCalledWith({
+    songs: [expect.objectContaining({ artists: [{ name: podcast.title, browse_id: null }] })],
+    startIndex: 0,
+  });
+});

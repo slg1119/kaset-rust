@@ -40,6 +40,20 @@ export function nextPageParam<Page extends ContinuablePage>(
   return token && !used.includes(token) ? token : undefined;
 }
 
+/** Stops paging when the newest page contributes no previously unseen items. */
+export function nextPageParamWithNewItems<Page extends ContinuablePage>(
+  page: Page,
+  pages: Page[],
+  pageParam: string | null,
+  used: (string | null)[],
+  itemKeys: (page: Page) => string[],
+) {
+  const token = nextPageParam(page, pages, pageParam, used);
+  if (token === undefined) return undefined;
+  const seen = new Set(pages.slice(0, -1).flatMap(itemKeys));
+  return itemKeys(page).some((key) => !seen.has(key)) ? token : undefined;
+}
+
 /**
  * Retries once after a network failure or an unexpected HTTP status. Auth,
  * rate-limit, parse, and argument errors fail at once: retrying cannot fix

@@ -35,6 +35,7 @@ export function PodcastShowScreen({ browseId, title, onBack }: Props) {
 
   const firstPage = show.data?.pages[0];
   const data = firstPage?.kind === "show" ? firstPage : undefined;
+  const showTitle = data?.title.trim() ? data.title : title;
   const episodesById = new Map<string, Episode>();
   for (const page of show.data?.pages ?? []) {
     for (const episode of page.episodes) {
@@ -46,7 +47,7 @@ export function PodcastShowScreen({ browseId, title, onBack }: Props) {
   function playFrom(index: number) {
     const offset = index < MAX_QUEUE_LENGTH ? 0 : index;
     const songs = episodes.slice(offset, offset + MAX_QUEUE_LENGTH)
-      .map((episode) => episodeToSong(episode, data?.title ?? title, data?.thumbnail_url));
+      .map((episode) => episodeToSong(episode, showTitle, data?.thumbnail_url));
     return play(songs, index - offset);
   }
 
@@ -56,7 +57,7 @@ export function PodcastShowScreen({ browseId, title, onBack }: Props) {
         <button ref={backButton} type="button" className="icon-button" aria-label="Back" title="Back" onClick={onBack}>
           <ChevronLeftIcon />
         </button>
-        <span>{data?.title ?? title}</span>
+        <span>{showTitle}</span>
       </header>
       {show.isPending && <p className="hint" role="status">Loading…</p>}
       {show.isError && !show.isFetchNextPageError && (
@@ -70,7 +71,7 @@ export function PodcastShowScreen({ browseId, title, onBack }: Props) {
           <section className="browse-hero" aria-labelledby="podcast-title">
             <Artwork url={data.thumbnail_url} size={200} />
             <div className="browse-summary">
-              <h1 id="podcast-title">{data.title}</h1>
+              <h1 id="podcast-title">{showTitle}</h1>
               {data.author && <p>{data.author}</p>}
               {data.description && <p>{data.description}</p>}
             </div>

@@ -468,6 +468,48 @@ async fn lyrics_fetches_next_then_browse_for_plain_fallback() {
 }
 
 #[tokio::test]
+async fn task12_video_lyrics_description_keeps_timestamp_like_text_literal() {
+    let text = "[00:01.00] First line";
+    let result = fetch_lyrics_description(text).await;
+    assert_eq!(result.lines, None);
+    assert_eq!(result.text.as_deref(), Some(text));
+    assert_eq!(result.source.as_deref(), Some("Test provider"));
+}
+
+#[tokio::test]
+async fn task12_blank_lyrics_description_has_no_lyrics_or_attribution() {
+    let result = fetch_lyrics_description("  \n  ").await;
+    assert_eq!(result.lines, None);
+    assert_eq!(result.text, None);
+    assert_eq!(result.source, None);
+}
+
+async fn fetch_lyrics_description(text: &str) -> ytm_core::models::LyricsResult {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/lyrics_next.json")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/browse"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "contents": {"sectionListRenderer": {"contents": [
+                {"musicDescriptionShelfRenderer": {
+                    "description": {"runs": [{"text": text}]},
+                    "footer": {"runs": [{"text": "Test provider"}]}
+                }}
+            ]}}
+        })))
+        .mount(&server)
+        .await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    client.get_timed_lyrics("test-video").await.unwrap()
+}
+
+#[tokio::test]
 async fn lyrics_uses_timed_next_without_making_a_browse_request() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

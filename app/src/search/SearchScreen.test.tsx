@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
@@ -305,4 +305,16 @@ test("the search field limits input to 200 characters and announces searching", 
   renderWithProviders(<Harness initial="test query" />);
   expect(field()).toHaveAttribute("maxlength", "200");
   expect(screen.getByRole("status")).toHaveTextContent("Searching…");
+});
+
+test.each([false, true])("stops search paging when a fresh token adds nothing (empty: %s)", async (empty) => {
+  const searchContinuation = vi.fn(() => ({
+    items: empty ? [] : [{ ...video, kind: "song" as const }],
+    continuation: "test-fresh-token",
+  }));
+  mockCommands({ search: () => ({ items: [video], continuation: "test-continuation" }), searchContinuation });
+  renderWithProviders(<Harness initial="test query" />);
+  await userEvent.click(await screen.findByRole("button", { name: "Load more" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument());
+  expect(searchContinuation).toHaveBeenCalledExactlyOnceWith({ token: "test-continuation", filter: null });
 });

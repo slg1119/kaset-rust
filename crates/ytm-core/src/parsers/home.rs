@@ -234,7 +234,9 @@ pub(crate) fn parse_item(item: &Value) -> Option<ShelfItem> {
     Some(ShelfItem::Category {
         title: runs_text(button.get("buttonText")?)?,
         browse_id: str_at(browse, &["browseId"])?.into(),
-        params: str_at(browse, &["params"]).map(str::to_owned),
+        params: str_at(browse, &["params"])
+            .filter(|params| !params.is_empty())
+            .map(str::to_owned),
         color: at(button, &["solid", "leftStripeColor"])
             .and_then(Value::as_i64)
             .map(|argb| format!("#{:06x}", argb & 0xff_ffff)),

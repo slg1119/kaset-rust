@@ -1,12 +1,12 @@
 import { skipToken, useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { commands, type FeedKind } from "../bindings";
+import { commands, type FeedKind, type FeedPage } from "../bindings";
 import { errorMessage } from "../errors";
 import { ChevronLeftIcon, RefreshIcon } from "../icons";
 import type { OpenArtist } from "../music/ArtistNames";
-import { isPlayable, type PageCard } from "../music/items";
+import { isPlayable, itemKey, type PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
-import { FEED_STALE_MS, nextPageParam, queryKeys } from "../query";
+import { FEED_STALE_MS, nextPageParamWithNewItems, queryKeys } from "../query";
 import { CategoryGrid, FeedShelf, type CategoryItem } from "./FeedShelf";
 import { useLoadMore } from "./useLoadMore";
 
@@ -24,6 +24,14 @@ type Props = {
   onBack?: () => void;
 };
 
+function nextFeedPage(page: FeedPage, pages: FeedPage[], pageParam: string | null, used: (string | null)[]) {
+  return nextPageParamWithNewItems(page, pages, pageParam, used, ({ sections }) =>
+    sections.flatMap(({ items }) => items.map((item) =>
+      item.kind === "category" ? JSON.stringify([itemKey(item), item.params]) : itemKey(item),
+    )),
+  );
+}
+
 function useFeed(source: FeedSource, chip: string | null) {
   const isCategory = source.kind === "category";
   const base = useInfiniteQuery({
@@ -34,7 +42,7 @@ function useFeed(source: FeedSource, chip: string | null) {
       if (isCategory) return commands.getFeedCategory(source.browseId, source.params);
       return source.kind === "podcasts" ? commands.getPodcasts() : commands.getFeed(source.kind);
     },
-    getNextPageParam: nextPageParam,
+    getNextPageParam: nextFeedPage,
     staleTime: source.kind === "history" ? 0 : FEED_STALE_MS,
     enabled: chip === null,
   });
@@ -44,7 +52,7 @@ function useFeed(source: FeedSource, chip: string | null) {
     queryFn: chip === null ? skipToken : ({ pageParam }) => pageParam === null
       ? commands.getFeedChip(chip)
       : commands.getFeedContinuation(pageParam),
-    getNextPageParam: nextPageParam,
+    getNextPageParam: nextFeedPage,
     staleTime: FEED_STALE_MS,
   });
   return { feed: chip === null ? base : filtered, chips: base.data?.pages[0].chips ?? [] };

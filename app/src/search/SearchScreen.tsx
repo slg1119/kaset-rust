@@ -8,8 +8,8 @@ import { ItemCard, itemActionLabel } from "../music/ItemCard";
 import { SongMenu } from "../music/SongMenu";
 import { hasBrowsePage, isPlayable, itemKey, shapeOf, subtitleOf, toSong, type PageCard } from "../music/items";
 import { usePlayQueue } from "../player/usePlayQueue";
-import { queryKeys, SEARCH_STALE_MS } from "../query";
-import { FILTERS, groupResults, KIND_LABEL, mergeSearchPages, type Filter, type ResultGroup } from "./groups";
+import { nextPageParamWithNewItems, queryKeys, SEARCH_STALE_MS } from "../query";
+import { FILTERS, groupResults, KIND_LABEL, mergeSearchPages, searchIdentity, type Filter, type ResultGroup } from "./groups";
 import { SearchBox } from "./SearchBox";
 
 type Props = {
@@ -31,8 +31,8 @@ export function SearchScreen({ query, onSubmit, focusRequest, filter, onFilterCh
     queryFn: ({ pageParam }) => pageParam === null
       ? commands.search(query, serverFilter)
       : commands.searchContinuation(pageParam, serverFilter),
-    getNextPageParam: ({ continuation }, _pages, _pageParam, used) =>
-      continuation && !used.includes(continuation) ? continuation : undefined,
+    getNextPageParam: (page, pages, pageParam, used) =>
+      nextPageParamWithNewItems(page, pages, pageParam, used, ({ items }) => items.map(searchIdentity)),
     enabled: query !== "",
     staleTime: SEARCH_STALE_MS,
   });
