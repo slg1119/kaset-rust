@@ -20,7 +20,7 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows_sys::Win32::System::WindowsProgramming::GetUserNameW;
 
-use super::ClientError;
+use super::{ClientError, Listener};
 
 pub(super) fn endpoint() -> io::Result<OsString> {
     let mut name = [0; 257]; // UNLEN + the terminating NUL
@@ -127,6 +127,7 @@ fn create_pipe(path: &OsStr, sddl: &[u16], first: bool) -> io::Result<NamedPipeS
 
 pub(super) struct Server {
     listener: NamedPipeServer,
+    replacement_pending: bool,
     path: OsString,
     sddl: Vec<u16>,
 }
@@ -142,16 +143,29 @@ impl Server {
             .collect::<Vec<_>>();
         Ok(Self {
             listener: create_pipe(path, &sddl, true)?,
+            replacement_pending: false,
             path: path.to_owned(),
             sddl,
         })
     }
+}
 
-    pub(super) async fn accept(&mut self) -> io::Result<NamedPipeServer> {
-        self.listener.connect().await?;
-        // Keep one instance listening while the accepted connection is served.
+impl Listener for Server {
+    type Stream = NamedPipeServer;
+
+    async fn accept(&mut self) -> io::Result<Self::Stream> {
+        if self.replacement_pending {
+            self.listener = create_pipe(&self.path, &self.sddl, false)?;
+            self.replacement_pending = false;
+        }
+        let connected = self.listener.connect().await;
+        // Rotate even after a client connects and goes away before accept completes.
+        // Retain the old handle until a new instance exists to keep the name reserved.
+        self.replacement_pending = true;
         let next = create_pipe(&self.path, &self.sddl, false)?;
-        Ok(std::mem::replace(&mut self.listener, next))
+        self.replacement_pending = false;
+        let previous = std::mem::replace(&mut self.listener, next);
+        connected.map(|()| previous)
     }
 }
 

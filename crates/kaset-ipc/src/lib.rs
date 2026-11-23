@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 mod transport;
 pub use transport::{ClientError, request, serve};
 
+pub const VIDEO_ID_LEN: usize = 11;
 pub const MAX_REQUEST_BYTES: usize = 4 * 1024;
 const VERSION: u8 = 1;
 
@@ -112,7 +113,7 @@ pub enum Error {
 }
 
 pub fn valid_video_id(value: &str) -> bool {
-    value.len() == 11 && id_chars(value)
+    value.len() == VIDEO_ID_LEN && id_chars(value)
 }
 
 pub fn valid_browse_id(value: &str) -> bool {

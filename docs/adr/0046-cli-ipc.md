@@ -20,8 +20,8 @@ The CLI needs a local channel to the running player.
   acknowledgement, status, queue, or a fixed error code.
 - Cap request lines at 4 KiB before JSON parsing and close the connection after
   each response, including validation errors. The listener bounds concurrent
-  connections and applies read and write deadlines. The CLI bounds the reply
-  size and total wait.
+  connections and applies read and write deadlines plus a 60-second dispatch
+  deadline. The CLI bounds the reply size and total wait.
 - On macOS, listen at `$TMPDIR/kaset-<uid>/kaset.sock`. The app requires an
   owned, private 0700 directory and applies 0600 permissions to the socket.
   A lock prevents a second listener from removing a live endpoint. Startup
@@ -48,6 +48,7 @@ change the current queue. OS administrators may have privileges beyond this
 boundary. Endpoint discovery can be disrupted by path or name collisions.
 Startup fails closed on unexpected endpoint ownership or type and the app
 continues to run if the listener cannot start.
+On Linux, pre-creating another user's endpoint directory in `/tmp` can only deny service.
 
 The protocol accepts a fixed command set, typed fields, validated IDs, and
 bounded input. It carries no credentials, account writes, stream URLs,

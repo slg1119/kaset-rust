@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::net::{UnixListener, UnixStream};
 
-use super::ClientError;
+use super::{ClientError, Listener};
 
 pub(super) fn endpoint() -> io::Result<PathBuf> {
     Ok(std::env::temp_dir()
@@ -92,8 +92,12 @@ impl Server {
         fs::set_permissions(path, Permissions::from_mode(0o600))?;
         Ok(server)
     }
+}
 
-    pub(super) async fn accept(&mut self) -> io::Result<UnixStream> {
+impl Listener for Server {
+    type Stream = UnixStream;
+
+    async fn accept(&mut self) -> io::Result<Self::Stream> {
         loop {
             let (stream, _) = self.listener.accept().await?;
             if stream.peer_cred().is_ok_and(|peer| peer.uid() == uid()) {

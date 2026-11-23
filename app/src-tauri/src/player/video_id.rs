@@ -9,14 +9,8 @@ use tauri::Url;
 pub struct VideoId(String);
 
 impl VideoId {
-    pub const LEN: usize = 11;
-
     pub fn parse(value: &str) -> Option<Self> {
-        let valid = value.len() == Self::LEN
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
-        valid.then(|| Self(value.to_owned()))
+        kaset_ipc::valid_video_id(value).then(|| Self(value.to_owned()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -41,6 +35,12 @@ impl<'de> Deserialize<'de> for VideoId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn video_id_length_is_shared_with_ipc() {
+        assert_eq!(kaset_ipc::VIDEO_ID_LEN, 11);
+        assert!(VideoId::parse(&"a".repeat(kaset_ipc::VIDEO_ID_LEN)).is_some());
+    }
 
     #[test]
     fn accepts_eleven_url_safe_characters() {
