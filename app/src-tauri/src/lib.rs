@@ -33,6 +33,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::artist::get_artist,
             commands::artist::get_artist_more,
             commands::artist::play_artist_mix,
+            commands::get_lyrics,
             commands::search,
             commands::search_continuation,
             commands::search_suggestions,

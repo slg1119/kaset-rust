@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { commands, type RepeatMode } from "../bindings";
 import { errorMessage } from "../errors";
-import { NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShuffleIcon } from "../icons";
+import { LyricsIcon, NextIcon, PauseIcon, PlayIcon, PreviousIcon, QueueIcon, RepeatIcon, RepeatOneIcon, ShuffleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { ArtistNames, type OpenArtist } from "../music/ArtistNames";
 import { useNotice } from "../notices/NoticeProvider";
+import { useShortcuts } from "../shell/useShortcuts";
+import { LyricsPanel } from "./LyricsPanel";
 import { formatTime } from "./format";
 import { usePlayer } from "./usePlayer";
 
@@ -22,7 +24,7 @@ const SEEK_SETTLE_MS = 2000;
 
 /**
  * The floating player bar: transport on the left, now playing with progress in
- * the middle, shuffle/repeat/queue on the right. Hidden while nothing is
+ * the middle, shuffle/repeat/queue/lyrics on the right. Hidden while nothing is
  * queued. Publishes its height as `--player-space` on its parent so the
  * scrolling content can leave room below the last row.
  */
@@ -40,12 +42,22 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
     setDragPosition(null);
     setPendingSeek(null);
   }
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [openPanel, setOpenPanel] = useState<"queue" | "lyrics" | null>(null);
+  const queueOpen = openPanel === "queue";
+  const lyricsOpen = openPanel === "lyrics";
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const bar = useRef<HTMLElement>(null);
   const queueButton = useRef<HTMLButtonElement>(null);
   const queueId = useId();
+  const lyricsButton = useRef<HTMLButtonElement>(null);
+  const lyricsId = useId();
   const visible = state !== null && state.track !== null;
+
+  function toggleLyrics() {
+    setOpenPanel((panel) => panel === "lyrics" ? null : "lyrics");
+  }
+
+  useShortcuts({ toggleLyrics: visible ? toggleLyrics : undefined });
 
   useEffect(() => () => clearTimeout(settleTimer.current), []);
 
@@ -64,17 +76,17 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   }, [visible]);
 
   useEffect(() => {
-    if (!queueOpen || !visible) return;
+    if (openPanel === null || !visible) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
-      // Capture phase + preventDefault: closing the queue must not also trigger the Back shortcut.
+      // Capture phase + preventDefault: closing a panel must not also trigger the Back shortcut.
       event.preventDefault();
-      setQueueOpen(false);
-      queueButton.current?.focus();
+      setOpenPanel(null);
+      (openPanel === "queue" ? queueButton : lyricsButton).current?.focus();
     }
     function onPointerDown(event: PointerEvent) {
-      if (event.target instanceof Node && !bar.current?.contains(event.target)) {
-        setQueueOpen(false);
+      if (queueOpen && event.target instanceof Node && !bar.current?.contains(event.target)) {
+        setOpenPanel(null);
       }
     }
     window.addEventListener("keydown", onKeyDown, true);
@@ -83,7 +95,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [queueOpen, visible]);
+  }, [openPanel, queueOpen, visible]);
 
   if (state === null || state.track === null) return null;
   const track = state.track;
@@ -95,7 +107,10 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
 
   function commitSeek() {
     if (dragPosition === null) return;
-    const target = dragPosition;
+    seek(dragPosition);
+  }
+
+  function seek(target: number) {
     setDragPosition(null);
     setPendingSeek({ videoId: track.video_id, target });
     clearTimeout(settleTimer.current);
@@ -112,7 +127,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
   const settled = seekTarget === null || Math.abs(reported - seekTarget) <= SEEK_TOLERANCE_SECONDS;
   const position = dragPosition ?? (settled ? reported : seekTarget);
 
-  return (
+  const playerBar = (
     <footer ref={bar} className="player-bar" aria-label="Player">
       <div className="player-controls">
         <button
@@ -209,7 +224,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
           title="Queue"
           aria-expanded={queueOpen}
           aria-controls={queueId}
-          onClick={() => setQueueOpen((open) => !open)}
+          onClick={() => setOpenPanel((panel) => panel === "queue" ? null : "queue")}
         >
           <QueueIcon />
           {queue && queue.current !== null && (
@@ -217,6 +232,19 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
               {queue.current + 1} of {queue.songs.length}
             </span>
           )}
+        </button>
+        <button
+          type="button"
+          className={lyricsOpen ? "icon-button is-active" : "icon-button"}
+          ref={lyricsButton}
+          aria-label="Lyrics"
+          title="Lyrics"
+          aria-expanded={lyricsOpen}
+          aria-controls={lyricsId}
+          aria-keyshortcuts="Meta+Shift+L Control+Shift+L"
+          onClick={toggleLyrics}
+        >
+          <LyricsIcon />
         </button>
       </div>
       {queueOpen && (
@@ -226,7 +254,7 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
               <li key={`${index}-${song.video_id}`} aria-current={index === queue?.current ? "true" : undefined}>
                 <span className="item-title">{song.title}</span>
                 <span className="item-subtitle"><ArtistNames artists={song.artists} onOpenArtist={onOpenArtist && ((browseId, name) => {
-                  setQueueOpen(false);
+                  setOpenPanel(null);
                   onOpenArtist(browseId, name);
                 })} /></span>
               </li>
@@ -235,5 +263,22 @@ export function PlayerBar({ onOpenArtist }: { onOpenArtist?: OpenArtist }) {
         </section>
       )}
     </footer>
+  );
+
+  // Keep the lyrics backdrop outside the player bar’s own blur.
+  return (
+    <>
+      {playerBar}
+      {lyricsOpen && (
+        <LyricsPanel
+          key={track.video_id}
+          id={lyricsId}
+          videoId={track.video_id}
+          position={state.is_ad ? null : settled ? state.position : seekTarget}
+          canSeek={!state.is_ad}
+          onSeek={seek}
+        />
+      )}
+    </>
   );
 }

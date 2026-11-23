@@ -36,6 +36,8 @@ export const commands = {
 	getArtistMore: (browseId: string, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<ShelfItem[]>("get_artist_more", { browseId, params }, options),
 	/**  Resolves an artist radio or shuffle endpoint and starts its queue. */
 	playArtistMix: (playlistId: string | null, videoId: string | null, params: string | null, options?: InvokeOptions) => __TAURI_INVOKE<null>("play_artist_mix", { playlistId, videoId, params }, options),
+	/**  Fetches synced or plain lyrics for the current track. */
+	getLyrics: (videoId: string, options?: InvokeOptions) => __TAURI_INVOKE<LyricsResult>("get_lyrics", { videoId }, options),
 	/**
 	 *  Searches YouTube Music with an optional filter. An empty query returns
 	 *  no results without a request. Overlong queries return `invalid_argument`.
@@ -186,6 +188,19 @@ export type HomeSection = {
 	title: string,
 	items: ShelfItem[],
 	more?: BrowseEndpoint | null,
+};
+
+export type LyricLine = {
+	start_ms: number,
+	end_ms: number | null,
+	text: string,
+};
+
+/**  Best available lyrics for a track. A missing text and line list means unavailable. */
+export type LyricsResult = {
+	lines: LyricLine[] | null,
+	text: string | null,
+	source: string | null,
 };
 
 /**
@@ -360,6 +375,7 @@ export type MockCommandHandlers = {
     getArtist: (args: { browseId: string }) => ArtistPage | Promise<ArtistPage>,
     getArtistMore: (args: { browseId: string; params: string | null }) => ShelfItem[] | Promise<ShelfItem[]>,
     playArtistMix: (args: { playlistId: string | null; videoId: string | null; params: string | null }) => null | Promise<null>,
+    getLyrics: (args: { videoId: string }) => LyricsResult | Promise<LyricsResult>,
     search: (args: { query: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
     searchContinuation: (args: { token: string; filter: SearchFilter | null }) => SearchResults | Promise<SearchResults>,
     searchSuggestions: (args: { input: string }) => string[] | Promise<string[]>,
@@ -411,6 +427,7 @@ export function mockCommands(handlers: Partial<MockCommandHandlers> = {}): void 
             case "get_artist": return mockCommandHandler(mockHandlers.getArtist, "get_artist", args);
             case "get_artist_more": return mockCommandHandler(mockHandlers.getArtistMore, "get_artist_more", args);
             case "play_artist_mix": return mockCommandHandler(mockHandlers.playArtistMix, "play_artist_mix", args);
+            case "get_lyrics": return mockCommandHandler(mockHandlers.getLyrics, "get_lyrics", args);
             case "search": return mockCommandHandler(mockHandlers.search, "search", args);
             case "search_continuation": return mockCommandHandler(mockHandlers.searchContinuation, "search_continuation", args);
             case "search_suggestions": return mockCommandHandler(mockHandlers.searchSuggestions, "search_suggestions", args);

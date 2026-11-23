@@ -1,0 +1,8 @@
+{
+  "contents": {"singleColumnMusicWatchNextResultsRenderer": {"tabbedRenderer": {"watchNextTabbedResultsRenderer": {
+    "tabs": [
+      {"tabRenderer": {"endpoint": {"browseEndpoint": {"browseId": "MPrelated-test"}}}},
+      {"tabRenderer": {"endpoint": {"browseEndpoint": {"browseId": "MPLYt-test"}}}}
+    ]
+  }}}}
+}

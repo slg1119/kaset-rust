@@ -58,6 +58,8 @@ replaces ⌘. The app never takes ⌘Q, ⌘W, ⌘H, ⌘M, or ⌘,.
 | `⌘←`     | Previous track (not in text fields) |
 | `⌘1`     | Go to Home |
 | `⌘F`     | Go to Search and focus the search field |
+| `⌘⇧L`    | Toggle the Lyrics panel for the current track |
+| `Esc`    | Close an open Lyrics or Queue panel |
 | `Esc`, `⌘[` | Return from an album or playlist to Home or Search |
 
 In the search field, `↓`/`↑` move through suggestions, `Return` searches the

@@ -1,0 +1,7 @@
+{
+  "contents": [{"timedLyricsModel": {"lyricsData": [
+    {"lyricLine": "Second line", "startTimeMs": "3250"},
+    {"lyricLine": "Bad timestamp", "startTimeMs": "invalid"},
+    {"lyricLine": "First line", "startTimeMs": "1250", "durationMs": "1500"}
+  ]}}]
+}

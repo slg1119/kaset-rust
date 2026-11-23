@@ -16,6 +16,7 @@
     "allow-get-artist",
     "allow-get-artist-more",
     "allow-play-artist-mix",
+    "allow-get-lyrics",
     "allow-search",
     "allow-search-continuation",
     "allow-search-suggestions",

@@ -1,0 +1,8 @@
+{
+  "contents": {"sectionListRenderer": {"contents": [
+    {"musicDescriptionShelfRenderer": {
+      "description": {"runs": [{"text": "First line\n"}, {"text": "Second line"}]},
+      "footer": {"runs": [{"text": "Source: "}, {"text": "Test provider"}]}
+    }}
+  ]}}
+}

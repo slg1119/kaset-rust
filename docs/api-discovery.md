@@ -524,6 +524,16 @@ Action endpoints perform operations or fetch specific data.
 
 ---
 
+#### Track lyrics in the Tauri port
+
+Run `cargo run -p ytm-explorer -- lyrics <videoId>` to check availability
+and count lines. The probe prints a summary and supports signed-out requests.
+The client sends `videoId`, `enablePersistentPlaylistPanel: true`,
+`isAudioOnly: true`, and `tunerSettingValue: "AUTOMIX_SETTING_NORMAL"` to
+`next`. It reads `timedLyricsModel.lyricsData` when present. Otherwise it
+follows the lyrics tab's `MPLYt…` browse ID and checks for timed lines or
+the plain description shelf and its attribution.
+
 #### Search (`search`)
 
 ```swift

@@ -4,7 +4,8 @@ use serde_json::{Map, Value, json};
 
 use crate::YtmError;
 use crate::auth::{CookieJar, SharedCookies, sapisid_hash};
-use crate::models::SearchFilter;
+use crate::models::{Lyrics, LyricsResult, SearchFilter};
+use crate::parsers::lyrics::{parse_lrc, parse_lyrics, parse_lyrics_browse_id, parse_timed_lyrics};
 
 pub const MUSIC_ORIGIN: &str = "https://music.youtube.com";
 pub const CLIENT_VERSION: &str = "1.20231204.01.00";
@@ -230,6 +231,50 @@ impl InnerTubeClient {
     /// POST `account/accounts_list`: the Google account's YouTube identities.
     pub async fn accounts_list(&self) -> Result<Value, YtmError> {
         self.post("account/accounts_list", Map::new()).await
+    }
+
+    async fn lyrics_next(&self, video_id: &str) -> Result<Value, YtmError> {
+        let body = Map::from_iter([
+            ("videoId".into(), video_id.into()),
+            ("enablePersistentPlaylistPanel".into(), true.into()),
+            ("isAudioOnly".into(), true.into()),
+            ("tunerSettingValue".into(), "AUTOMIX_SETTING_NORMAL".into()),
+        ]);
+        self.post("next", body).await
+    }
+
+    /// Reads the untimed lyrics from the track's lyrics browse tab.
+    pub async fn get_lyrics(&self, video_id: &str) -> Result<Lyrics, YtmError> {
+        let next = self.lyrics_next(video_id).await?;
+        match parse_lyrics_browse_id(&next) {
+            Some(id) => Ok(parse_lyrics(&self.browse(id).await?)),
+            None => Ok(Lyrics::default()),
+        }
+    }
+
+    /// Prefers native line timing, then LRC timing or plain text from the browse tab.
+    pub async fn get_timed_lyrics(&self, video_id: &str) -> Result<LyricsResult, YtmError> {
+        let next = self.lyrics_next(video_id).await?;
+        let (lines, text, source) = if let Some(lines) = parse_timed_lyrics(&next) {
+            (Some(lines), None, Some("YTMusic".into()))
+        } else if let Some(id) = parse_lyrics_browse_id(&next) {
+            let browse = self.browse(id).await?;
+            if let Some(lines) = parse_timed_lyrics(&browse) {
+                (Some(lines), None, Some("YTMusic".into()))
+            } else {
+                let Lyrics { text, source } = parse_lyrics(&browse);
+                let lines = parse_lrc(&text);
+                let text = (lines.is_none() && !text.is_empty()).then_some(text);
+                (lines, text, source)
+            }
+        } else {
+            return Ok(LyricsResult::default());
+        };
+        Ok(LyricsResult {
+            lines,
+            text,
+            source,
+        })
     }
 
     /// Starts a radio mix from the given track.

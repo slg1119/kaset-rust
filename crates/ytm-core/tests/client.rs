@@ -430,3 +430,55 @@ async fn filtered_search_and_search_continuation_post_swift_request_shapes() {
         );
     }
 }
+
+#[tokio::test]
+async fn lyrics_fetches_next_then_browse_for_plain_fallback() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({
+            "videoId": "test-video",
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL"
+        })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/lyrics_next.json")),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/browse"))
+        .and(body_partial_json(json!({ "browseId": "MPLYt-test" })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/lyrics_browse.json")),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    let result = client.get_timed_lyrics("test-video").await.unwrap();
+    assert_eq!(result.lines, None);
+    assert_eq!(result.text.as_deref(), Some("First line\nSecond line"));
+    assert_eq!(result.source.as_deref(), Some("Source: Test provider"));
+}
+
+#[tokio::test]
+async fn lyrics_uses_timed_next_without_making_a_browse_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(include_str!("fixtures/lyrics_timed.json")),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    let result = client.get_timed_lyrics("test-video").await.unwrap();
+    assert_eq!(result.lines.unwrap()[0].start_ms, 1250);
+    assert_eq!(result.text, None);
+    assert_eq!(result.source.as_deref(), Some("YTMusic"));
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
