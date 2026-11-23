@@ -59,7 +59,7 @@ fn reads_grid_items_and_playlist_shelf_items_in_order() {
         ]}}
     ]))).unwrap();
     assert!(
-        matches!(&items[..], [ShelfItem::Album(_), ShelfItem::Song(episode), ShelfItem::Song(song)] if episode.video_id == "test-episode" && song.video_id == "test-song")
+        matches!(&items[..], [ShelfItem::Album(_), ShelfItem::Episode(episode), ShelfItem::Song(song)] if episode.video_id == "test-episode" && song.video_id == "test-song")
     );
     assert!(parse_artist_items(&json!({})).is_err());
 }

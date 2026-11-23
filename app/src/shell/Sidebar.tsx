@@ -1,18 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { commands, type FeedKind } from "../bindings";
 import { errorMessage } from "../errors";
-import { ChartBarsIcon, ClockIcon, CompassIcon, HomeIcon, PaletteIcon, SearchIcon, SparkleIcon } from "../icons";
+import { ChartBarsIcon, ClockIcon, CompassIcon, HomeIcon, PaletteIcon, PodcastIcon, SearchIcon, SparkleIcon } from "../icons";
 import { Artwork } from "../music/Artwork";
 import { useNotice } from "../notices/NoticeProvider";
 import { ACCOUNT_STALE_MS, queryKeys } from "../query";
 
-type FeedRoute = { kind: FeedKind };
+type FeedRoute = { kind: FeedKind | "podcasts" };
 type SearchRoute = { kind: "search" };
 type CategoryRoute = { kind: "category"; browseId: string; params: string | null; title: string; from: Route };
 type PageRoute = { kind: "page"; browseId: string; title: string; from: Route };
+type PodcastShowRoute = { kind: "podcast_show"; browseId: string; title: string; from: Route };
 type ArtistRoute = { kind: "artist"; browseId: string; name: string; from: Route };
 type ArtistMoreRoute = { kind: "artist-more"; browseId: string; params: string | null; title: string; from: ArtistRoute };
-export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute | ArtistRoute | ArtistMoreRoute;
+export type Route = FeedRoute | SearchRoute | CategoryRoute | PageRoute | PodcastShowRoute | ArtistRoute | ArtistMoreRoute;
 
 const SEARCH = { route: "search", label: "Search", Icon: SearchIcon } as const;
 
@@ -22,10 +23,11 @@ export const FEED_TABS = {
   charts: { label: "Charts", Icon: ChartBarsIcon },
   moods_and_genres: { label: "Moods & Genres", Icon: PaletteIcon },
   new_releases: { label: "New releases", Icon: SparkleIcon },
+  podcasts: { label: "Podcasts", Icon: PodcastIcon },
   history: { label: "History", Icon: ClockIcon },
-} satisfies Record<FeedKind, { label: string; Icon: typeof HomeIcon }>;
+} satisfies Record<FeedRoute["kind"], { label: string; Icon: typeof HomeIcon }>;
 
-const FEED_ORDER: FeedKind[] = ["home", "explore", "charts", "moods_and_genres", "new_releases", "history"];
+const FEED_ORDER: FeedRoute["kind"][] = ["home", "explore", "charts", "moods_and_genres", "new_releases", "podcasts", "history"];
 const ROUTES = [SEARCH, ...FEED_ORDER.map((route) => ({ route, ...FEED_TABS[route] }))];
 
 type Props = {

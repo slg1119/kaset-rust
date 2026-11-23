@@ -1,5 +1,6 @@
 pub mod artist;
 pub mod feed;
+pub mod podcasts;
 
 use std::future::Future;
 use std::sync::Arc;

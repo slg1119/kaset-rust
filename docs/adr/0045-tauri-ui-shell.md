@@ -45,6 +45,10 @@ afterwards.
   cache is keyed by browse ID and stays fresh for 10 minutes. Back restores
   the originating route and Search retains its query and filter. Play, Shuffle,
   and track rows queue up to 500 songs from the loaded page.
+- **Podcasts** reuse the shared feed screen with a dedicated sidebar entry.
+  Podcast cards open a show from discovery, Home, and Search. The show cache
+  is keyed by browse ID and appends episodes on demand, skipping duplicate
+  video IDs and stopping when the continuation token is missing or repeats.
 - **Server data:** TanStack Query 5 (`@tanstack/react-query` 5.107.1).
   The app uses one client. Stale times are home 5 min, search 10 min,
   suggestions 60 s, and account 30 min. The client disables refetch on window
@@ -94,7 +98,7 @@ afterwards.
   errors; the parser logs skipped items at debug level and the explorer is the
   first tool to check.
 - Detail screens load the first album or playlist page. Continuation requests
-  and routes for profiles and podcasts are later work.
+  and routes for profiles are later work.
 - Shortcuts work only while the window has focus; global media keys still go
   through souvlaki (ADR-0044). A native menu bar with accelerators is later
   work.

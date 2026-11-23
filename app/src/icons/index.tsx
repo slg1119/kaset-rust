@@ -199,3 +199,12 @@ export function ClockIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function PodcastIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="3" width="6" height="12" rx="3" />
+      <path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3m-3 0h6" />
+    </Icon>
+  );
+}

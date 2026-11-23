@@ -101,6 +101,10 @@ timed lines and center the active line, respecting reduced motion. Clicking
 a line sends its timestamp in seconds through the same seek path as the
 player slider. During ads, lyric highlighting and click-to-seek pause.
 
+Podcast show rows use the same video-ID queue as music tracks. The UI maps
+loaded episodes to songs with the show title as the artist and starts at the
+selected episode, within the existing 500-track limit.
+
 ## Consequences
 
 ### Positive

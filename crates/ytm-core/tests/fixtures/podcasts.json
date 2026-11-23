@@ -1,0 +1,23 @@
+{
+  "contents": {"singleColumnBrowseResultsRenderer": {"tabs": [{"tabRenderer": {"content": {
+    "sectionListRenderer": {
+      "contents": [{"itemSectionRenderer": {"contents": [{"musicCarouselShelfRenderer": {
+        "header": {"musicCarouselShelfBasicHeaderRenderer": {"title": {"runs": [{"text": "Recommended shows"}]}}},
+        "contents": [
+          {"musicTwoRowItemRenderer": {
+            "title": {"runs": [{"text": "Test show"}]},
+            "subtitle": {"runs": [{"text": "Test host"}]},
+            "navigationEndpoint": {"browseEndpoint": {"browseId": "MPSPPtest"}}
+          }},
+          {"musicMultiRowListItemRenderer": {
+            "title": {"runs": [{"text": "Test episode"}]},
+            "subtitle": {"runs": [{"text": "Test show", "navigationEndpoint": {"browseEndpoint": {"browseId": "MPSPPtest"}}}]},
+            "onTap": {"watchEndpoint": {"videoId": "test-video1"}},
+            "playbackProgress": {"playbackProgressPercentage": 25}
+          }}
+        ]
+      }}]}}],
+      "continuations": [{"nextContinuationData": {"continuation": "test-continuation"}}]
+    }
+  }}}]}}
+}

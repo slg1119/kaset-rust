@@ -99,21 +99,25 @@ async fn fetch_feed(
 }
 
 fn checked_feed_category(browse_id: &str, params: Option<&str>) -> Result<(), AppError> {
-    checked_browse_value(browse_id, 1..=256, b"", "Invalid browse ID.")?;
+    checked_feed_browse_id(browse_id)?;
     if let Some(params) = params {
         checked_feed_value(params)?;
     }
     Ok(())
 }
 
-fn checked_feed_value(value: &str) -> Result<(), AppError> {
+pub(super) fn checked_feed_browse_id(value: &str) -> Result<(), AppError> {
+    checked_browse_value(value, 1..=256, b"", "Invalid browse ID.")
+}
+
+pub(super) fn checked_feed_value(value: &str) -> Result<(), AppError> {
     checked_browse_value(
         value,
         1..=4096,
         // Base64 (standard or URL-safe, possibly percent-encoded); the value is
         // only ever sent inside the JSON body, never in a URL or script.
         b"%=+/.",
-        "Invalid feed parameter or continuation.",
+        "Invalid browse parameter or continuation.",
     )
 }
 
@@ -139,7 +143,7 @@ mod tests {
     #[test]
     fn feed_arguments_enforce_the_ipc_contract() {
         assert!(checked_feed_category("A", None).is_ok());
-        assert!(checked_feed_category(&"A".repeat(256), Some("a_-%3D=")).is_ok());
+        assert!(checked_feed_category(&"A".repeat(256), Some("a_-%3D=+/.-")).is_ok());
         assert!(checked_feed_value(&"a".repeat(4096)).is_ok());
         assert!(checked_feed_value("4qmFsgK+/a.b%3D=").is_ok());
         for id in ["", "bad/id", "id%20", "테스트", &"A".repeat(257)] {
@@ -148,7 +152,7 @@ mod tests {
                 ErrorKind::InvalidArgument
             );
         }
-        for value in ["", "a b", " a", "a\n", "é", &"a".repeat(4097)] {
+        for value in ["", "a?b", "a:b", "a b", " a", "a\n", "é", &"a".repeat(4097)] {
             assert_eq!(
                 checked_feed_value(value).unwrap_err().kind,
                 ErrorKind::InvalidArgument

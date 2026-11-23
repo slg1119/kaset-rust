@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { commands, type BrowseEndpoint, type FeedKind } from "../bindings";
+import { commands, type BrowseEndpoint } from "../bindings";
 import { ArtistMoreScreen, ArtistScreen } from "../detail/ArtistScreen";
 import { BrowsePageScreen } from "../detail/BrowsePageScreen";
 import { errorMessage } from "../errors";
@@ -7,6 +7,7 @@ import { FeedScreen, type CategoryItem } from "../home/FeedScreen";
 import type { PageCard } from "../music/items";
 import { NoticeBanner, NoticeProvider, useNotice } from "../notices/NoticeProvider";
 import { PlayerBar } from "../player/PlayerBar";
+import { PodcastShowScreen } from "../podcasts/PodcastShowScreen";
 import type { Filter } from "../search/groups";
 import { SearchScreen } from "../search/SearchScreen";
 import type { Shortcut } from "./shortcuts";
@@ -42,7 +43,7 @@ function ShellLayout() {
       openArtist(card.browse_id, card.title);
       return;
     }
-    setRoute({ kind: "page", browseId: card.browse_id, title: card.title, from: route });
+    setRoute({ kind: card.kind === "podcast" ? "podcast_show" : "page", browseId: card.browse_id, title: card.title, from: route });
   }
 
   function openCategory(item: CategoryItem) {
@@ -100,6 +101,14 @@ function ShellLayout() {
               onOpenArtist={openArtist}
             />
           )}
+          {route.kind === "podcast_show" && (
+            <PodcastShowScreen
+              key={route.browseId}
+              browseId={route.browseId}
+              title={route.title}
+              onBack={() => setRoute(route.from)}
+            />
+          )}
           {route.kind === "page" && (
             <BrowsePageScreen
               browseId={route.browseId}
@@ -124,6 +133,6 @@ function ShellLayout() {
   );
 }
 
-function isFeedKind(kind: Route["kind"]): kind is FeedKind {
+function isFeedKind(kind: Route["kind"]): kind is keyof typeof FEED_TABS {
   return Object.hasOwn(FEED_TABS, kind);
 }
