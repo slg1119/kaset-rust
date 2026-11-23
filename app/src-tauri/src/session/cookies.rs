@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use tauri::webview::Cookie;
+use tauri::webview::cookie::time::OffsetDateTime;
 use ytm_core::auth::CookieJar;
 
 fn normalize(domain: &str) -> String {
@@ -63,6 +64,77 @@ pub fn youtube_cookie_jar(cookies: &[Cookie<'_>]) -> CookieJar {
     CookieJar::from_pairs(by_name.into_iter().map(|(name, (_, value))| (name, value)))
 }
 
+pub(crate) const MUSIC_HOST: &str = "music.youtube.com";
+pub(crate) const YOUTUBE_DOMAIN: &str = "youtube.com";
+
+/// Matches an auth cookie readable by the player page. An exact expiry
+/// identifies a cookie written by our restore, even if Wry normalized its scope.
+pub(crate) fn has_player_auth(
+    cookies: &[Cookie<'_>],
+    domain: &str,
+    restored_expiry: Option<OffsetDateTime>,
+) -> bool {
+    let now = OffsetDateTime::now_utc();
+    cookies.iter().any(|cookie| {
+        let expiry = cookie.expires_datetime();
+        matches!(cookie.name(), "SAPISID" | "__Secure-3PAPISID")
+            && !cookie.value().is_empty()
+            && cookie.http_only() != Some(true)
+            && cookie
+                .domain()
+                .is_some_and(|value| normalize(value) == domain)
+            && matches!(cookie.path(), Some("/" | "/watch"))
+            && expiry.is_none_or(|expires| expires > now)
+            && restored_expiry.is_none_or(|expected| expiry == Some(expected))
+    })
+}
+
+/// wry passes Cookie::domain() to WebKit and WebView2, and that accessor strips
+/// one leading dot. Retain the native domain-cookie marker across that boundary.
+pub(crate) fn native_domain_cookie(domain: &str) -> String {
+    format!("..{domain}")
+}
+
+/// Rebuilds WebView cookie attributes lost when the session became an API header.
+pub(crate) fn player_cookies(
+    jar: &CookieJar,
+    expires: OffsetDateTime,
+) -> impl Iterator<Item = Cookie<'_>> {
+    jar.pairs().filter_map(move |(name, value)| {
+        let valid_name = !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        let valid_value = value
+            .bytes()
+            .all(|b| matches!(b, 0x21 | 0x23..=0x2b | 0x2d..=0x3a | 0x3c..=0x5b | 0x5d..=0x7e));
+        if !valid_name || !valid_value {
+            return None;
+        }
+        let domain = if name.starts_with("__Host-") {
+            // Native stores require a host. No leading dot means host-only.
+            MUSIC_HOST.to_owned()
+        } else {
+            native_domain_cookie(YOUTUBE_DOMAIN)
+        };
+        // The page computes its request signature from these browser cookies.
+        let signs_requests = matches!(name, "SAPISID" | "__Secure-1PAPISID" | "__Secure-3PAPISID");
+        let builder = Cookie::build((name, value))
+            .domain(domain)
+            .path("/")
+            .secure(true)
+            .expires(expires);
+        // Foundation checks for the presence of HttpOnly, even when Wry
+        // passes the string "FALSE". Omit the attribute for signing cookies.
+        let builder = if signs_requests {
+            builder
+        } else {
+            builder.http_only(true)
+        };
+        Some(builder.build())
+    })
+}
+
 /// The cookies sign-out must delete.
 pub fn session_cookies(cookies: Vec<Cookie<'static>>) -> Vec<Cookie<'static>> {
     cookies
@@ -74,10 +146,60 @@ pub fn session_cookies(cookies: Vec<Cookie<'static>>) -> Vec<Cookie<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::webview::cookie::time::Duration;
     use ytm_core::secret::Secret;
 
     fn cookie(name: &'static str, value: &'static str, domain: &'static str) -> Cookie<'static> {
         Cookie::build((name, value)).domain(domain).build()
+    }
+
+    #[test]
+    fn restores_header_values_with_native_domain_and_prefix_rules() {
+        let jar = CookieJar::from_header(
+            "SAPISID=test=auth; __Secure-3PSID=test-secure; __Host-example=test-host; invalid name=test; malformed",
+        );
+        let expiry = OffsetDateTime::now_utc() + Duration::days(365);
+        let cookies: Vec<_> = player_cookies(&jar, expiry).collect();
+        assert_eq!(cookies.len(), 3);
+        assert_eq!(cookies[0].name(), "SAPISID");
+        assert_eq!(cookies[0].value(), "test=auth");
+        assert_eq!(cookies[0].domain(), Some(".youtube.com"));
+        assert_eq!(cookies[1].domain(), Some(".youtube.com"));
+        assert_eq!(cookies[2].domain(), Some(MUSIC_HOST));
+        assert_eq!(cookies[0].http_only(), None);
+        assert_eq!(cookies[1].http_only(), Some(true));
+        assert_eq!(cookies[2].http_only(), Some(true));
+        for cookie in &cookies {
+            assert_eq!(cookie.path(), Some("/"));
+            assert_eq!(cookie.secure(), Some(true));
+            assert_eq!(cookie.expires_datetime(), Some(expiry));
+        }
+    }
+
+    #[test]
+    fn auth_detection_ignores_unusable_cookies() {
+        let mut cookies = vec![
+            cookie("SAPISID", "test-google", ".google.com"),
+            cookie("SAPISID", "test-sibling", "studio.youtube.com"),
+            cookie("SAPISID", "test-other-path", ".youtube.com"),
+            cookie("SAPISID", "", ".youtube.com"),
+            cookie("SAPISID", "test-expired", ".youtube.com"),
+        ];
+        cookies[2].set_path("/other");
+        cookies[3].set_path("/");
+        cookies[4].set_path("/");
+        cookies[4].set_expires(OffsetDateTime::now_utc() - Duration::days(1));
+        assert!(!has_player_auth(&cookies, MUSIC_HOST, None));
+        assert!(!has_player_auth(&cookies, YOUTUBE_DOMAIN, None));
+        let mut auth = cookie("__Secure-3PAPISID", "test-auth", ".youtube.com");
+        auth.set_path("/");
+        auth.set_http_only(true);
+        cookies.push(auth.clone());
+        assert!(!has_player_auth(&cookies, YOUTUBE_DOMAIN, None));
+        auth.set_http_only(false);
+        cookies.push(auth);
+        assert!(has_player_auth(&cookies, YOUTUBE_DOMAIN, None));
+        assert!(!has_player_auth(&cookies, MUSIC_HOST, None));
     }
 
     #[test]

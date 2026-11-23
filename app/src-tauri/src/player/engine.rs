@@ -153,6 +153,13 @@ fn position_seconds(position: f64, duration: f64) -> f64 {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum LoadState {
+    Ready,
+    Waiting,
+    Failed,
+}
+
 pub struct Player {
     queue: Queue,
     queue_generation: u64,
@@ -163,6 +170,8 @@ pub struct Player {
     autoplay_suspended: bool,
     autoplay_revision: u64,
     status: PlaybackStatus,
+    load_generation: u64,
+    load_state: LoadState,
     position: f64,
     duration: f64,
     is_ad: bool,
@@ -181,6 +190,8 @@ impl Player {
             autoplay_suspended: false,
             autoplay_revision: 0,
             status: PlaybackStatus::Idle,
+            load_generation: 0,
+            load_state: LoadState::Ready,
             position: 0.0,
             duration: 0.0,
             is_ad: false,
@@ -253,7 +264,10 @@ impl Player {
     }
 
     pub fn needs_more(&self) -> Option<Seed> {
-        if self.status == PlaybackStatus::Idle || self.autoplay_suspended {
+        if self.status == PlaybackStatus::Idle
+            || self.load_state == LoadState::Failed
+            || self.autoplay_suspended
+        {
             return None;
         }
         let remaining = self.queue.remaining()?;
@@ -311,6 +325,8 @@ impl Player {
         if self.status == PlaybackStatus::Idle {
             self.retry_autoplay();
         }
+        self.load_generation += 1;
+        self.load_state = LoadState::Waiting;
         self.status = PlaybackStatus::Loading;
         self.position = 0.0;
         self.duration = 0.0;
@@ -319,6 +335,26 @@ impl Player {
             command: Some(WebCommand::Load(id)),
             state: self.emit(now, true),
             queue: Some(self.queue_state()),
+        }
+    }
+
+    pub(super) fn load_generation(&self) -> u64 {
+        self.load_generation
+    }
+
+    /// A native navigation failure leaves the current song available to retry.
+    pub(super) fn fail_load(&mut self, generation: u64, now: Instant) -> Outcome {
+        if generation != self.load_generation
+            || self.load_state != LoadState::Waiting
+            || self.queue.current().is_none()
+        {
+            return Outcome::default();
+        }
+        self.load_state = LoadState::Failed;
+        self.status = PlaybackStatus::Paused;
+        Outcome {
+            state: self.emit(now, true),
+            ..Outcome::default()
         }
     }
 
@@ -446,6 +482,7 @@ impl Player {
         if was_current {
             if self.queue.current().is_none() {
                 self.status = PlaybackStatus::Ended;
+                self.load_state = LoadState::Ready;
                 self.position = 0.0;
                 self.duration = 0.0;
                 self.is_ad = false;
@@ -511,6 +548,10 @@ impl Player {
     }
 
     pub fn play(&mut self, now: Instant) -> Outcome {
+        if self.load_state == LoadState::Failed && self.status == PlaybackStatus::Paused {
+            self.retry_autoplay();
+            return self.load_current(now);
+        }
         match self.status {
             PlaybackStatus::Playing => Outcome::default(),
             PlaybackStatus::Idle | PlaybackStatus::Ended if self.queue.current().is_none() => {
@@ -620,6 +661,7 @@ impl Player {
 
     /// Empties the queue and closes the player window.
     pub fn stop(&mut self, now: Instant) -> Outcome {
+        self.load_state = LoadState::Ready;
         self.queue.clear();
         self.browse_queue = None;
         self.reset_radio();
@@ -638,7 +680,9 @@ impl Player {
     /// the current song are ignored (the page's own autoplay, a late event
     /// from the previous song, or a forged event).
     pub fn handle_event(&mut self, event: PlaybackEvent, now: Instant) -> Outcome {
-        if self.current_video_id().as_ref() != Some(event.video_id()) {
+        if self.load_state == LoadState::Failed
+            || self.current_video_id().as_ref() != Some(event.video_id())
+        {
             return Outcome::default();
         }
         match event {
@@ -658,6 +702,9 @@ impl Player {
                 };
                 let force = status != self.status;
                 self.status = status;
+                if playing {
+                    self.load_state = LoadState::Ready;
+                }
                 self.duration = seconds(duration);
                 self.position = position_seconds(position, self.duration);
                 self.is_ad = ad;
@@ -691,6 +738,7 @@ impl Player {
                 }
                 let force = self.status != PlaybackStatus::Paused;
                 self.status = PlaybackStatus::Paused;
+                self.load_state = LoadState::Ready;
                 Outcome {
                     command: None,
                     state: self.emit(now, force),
@@ -1311,6 +1359,45 @@ mod tests {
         assert_eq!(queue.current, Some(0));
         assert_eq!(queue.songs[0], song(A));
         assert!(outcome.state.unwrap().shuffle);
+    }
+
+    #[test]
+    fn redirected_load_pauses_once_without_advancing_and_can_be_retried() {
+        let (mut player, now) = playing(&[A, B], 0);
+        player.jump_to(0, now);
+        let generation = player.load_generation();
+        let queue = player.queue_state();
+
+        let outcome = player.fail_load(generation, now);
+        assert_eq!(outcome.state.unwrap().status, PlaybackStatus::Paused);
+        assert_eq!(outcome.command, None);
+        assert_eq!(outcome.queue, None);
+        assert_eq!(player.queue_state(), queue);
+        assert_eq!(player.needs_more(), None);
+        assert_eq!(player.fail_load(generation, now), Outcome::default());
+        assert_eq!(player.handle_event(ended(A), now), Outcome::default());
+        assert_eq!(
+            player.handle_event(progress(A, true, 1.0), now),
+            Outcome::default()
+        );
+        assert_eq!(player.play(now).command, Some(WebCommand::Load(id(A))));
+        assert_eq!(player.fail_load(generation, now), Outcome::default());
+        assert_eq!(player.state().status, PlaybackStatus::Loading);
+    }
+
+    #[test]
+    fn load_failure_ignores_previous_tracks_and_already_playing_tracks() {
+        let (mut player, now) = playing(&[A, B], 0);
+        player.jump_to(0, now);
+        let previous = player.load_generation();
+        player.next(now);
+        assert_eq!(player.fail_load(previous, now), Outcome::default());
+        player.handle_event(progress(B, true, 1.0), now);
+        assert_eq!(
+            player.fail_load(player.load_generation(), now),
+            Outcome::default()
+        );
+        assert_eq!(player.state().status, PlaybackStatus::Playing);
     }
 
     #[test]

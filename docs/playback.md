@@ -1,9 +1,16 @@
 # Playback
 
 Kaset plays YouTube Music through a hidden Tauri WebView labelled `player`.
-Rust validates the video ID, then navigates to the track's
-`music.youtube.com/watch` page. The script observes the page's video element.
+The window starts on `about:blank`. Before each watch request, Rust checks
+the player's cookie store and restores the signed-in session if the store
+lacks YouTube Music auth cookies. The cookie I/O runs on the blocking pool
+and uses the current session epoch. Rust validates the video ID, then
+navigates to the track's `music.youtube.com/watch` page. The script observes the page's video element.
 The remote window capability grants only `playback_event`.
+
+If a pending track load finishes outside YouTube Music, the player pauses
+on that track and shows a sign-in notice. The queue stays in place and
+Play retries the current track.
 
 Rust owns the queue and validates incoming events against the current
 track. Track changes load a new watch page. An ended track advances the

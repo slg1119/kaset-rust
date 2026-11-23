@@ -105,6 +105,22 @@ Podcast show rows use the same video-ID queue as music tracks. The UI maps
 loaded episodes to songs with the show title as the artist and starts at the
 selected episode, within the existing 500-track limit.
 
+## M8 player session recovery
+
+The first player window opens on `about:blank`. Each track load checks the
+actual player store for a live YouTube Music auth cookie and restores the
+signed-in session when that cookie is missing. The player lock serializes
+this work with sign-in, sign-out, and API expiry. The blocking pool reads
+and writes cookies under the current session epoch. Wry normalizes parent
+scope on reads, so a parent-only result triggers a conservative restore
+until the player can match the current epoch and confirmed restore expiry.
+Signing cookies stay readable by YouTube Music's page JavaScript.
+
+The native page-load callback associates off-site finishes with a load
+generation. The engine pauses a matching pending track and emits one
+`player://redirected` notice to the main window. The current queue position
+stays available for a manual retry.
+
 ## Consequences
 
 ### Positive

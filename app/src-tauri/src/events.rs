@@ -27,3 +27,10 @@ pub struct PlayerStateChanged {
 pub struct QueueChanged {
     pub queue: QueueState,
 }
+
+/// Emitted once when a pending load finishes outside YouTube Music.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type, tauri_specta::Event,
+)]
+#[tauri_specta(event_name = "player://redirected")]
+pub struct PlayerRedirected {}

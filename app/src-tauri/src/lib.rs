@@ -80,6 +80,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
         .events(collect_events![
             events::AuthChanged,
             events::PlayerStateChanged,
+            events::PlayerRedirected,
             events::QueueChanged
         ])
         .disable_serde_phases()

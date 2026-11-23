@@ -17,7 +17,7 @@ use super::video_id::VideoId;
 use super::window;
 use crate::commands::on_error;
 use crate::error::AppError;
-use crate::events::{PlayerStateChanged, QueueChanged};
+use crate::events::{PlayerRedirected, PlayerStateChanged, QueueChanged};
 use crate::session::AuthStatus;
 use crate::state::{AppState, LAUNCH_REFRESH_TIMEOUT};
 use crate::track_notifications::TrackNotifications;
@@ -28,24 +28,81 @@ const UI_WINDOW: &str = "main";
 
 struct Inner {
     player: Player,
+    window: Option<window::PlayerWindow>,
     media: MediaPublisher,
     last_notified_id: Option<String>,
     autoplay: Autoplay,
 }
 
 impl Inner {
-    fn apply(
+    async fn apply(
+        &mut self,
+        app: &AppHandle,
+        mut outcome: Outcome,
+    ) -> (Result<(), AppError>, Option<TrackNotification>) {
+        let result = match outcome.command.take() {
+            Some(WebCommand::Load(id)) => {
+                let generation = self.player.load_generation();
+                let result = self.load(app, &id, generation).await;
+                if result.is_err() {
+                    outcome.state = self.player.fail_load(generation, Instant::now()).state;
+                }
+                result
+            }
+            Some(WebCommand::Play) => window::run_script(app, window::play_script()),
+            Some(WebCommand::Pause) => window::run_script(app, window::pause_script()),
+            Some(WebCommand::Seek(position)) => {
+                window::run_script(app, &window::seek_script(position))
+            }
+            Some(WebCommand::Stop) => {
+                self.close_window(app);
+                Ok(())
+            }
+            None => Ok(()),
+        };
+        (result, self.publish(app, outcome, Instant::now()))
+    }
+
+    async fn load(
+        &mut self,
+        app: &AppHandle,
+        id: &VideoId,
+        generation: u64,
+    ) -> Result<(), AppError> {
+        let window = match &mut self.window {
+            Some(window) => window,
+            slot @ None => slot.insert(window::PlayerWindow::new(app)?),
+        };
+        window.load(id, generation).await
+    }
+
+    fn close_window(&mut self, app: &AppHandle) {
+        self.window = None;
+        window::close(app);
+    }
+
+    fn publish(
         &mut self,
         app: &AppHandle,
         outcome: Outcome,
         now: Instant,
-    ) -> (Result<(), AppError>, Option<TrackNotification>) {
+    ) -> Option<TrackNotification> {
         let notification = outcome.state.as_ref().and_then(|state| {
             let update = self.media.update(state, now);
             media::publish(app, update);
             track_notification(&mut self.last_notified_id, state)
         });
-        (apply(app, outcome), notification)
+        if let Some(queue) = outcome.queue
+            && let Err(error) = (QueueChanged { queue }).emit_to(app, UI_WINDOW)
+        {
+            tracing::warn!(%error, "could not emit player://queue");
+        }
+        if let Some(state) = outcome.state
+            && let Err(error) = (PlayerStateChanged { state }).emit_to(app, UI_WINDOW)
+        {
+            tracing::warn!(%error, "could not emit player://state");
+        }
+        notification
     }
 }
 
@@ -64,10 +121,8 @@ impl SessionPlayerGuard<'_> {
         let now = Instant::now();
         let outcome = self.inner.player.stop(now);
         self.inner.autoplay.cancel_pending();
-        let (result, _) = self.inner.apply(app, outcome, now);
-        if let Err(error) = result {
-            tracing::warn!(%error, "could not stop the player during a session change");
-        }
+        self.inner.close_window(app);
+        self.inner.publish(app, outcome, now);
     }
 }
 
@@ -80,6 +135,7 @@ impl PlayerService {
         Self {
             inner: Mutex::new(Inner {
                 player: Player::new(seed),
+                window: None,
                 media: MediaPublisher::default(),
                 last_notified_id: None,
                 autoplay: Autoplay::default(),
@@ -96,7 +152,7 @@ impl PlayerService {
         let now = Instant::now();
         let previous = inner.player.autoplay_trigger();
         let outcome = change(&mut inner.player, now)?;
-        let (result, notification) = inner.apply(app, outcome, now);
+        let (result, notification) = inner.apply(app, outcome).await;
         if previous != inner.player.autoplay_trigger() {
             inner.autoplay.request();
             start_autoplay(app, &mut inner);
@@ -104,6 +160,19 @@ impl PlayerService {
         drop(inner);
         send_track_notification(app, notification);
         result
+    }
+
+    pub(super) async fn redirected(&self, app: &AppHandle, generation: u64) {
+        let mut inner = self.inner.lock().await;
+        let now = Instant::now();
+        let outcome = inner.player.fail_load(generation, now);
+        if outcome.state.is_none() {
+            return;
+        }
+        inner.publish(app, outcome, now);
+        if let Err(error) = (PlayerRedirected {}).emit_to(app, UI_WINDOW) {
+            tracing::warn!(%error, "could not emit player://redirected");
+        }
     }
 
     pub(crate) async fn queue_generation(&self) -> u64 {
@@ -182,19 +251,16 @@ async fn fetch_autoplay(app: AppHandle, seed: Seed, ticket: Ticket) {
         inner.player.set_radio_continuation(radio.continuation);
         // A slow response may arrive after the current track already ended.
         // Publish the append first, then advance using the normal load path.
-        let (applied, notice) = inner.apply(&app, outcome, now);
+        let (mut applied, notice) = inner.apply(&app, outcome).await;
         notification = notice;
-        let applied = applied.and_then(|()| {
-            if appended && inner.player.is_ended() {
-                let next = inner.player.next(now);
-                if next.queue.is_some() {
-                    inner.autoplay.request();
-                }
-                let (result, _) = inner.apply(&app, next, now);
-                result?;
+        if applied.is_ok() && appended && inner.player.is_ended() {
+            let now = Instant::now();
+            let next = inner.player.next(now);
+            if next.queue.is_some() {
+                inner.autoplay.request();
             }
-            Ok(())
-        });
+            (applied, _) = inner.apply(&app, next).await;
+        }
         if let Err(error) = applied {
             tracing::warn!(%error, "could not apply autoplay queue");
         }
@@ -279,31 +345,6 @@ fn send_track_notification(app: &AppHandle, notification: Option<TrackNotificati
             }
         },
     );
-}
-
-fn apply(app: &AppHandle, outcome: Outcome) -> Result<(), AppError> {
-    let result = match outcome.command {
-        Some(WebCommand::Load(id)) => window::load(app, &id),
-        Some(WebCommand::Play) => window::run_script(app, window::play_script()),
-        Some(WebCommand::Pause) => window::run_script(app, window::pause_script()),
-        Some(WebCommand::Seek(position)) => window::run_script(app, &window::seek_script(position)),
-        Some(WebCommand::Stop) => {
-            window::close(app);
-            Ok(())
-        }
-        None => Ok(()),
-    };
-    if let Some(queue) = outcome.queue
-        && let Err(error) = (QueueChanged { queue }).emit_to(app, UI_WINDOW)
-    {
-        tracing::warn!(%error, "could not emit player://queue");
-    }
-    if let Some(state) = outcome.state
-        && let Err(error) = (PlayerStateChanged { state }).emit_to(app, UI_WINDOW)
-    {
-        tracing::warn!(%error, "could not emit player://state");
-    }
-    result
 }
 
 #[cfg(test)]

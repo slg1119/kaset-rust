@@ -54,6 +54,23 @@ test("shows the track from player://state", async () => {
   expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
 });
 
+test("a redirected load leaves the track ready to retry and shows one notice", async () => {
+  renderPlaying({ status: "loading", position: 0, duration: 0 });
+  expect(await screen.findByRole("button", { name: "Pause" })).toBeInTheDocument();
+  await act(async () => {
+    await events.playerState.emit({
+      state: playingState({ status: "paused", position: 0, duration: 0 }),
+    });
+    await events.playerRedirected.emit({});
+  });
+  expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
+  expect(screen.getByText("Test song")).toBeInTheDocument();
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "YouTube Music couldn't play this track. Try signing in again.",
+  );
+});
+
 test("follows player://queue for the position in the queue", async () => {
   renderPlaying();
   expect(await screen.findByText("1 of 2")).toBeInTheDocument();

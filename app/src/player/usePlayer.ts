@@ -36,9 +36,13 @@ export function usePlayerSubscription(onError: (message: string) => void): Playe
     const stopQueue = events.playerQueue.listen((event) => {
       if (active) setQueue(event.payload.queue);
     });
+    const stopRedirected = events.playerRedirected.listen(() => {
+      if (active) onError("YouTube Music couldn't play this track. Try signing in again.");
+    });
+    const registrations = [stopState, stopQueue, stopRedirected];
     async function initialize() {
       try {
-        await Promise.all([stopState, stopQueue]);
+        await Promise.all(registrations);
       } catch (cause) {
         if (active) onError(`Could not listen for player updates: ${errorMessage(cause)}`);
         return;
@@ -57,7 +61,7 @@ export function usePlayerSubscription(onError: (message: string) => void): Playe
     void initialize();
     return () => {
       active = false;
-      for (const registration of [stopState, stopQueue]) {
+      for (const registration of registrations) {
         void registration.then((stop) => stop()).catch(() => {});
       }
     };

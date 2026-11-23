@@ -120,6 +120,7 @@ export const commands = {
 export const events = {
 	authChanged: makeEvent<AuthChanged, AuthChanged>("auth://changed"),
 	playerQueue: makeEvent<QueueChanged, QueueChanged>("player://queue"),
+	playerRedirected: makeEvent<PlayerRedirected, PlayerRedirected>("player://redirected"),
 	playerState: makeEvent<PlayerStateChanged, PlayerStateChanged>("player://state"),
 };
 
@@ -321,6 +322,9 @@ export type PlaybackStatus =
 "loading" | "playing" | "paused" | 
 /**  The last song finished and nothing follows it. */
 "ended";
+
+/**  Emitted once when a pending load finishes outside YouTube Music. */
+export type PlayerRedirected = Record<string, never>;
 
 /**  Reply to `player_snapshot`: the state the events would have sent so far. */
 export type PlayerSnapshot = {
