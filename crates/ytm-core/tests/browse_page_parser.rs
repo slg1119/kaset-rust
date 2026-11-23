@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use ytm_core::YtmError;
 use ytm_core::client::playlist_browse_id;
-use ytm_core::parsers::browse_page::parse_browse_page;
+use ytm_core::parsers::browse_page::{parse_browse_page, parse_browse_page_for_id};
 
 const ART: &str = "https://lh3.googleusercontent.com/test-cover";
 
@@ -60,7 +60,8 @@ fn playlist_uses_its_track_shelf_and_trailing_continuation() {
     let page = parse_browse_page(&two_column(
         json!({
             "title": {"runs": [{"text": "Test Playlist"}]},
-            "straplineTextOne": {"runs": [{"text": "Test Curator"}]}
+            "straplineTextOne": {"runs": [{"text": "Test Curator"}]},
+            "subtitle": {"runs": [{"text": "Playlist • Public"}]}
         }),
         json!([
             {"musicShelfRenderer": {"contents": [track("test-video1", "Suggestion", None)]}},
@@ -123,4 +124,46 @@ fn normalizes_playlist_ids_like_swift() {
     ] {
         assert_eq!(playlist_browse_id(id), expected);
     }
+}
+
+#[test]
+fn playlist_without_a_track_shelf_ignores_suggestions() {
+    let page = parse_browse_page(&two_column(
+        json!({"title": {"runs": [{"text": "Empty Playlist"}]}}),
+        json!([{"musicShelfRenderer": {"contents": [
+            track("test-video1", "Suggestion", None)
+        ]}}]),
+    ))
+    .unwrap();
+    assert!(page.songs.is_empty());
+}
+
+#[test]
+fn known_playlist_id_wins_over_an_album_like_subtitle() {
+    let value = two_column(
+        json!({
+            "title": {"runs": [{"text": "Test Playlist"}]},
+            "subtitle": {"runs": [{"text": "Album"}]}
+        }),
+        json!([{"musicShelfRenderer": {"contents": [
+            track("test-video1", "Suggestion", None)
+        ]}}]),
+    );
+    assert!(
+        parse_browse_page_for_id(&value, "VLPLtest")
+            .unwrap()
+            .songs
+            .is_empty()
+    );
+}
+
+#[test]
+fn album_playlist_without_a_header_uses_the_route_title() {
+    let value = json!({"contents": {"sectionListRenderer": {"contents": [
+        {"musicPlaylistShelfRenderer": {"contents": [track("test-video1", "Album track", None)]}}
+    ]}}});
+    let page = parse_browse_page_for_id(&value, "VLOLAKtest").unwrap();
+    assert!(page.title.is_empty());
+    assert_eq!(page.songs[0].title, "Album track");
+    assert!(parse_browse_page_for_id(&value, "VLPLtest").is_err());
 }

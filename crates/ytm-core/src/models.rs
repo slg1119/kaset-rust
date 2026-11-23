@@ -43,6 +43,20 @@ pub struct BrowsePage {
     pub continuation: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct BrowsePageContinuation {
+    pub songs: Vec<Song>,
+    pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct LibraryPage {
+    pub sections: Vec<HomeSection>,
+    pub continuations: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -167,6 +181,8 @@ mod specta_tests {
         assert_type::<RadioQueue>();
         assert_type::<BrowseCard>();
         assert_type::<BrowsePage>();
+        assert_type::<BrowsePageContinuation>();
+        assert_type::<LibraryPage>();
         assert_type::<ShelfItem>();
         assert_type::<HomeSection>();
         assert_type::<BrowseEndpoint>();
