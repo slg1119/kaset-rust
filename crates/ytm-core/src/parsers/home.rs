@@ -300,7 +300,7 @@ pub(super) fn parse_responsive_song(renderer: &Value) -> Option<Song> {
     })
 }
 
-fn flex_column(renderer: &Value, index: usize) -> Option<&Value> {
+pub(super) fn flex_column(renderer: &Value, index: usize) -> Option<&Value> {
     renderer
         .get("flexColumns")?
         .get(index)?

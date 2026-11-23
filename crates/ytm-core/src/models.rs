@@ -35,12 +35,75 @@ pub struct BrowseCard {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BrowsePage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist: Option<PlaylistActions>,
+    /// Playlist item IDs in the same order as songs, including duplicate videos.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_video_ids: Option<Vec<Option<String>>>,
     pub title: String,
     pub subtitle: Option<String>,
     pub second_subtitle: Option<String>,
     pub thumbnail_url: Option<String>,
     pub songs: Vec<Song>,
     pub continuation: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LikeStatus {
+    Like,
+    Dislike,
+    Indifferent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "UPPERCASE")]
+pub enum PlaylistPrivacy {
+    Public,
+    Unlisted,
+    Private,
+}
+
+/// Full metadata stays on the Rust side. Feedback tokens must never cross IPC.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct SongMetadata {
+    pub like_status: Option<LikeStatus>,
+    pub in_library: bool,
+    #[serde(skip)]
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub add_token: Option<crate::secret::Secret>,
+    #[serde(skip)]
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub remove_token: Option<crate::secret::Secret>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct AddToPlaylistMenu {
+    pub title: Option<String>,
+    pub options: Vec<AddToPlaylistOption>,
+    pub can_create_playlist: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct AddToPlaylistOption {
+    pub playlist_id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub is_selected: bool,
+    pub privacy_status: Option<PlaylistPrivacy>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct PlaylistActions {
+    pub can_delete: bool,
+    pub saved: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,6 +142,8 @@ pub struct PodcastEpisodesPage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct BrowsePageContinuation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_video_ids: Option<Vec<Option<String>>>,
     pub songs: Vec<Song>,
     pub continuation: Option<String>,
 }
@@ -258,6 +323,12 @@ mod specta_tests {
         assert_type::<RadioQueue>();
         assert_type::<BrowseCard>();
         assert_type::<BrowsePage>();
+        assert_type::<LikeStatus>();
+        assert_type::<PlaylistPrivacy>();
+        assert_type::<SongMetadata>();
+        assert_type::<AddToPlaylistMenu>();
+        assert_type::<AddToPlaylistOption>();
+        assert_type::<PlaylistActions>();
         assert_type::<Episode>();
         assert_type::<PodcastShow>();
         assert_type::<PodcastEpisodesPage>();

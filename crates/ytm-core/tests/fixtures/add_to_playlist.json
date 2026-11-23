@@ -1,0 +1,10 @@
+{
+  "actions": [{"openPopupAction":{"popup":{"addToPlaylistRenderer":{
+    "title":{"simpleText":"Add to playlist"},
+    "contents":[
+      {"playlistAddToOptionRenderer":{"title":{"runs":[{"text":"Mix"}]},"playlistId":"PLtest","checkStatus":"CHECKBOX_STATE_CHECKED"}},
+      {"addToPlaylistItemRenderer":{"text":{"simpleText":"Duplicate"},"playlistId":"VLPLtest"}},
+      {"addToPlaylistItemRenderer":{"label":{"simpleText":"New playlist"},"playlistId":"PLskip","createPlaylistEndpoint":{}}}
+    ]
+  }}}}]
+}

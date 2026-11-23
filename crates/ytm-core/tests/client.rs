@@ -482,3 +482,163 @@ async fn lyrics_uses_timed_next_without_making_a_browse_request() {
     assert_eq!(result.source.as_deref(), Some("YTMusic"));
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn account_action_requests_match_swift() {
+    use ytm_core::models::{LikeStatus, PlaylistPrivacy};
+    use ytm_core::secret::Secret;
+
+    let server = MockServer::start().await;
+    let client = InnerTubeClient::new(
+        config_for(&server),
+        Some(CookieJar::from_header("SAPISID=test-sapisid")),
+    )
+    .unwrap();
+    Mock::given(method("POST"))
+        .and(path("/playlist/create"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"playlistId": "PLtest"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&server)
+        .await;
+
+    for rating in [
+        LikeStatus::Like,
+        LikeStatus::Dislike,
+        LikeStatus::Indifferent,
+    ] {
+        client.rate_song("song-id", rating).await.unwrap();
+    }
+    client
+        .edit_library(&Secret::new("test-feedback"))
+        .await
+        .unwrap();
+    client.add_to_playlist_options("song-id").await.unwrap();
+    client.add_to_playlist("song-id", "VLPLtest").await.unwrap();
+    client
+        .remove_from_playlist("VLPLtest", "song-id", "set-id")
+        .await
+        .unwrap();
+    assert_eq!(
+        client
+            .create_playlist(
+                "Title",
+                "Description",
+                PlaylistPrivacy::Unlisted,
+                &["song-id".into()]
+            )
+            .await
+            .unwrap(),
+        "PLtest"
+    );
+    client
+        .create_playlist("Empty", " ", PlaylistPrivacy::Private, &[])
+        .await
+        .unwrap();
+    client.delete_playlist("VLPLtest").await.unwrap();
+    client.set_artist_subscribed("UCtest", true).await.unwrap();
+    client.set_artist_subscribed("UCtest", false).await.unwrap();
+    client.set_playlist_saved("VLPLtest", true).await.unwrap();
+    client.set_playlist_saved("VLPLtest", false).await.unwrap();
+
+    let expected = [
+        ("/like/like", json!({"target":{"videoId":"song-id"}})),
+        ("/like/dislike", json!({"target":{"videoId":"song-id"}})),
+        ("/like/removelike", json!({"target":{"videoId":"song-id"}})),
+        ("/feedback", json!({"feedbackTokens":["test-feedback"]})),
+        (
+            "/playlist/get_add_to_playlist",
+            json!({"videoIds":["song-id"]}),
+        ),
+        (
+            "/browse/edit_playlist",
+            json!({"playlistId":"PLtest", "actions":[{"action":"ACTION_ADD_VIDEO", "addedVideoId":"song-id"}]}),
+        ),
+        (
+            "/browse/edit_playlist",
+            json!({"playlistId":"PLtest", "actions":[{"action":"ACTION_REMOVE_VIDEO", "removedVideoId":"song-id","setVideoId":"set-id"}]}),
+        ),
+        (
+            "/playlist/create",
+            json!({"title":"Title","description":"Description","privacyStatus":"UNLISTED","videoIds":["song-id"]}),
+        ),
+        (
+            "/playlist/create",
+            json!({"title":"Empty","privacyStatus":"PRIVATE"}),
+        ),
+        ("/playlist/delete", json!({"playlistId":"PLtest"})),
+        ("/subscription/subscribe", json!({"channelIds":["UCtest"]})),
+        (
+            "/subscription/unsubscribe",
+            json!({"channelIds":["UCtest"]}),
+        ),
+        ("/like/like", json!({"target":{"playlistId":"PLtest"}})),
+        (
+            "/like/removelike",
+            json!({"target":{"playlistId":"PLtest"}}),
+        ),
+    ];
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), expected.len());
+    for (request, (path, expected_body)) in requests.iter().zip(expected) {
+        assert_eq!(request.url.path(), path);
+        let mut body: serde_json::Map<_, _> = serde_json::from_slice(&request.body).unwrap();
+        assert!(body.remove("context").is_some());
+        assert_eq!(json!(body), expected_body);
+    }
+}
+
+#[tokio::test]
+async fn song_metadata_posts_next_and_rejects_a_mismatched_video() {
+    let server = MockServer::start().await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    let response: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/song_metadata.json")).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({
+            "videoId": "song-id",
+            "enablePersistentPlaylistPanel": true,
+            "isAudioOnly": true,
+            "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/next"))
+        .and(body_partial_json(json!({"videoId": "other-id"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert!(client.song_metadata("song-id").await.unwrap().in_library);
+    assert!(matches!(
+        client.song_metadata("other-id").await,
+        Err(YtmError::Parse { .. })
+    ));
+}
+
+#[tokio::test]
+async fn account_actions_require_auth_and_can_pin_the_request_cookies() {
+    let server = MockServer::start().await;
+    let client = InnerTubeClient::new(config_for(&server), None).unwrap();
+    assert!(matches!(
+        client.delete_playlist("PLtest").await,
+        Err(YtmError::AuthExpired)
+    ));
+    assert!(server.received_requests().await.unwrap().is_empty());
+    let pinned = client.with_cookie_snapshot(CookieJar::from_header("SAPISID=test-original"));
+    client.set_cookies(Some(CookieJar::from_header("SAPISID=test-replacement")));
+    Mock::given(method("POST"))
+        .and(path("/playlist/delete"))
+        .and(header("cookie", "SAPISID=test-original"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    pinned.delete_playlist("PLtest").await.unwrap();
+}

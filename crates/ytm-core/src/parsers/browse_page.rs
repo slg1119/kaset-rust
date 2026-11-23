@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use super::account_actions::{playlist_actions, playlist_set_video_id};
 use super::helpers::{append_actions, shelf_continuation};
 use super::home::parse_responsive_song;
 use crate::YtmError;
@@ -98,6 +99,7 @@ fn parse_page(value: &Value, browse_id: Option<&str>) -> Result<BrowsePage, YtmE
     let BrowsePageContinuation {
         mut songs,
         continuation,
+        set_video_ids,
     } = parse_track_shelves(track_shelves);
     for song in &mut songs {
         if song.thumbnail_url.is_none() {
@@ -106,6 +108,13 @@ fn parse_page(value: &Value, browse_id: Option<&str>) -> Result<BrowsePage, YtmE
     }
 
     Ok(BrowsePage {
+        playlist: (!is_album
+            && browse_id.is_none_or(|id| {
+                let id = id.strip_prefix("VL").unwrap_or(id);
+                !matches!(id, "LM" | "SE") && !id.starts_with("FE") && !id.starts_with("RD")
+            }))
+        .then(|| playlist_actions(value, header)),
+        set_video_ids,
         title,
         subtitle,
         second_subtitle: header
@@ -129,12 +138,9 @@ fn array(value: Option<&Value>) -> &[Value] {
 pub fn parse_browse_page_continuation(value: &Value) -> Result<BrowsePageContinuation, YtmError> {
     for key in ["musicPlaylistShelfContinuation", "musicShelfContinuation"] {
         if let Some(shelf) = at(value, &["continuationContents", key])
-            && let Some(rows) = shelf.get("contents").and_then(Value::as_array)
+            && shelf.get("contents").is_some_and(Value::is_array)
         {
-            return Ok(BrowsePageContinuation {
-                songs: parse_tracks(rows).collect(),
-                continuation: shelf_continuation(shelf, rows).map(str::to_owned),
-            });
+            return Ok(parse_track_shelves([shelf]));
         }
     }
     if let Some(rows) = at(
@@ -156,10 +162,7 @@ pub fn parse_browse_page_continuation(value: &Value) -> Result<BrowsePageContinu
         }
     }
     if let Some((action, rows)) = append_actions(value).next() {
-        return Ok(BrowsePageContinuation {
-            songs: parse_tracks(rows).collect(),
-            continuation: shelf_continuation(action, rows).map(str::to_owned),
-        });
+        return Ok(parse_rows(action, rows));
     }
     Err(parse_error("playlist continuation"))
 }
@@ -167,23 +170,39 @@ pub fn parse_browse_page_continuation(value: &Value) -> Result<BrowsePageContinu
 fn parse_track_shelves<'a>(shelves: impl IntoIterator<Item = &'a Value>) -> BrowsePageContinuation {
     let mut page = BrowsePageContinuation {
         songs: Vec::new(),
+        set_video_ids: None,
         continuation: None,
     };
+    let mut ids = Vec::new();
     for shelf in shelves {
         let rows = array(shelf.get("contents"));
-        page.continuation = page
-            .continuation
-            .or_else(|| shelf_continuation(shelf, rows).map(str::to_owned));
-        page.songs.extend(parse_tracks(rows));
+        let batch = parse_rows(shelf, rows);
+        page.continuation = page.continuation.or(batch.continuation);
+        ids.extend(
+            batch
+                .set_video_ids
+                .unwrap_or_else(|| vec![None; batch.songs.len()]),
+        );
+        page.songs.extend(batch.songs);
     }
+    page.set_video_ids = ids.iter().any(Option::is_some).then_some(ids);
     page
 }
 
-fn parse_tracks(rows: &[Value]) -> impl Iterator<Item = Song> {
-    rows.iter().filter_map(|row| {
-        let song = parse_responsive_song(row.get("musicResponsiveListItemRenderer")?)?;
-        (!song.video_id.is_empty()).then_some(song)
-    })
+fn parse_rows(shelf: &Value, rows: &[Value]) -> BrowsePageContinuation {
+    let (songs, ids): (Vec<Song>, Vec<_>) = rows
+        .iter()
+        .filter_map(|row| {
+            let renderer = row.get("musicResponsiveListItemRenderer")?;
+            let song = parse_responsive_song(renderer)?;
+            (!song.video_id.is_empty()).then(|| (song, playlist_set_video_id(renderer)))
+        })
+        .unzip();
+    BrowsePageContinuation {
+        songs,
+        set_video_ids: ids.iter().any(Option::is_some).then_some(ids),
+        continuation: shelf_continuation(shelf, rows).map(str::to_owned),
+    }
 }
 
 fn parse_error(path: &str) -> YtmError {

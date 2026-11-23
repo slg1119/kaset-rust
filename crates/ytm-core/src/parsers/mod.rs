@@ -1,4 +1,5 @@
 pub mod account;
+pub mod account_actions;
 pub mod artist;
 pub mod browse_page;
 mod helpers;
