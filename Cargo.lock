@@ -2381,6 +2381,7 @@ dependencies = [
 name = "kaset"
 version = "0.1.0"
 dependencies = [
+ "kaset-ipc",
  "kaset-session",
  "serde",
  "serde_json",
@@ -2412,6 +2413,19 @@ dependencies = [
  "tokio",
  "wiremock",
  "ytm-core",
+]
+
+[[package]]
+name = "kaset-ipc"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

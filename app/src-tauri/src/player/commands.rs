@@ -1,11 +1,13 @@
 //! Player commands. The UI calls all but `playback_event`, which only the
 //! player window's music.youtube.com pages may call (capability `player-remote`).
 
+use std::time::Instant;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Webview};
 use ytm_core::models::Song;
 
-use super::engine::{PlaybackEvent, PlayerState, QueueState};
+use super::engine::{Outcome, PlaybackEvent, Player, PlayerState, QueueState};
 use super::queue::{MAX_QUEUE_LEN, RepeatMode};
 use super::window::{PLAYER_LABEL, is_music_page};
 use crate::error::{AppError, ErrorKind};
@@ -37,12 +39,21 @@ pub async fn play_queue(
             if state.session.status() != AuthStatus::SignedIn {
                 return Err(AppError::not_signed_in());
             }
-            validate_queue(&songs)?;
-            player
-                .play_songs(songs, start, now)
-                .map_err(|error| AppError::new(ErrorKind::InvalidArgument, error.to_string()))
+            replace_queue(player, songs, start, now)
         })
         .await
+}
+
+pub(crate) fn replace_queue(
+    player: &mut Player,
+    songs: Vec<Song>,
+    start: usize,
+    now: Instant,
+) -> Result<Outcome, AppError> {
+    validate_queue(&songs)?;
+    player
+        .play_songs(songs, start, now)
+        .map_err(|error| AppError::new(ErrorKind::InvalidArgument, error.to_string()))
 }
 
 pub(crate) fn validate_queue(songs: &[Song]) -> Result<(), AppError> {
